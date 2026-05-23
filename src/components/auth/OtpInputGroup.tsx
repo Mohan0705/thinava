@@ -33,7 +33,7 @@ export function OtpInputGroup({
     <div className="grid grid-cols-6 gap-2">
       {digits.map((digit, index) => (
         <Input
-          key={index}
+          key={`otp-digit-${index}`}
           ref={(element) => {
             inputRefs.current[index] = element
           }}

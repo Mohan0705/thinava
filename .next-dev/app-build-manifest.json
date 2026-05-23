@@ -21,41 +21,30 @@
       "static/chunks/main-app.js",
       "static/chunks/app/page.js"
     ],
-    "/admin/layout": [
+    "/restaurant/[id]/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/admin/layout.js"
+      "static/chunks/app/restaurant/[id]/page.js"
     ],
-    "/admin/error": [
+    "/restaurant-auth/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/admin/error.js"
+      "static/chunks/app/restaurant-auth/page.js"
     ],
-    "/admin/orders/page": [
+    "/restaurant/dashboard/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/css/app/admin/orders/page.css",
-      "static/chunks/app/admin/orders/page.js"
-    ],
-    "/restaurant/orders/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/restaurant/orders/page.js"
+      "static/chunks/app/restaurant/dashboard/page.js"
     ],
     "/delivery/layout": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
       "static/chunks/app/delivery/layout.js"
     ],
-    "/delivery/dashboard/page": [
+    "/delivery/register/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/delivery/dashboard/page.js"
-    ],
-    "/restaurant/[id]/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/restaurant/[id]/page.js"
+      "static/chunks/app/delivery/register/page.js"
     ]
   }
 }

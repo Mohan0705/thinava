@@ -18,18 +18,25 @@ export default function VerifyOtpPage() {
   const [otp, setOtp] = useState('')
   const [loading, setLoading] = useState(false)
   const [resendLoading, setResendLoading] = useState(false)
-  const [now, setNow] = useState(Date.now())
+  const [now, setNow] = useState<number | null>(null)
+  const [isClient, setIsClient] = useState(false)
 
   const getNextPath = () => {
     if (typeof window === 'undefined') {
       return '/'
     }
-
     return new URLSearchParams(window.location.search).get('next') || '/'
   }
   const entryPath = pendingVerification?.purpose === 'signup' ? '/signup' : '/login'
 
   useEffect(() => {
+    setIsClient(true)
+    setNow(Date.now())
+  }, [])
+
+  useEffect(() => {
+    if (!isClient) return
+    
     if (!pendingVerification) {
       router.replace('/login')
       return
@@ -44,10 +51,10 @@ export default function VerifyOtpPage() {
 
     const timer = window.setInterval(() => setNow(Date.now()), 1000)
     return () => window.clearInterval(timer)
-  }, [entryPath, pendingVerification, router, setPendingVerification])
+  }, [entryPath, pendingVerification, router, setPendingVerification, isClient])
 
   const resendRemaining = useMemo(() => {
-    if (!pendingVerification) {
+    if (!pendingVerification || now === null) {
       return 0
     }
 
@@ -154,7 +161,7 @@ export default function VerifyOtpPage() {
           {loading ? 'Verifying...' : 'Verify and Continue'}
         </Button>
 
-        <div className="text-center text-sm text-slate-500">
+        <div className="text-center text-sm text-slate-500" suppressHydrationWarning>
           {resendRemaining > 0 ? (
             <span>Resend available in {resendRemaining}s</span>
           ) : (
