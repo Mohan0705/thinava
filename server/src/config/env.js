@@ -11,7 +11,7 @@ const REQUIRED = {
   JWT_ISSUER: { default: 'thinava' },
   JWT_AUDIENCE: { default: 'thinava-app' },
 
-  FRONTEND_URL: { default: 'http://localhost:3000' },
+  FRONTEND_URL: { default: 'http://localhost:3000', production: true },
 
   API_RATE_LIMIT_MAX: { default: '1000', parse: Number },
   CUSTOMER_AUTH_SEND_LIMIT_MAX: { default: '10', parse: Number },
@@ -69,6 +69,18 @@ for (const [key, cfg] of Object.entries(OPTIONAL)) {
   const raw = process.env[key]
   if (raw !== undefined && raw !== '') {
     resolved[key] = raw
+  }
+}
+
+// Production-specific validation
+const isProduction = resolved.NODE_ENV === 'production'
+if (isProduction) {
+  // In production, FRONTEND_URL must be explicitly set to production domain
+  const frontendUrl = process.env.FRONTEND_URL
+  if (!frontendUrl || frontendUrl.includes('localhost')) {
+    errors.push(
+      `In production, FRONTEND_URL must be set to your production domain (e.g., https://thinava.vercel.app)\n    Current: ${frontendUrl || 'NOT SET'}`
+    )
   }
 }
 

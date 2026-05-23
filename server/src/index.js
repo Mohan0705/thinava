@@ -226,7 +226,7 @@ logger.info('All routes mounted', { tag: 'system' })
 // ============================================================
 // SOCKET SETUP
 // ============================================================
-const io = createSocketServer(server, { origin: env.FRONTEND_URL })
+const io = createSocketServer(server, { corsOrigin: env.FRONTEND_URL })
 app.set('io', io)
 
 registerShutdownTask(async () => {

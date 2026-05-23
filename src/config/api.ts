@@ -1,14 +1,12 @@
 import { env } from './env'
 
-const SOCKET_BASE_URL = env.NEXT_PUBLIC_SOCKET_URL
-  ? env.NEXT_PUBLIC_SOCKET_URL
-  : env.NEXT_PUBLIC_API_URL
-    ? env.NEXT_PUBLIC_API_URL.replace(/\/api\/?$/, '')
-    : 'http://localhost:5000'
+// In production, NEXT_PUBLIC_API_URL must be set
+const API_URL = env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'
+const SOCKET_URL = env.NEXT_PUBLIC_SOCKET_URL || API_URL.replace(/\/api\/?$/, '')
 
 export const apiConfig = {
-  baseUrl: env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api',
-  socketUrl: SOCKET_BASE_URL,
+  baseUrl: API_URL,
+  socketUrl: SOCKET_URL,
   timeout: 15000,
   retryCount: 2,
 }
