@@ -156,6 +156,9 @@ const requestOtp = async ({ phone, countryCode = INDIAN_COUNTRY_CODE, fullName =
   )
 
   const otpCode = generateOtp()
+  
+  console.log('[OTP GENERATED]', otpCode)
+  console.log('[DEV_MODE]', DEV_MODE)
 
   const result = await pool.query(
     `INSERT INTO customer_otp_sessions (

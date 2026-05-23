@@ -123,6 +123,9 @@ export default function VerifyOtpPage() {
         email: pendingVerification.email,
         purpose: pendingVerification.purpose,
       })
+      
+      console.log('OTP RESPONSE:', result)
+      console.log('DEV OTP:', result.helperOtp)
 
       setPendingVerification({
         ...pendingVerification,
@@ -153,10 +156,24 @@ export default function VerifyOtpPage() {
         <form onSubmit={handleVerify} className="space-y-5">
           <OtpInputGroup value={otp} onChange={setOtp} />
 
-          {pendingVerification.helperOtp && (
-            <div className="rounded-2xl border border-orange-100 bg-orange-50/80 px-4 py-3 text-sm text-orange-800">
-              Development helper: use OTP <span className="font-semibold">{pendingVerification.helperOtp}</span>
+          {mounted && pendingVerification.helperOtp && (
+            <div className="rounded-xl bg-orange-100 border border-orange-300 p-4 shadow-md">
+              <p className="font-bold text-orange-900">
+                Development OTP: {pendingVerification.helperOtp}
+              </p>
+              <p className="text-sm text-orange-700 mt-2">Click below to auto-fill</p>
             </div>
+          )}
+          
+          {mounted && pendingVerification.helperOtp && (
+            <Button 
+              type="button" 
+              variant="outline" 
+              className="w-full" 
+              onClick={() => pendingVerification.helperOtp && setOtp(pendingVerification.helperOtp)}
+            >
+              Auto-fill OTP
+            </Button>
           )}
 
           <Button type="submit" className="w-full" size="lg" disabled={loading}>

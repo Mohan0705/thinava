@@ -1,9 +1,10 @@
 'use client'
 
+import { useState } from 'react'
 import Image from 'next/image'
 import { UploadCloud } from 'lucide-react'
 import { Input } from '@/components/ui/Input'
-import { fileToDataUrl } from '@/lib/file-utils'
+import { toast } from 'sonner'
 
 export function ImageUploadField({
   label,
@@ -16,14 +17,40 @@ export function ImageUploadField({
   onChange: (value: string) => void
   placeholder: string
 }) {
+  const [uploading, setUploading] = useState(false)
+
   const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     if (!file) {
       return
     }
 
-    const dataUrl = await fileToDataUrl(file)
-    onChange(dataUrl)
+    setUploading(true)
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+
+      const response = await fetch('/api/upload/image', {
+        method: 'POST',
+        body: formData,
+      })
+
+      const data = await response.json()
+
+      if (!data.success) {
+        toast.error(data.error || 'Upload failed')
+        return
+      }
+
+      console.log('[IMAGE UPLOAD RESPONSE]', data)
+      onChange(data.imageUrl)
+      toast.success('Image uploaded successfully')
+    } catch (error) {
+      console.error('[IMAGE UPLOAD ERROR]', error)
+      toast.error(error instanceof Error ? error.message : 'Upload failed')
+    } finally {
+      setUploading(false)
+    }
   }
 
   return (
@@ -41,9 +68,9 @@ export function ImageUploadField({
         </div>
         <div className="space-y-3">
           <Input value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} />
-          <label className="flex cursor-pointer items-center justify-center rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-700 transition hover:border-orange-400 hover:bg-orange-50">
-            Upload image
-            <input type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
+          <label className="flex cursor-pointer items-center justify-center rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-700 transition hover:border-orange-400 hover:bg-orange-50 disabled:opacity-50">
+            {uploading ? 'Uploading...' : 'Upload image'}
+            <input type="file" accept="image/*" className="hidden" onChange={handleFileChange} disabled={uploading} />
           </label>
         </div>
       </div>

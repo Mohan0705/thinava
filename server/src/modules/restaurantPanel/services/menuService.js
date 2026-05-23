@@ -74,7 +74,7 @@ const createMenuItem = async (restaurantId, payload) => {
       restaurant_id, name, description, price, offer_price, image, category,
       is_veg, is_bestseller, is_recommended, is_available, in_stock,
       preparation_time, spice_level, calories, category_id, display_order
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
     RETURNING *`,
     [
       restaurantId,
