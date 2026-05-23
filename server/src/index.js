@@ -382,6 +382,7 @@ app.use((req, res) => {
 // ============================================================
 const PORT = env.PORT
 const pool = require('./database/connection')
+const { testConnection } = require('./database/connection')
 
 const resetAdminLockouts = async () => {
   try {
@@ -397,7 +398,9 @@ registerShutdownTask(async () => {
   logger.info('Database pool closed', { tag: 'system' })
 })
 
-ensureRestaurantPanelSchema()
+// Test database connection first
+testConnection()
+  .then(() => ensureRestaurantPanelSchema())
   .then(() => ensureAdminSchema())
   .then(() => resetAdminLockouts())
   .then(() => ensureDeliveryLogisticsSchema())
