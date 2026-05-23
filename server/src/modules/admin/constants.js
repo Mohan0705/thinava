@@ -1,0 +1,104 @@
+const ADMIN_ROLES = {
+  SUPER_ADMIN: 'super_admin',
+  OPERATIONS_ADMIN: 'operations_admin',
+  FINANCE_ADMIN: 'finance_admin',
+  SUPPORT_ADMIN: 'support_admin',
+
+  // Backward compatibility aliases
+  OPERATIONS_MANAGER: 'operations_admin',
+  SUPPORT_AGENT: 'support_admin',
+}
+
+const ADMIN_PERMISSIONS = {
+  DASHBOARD_VIEW: 'dashboard:view',
+  ORDERS_VIEW: 'orders:view',
+  ORDERS_MANAGE: 'orders:manage',
+  RESTAURANTS_VIEW: 'restaurants:view',
+  RESTAURANTS_MANAGE: 'restaurants:manage',
+  DELIVERY_VIEW: 'delivery:view',
+  DELIVERY_MANAGE: 'delivery:manage',
+  CUSTOMERS_VIEW: 'customers:view',
+  CUSTOMERS_MANAGE: 'customers:manage',
+  ANALYTICS_VIEW: 'analytics:view',
+  PAYMENTS_VIEW: 'payments:view',
+  PAYMENTS_MANAGE: 'payments:manage',
+  COMMISSIONS_VIEW: 'commissions:view',
+  COMMISSIONS_MANAGE: 'commissions:manage',
+  SETTLEMENTS_VIEW: 'settlements:view',
+  SETTLEMENTS_MANAGE: 'settlements:manage',
+  SUPPORT_VIEW: 'support:view',
+  SUPPORT_MANAGE: 'support:manage',
+  SETTINGS_VIEW: 'settings:view',
+  SETTINGS_MANAGE: 'settings:manage',
+  PROMOTIONS_VIEW: 'promotions:view',
+  PROMOTIONS_MANAGE: 'promotions:manage',
+  MAP_VIEW: 'map:view',
+}
+
+const ROLE_PERMISSIONS = {
+  [ADMIN_ROLES.SUPER_ADMIN]: Object.values(ADMIN_PERMISSIONS),
+
+  [ADMIN_ROLES.OPERATIONS_ADMIN]: [
+    ADMIN_PERMISSIONS.DASHBOARD_VIEW,
+    ADMIN_PERMISSIONS.ORDERS_VIEW,
+    ADMIN_PERMISSIONS.ORDERS_MANAGE,
+    ADMIN_PERMISSIONS.RESTAURANTS_VIEW,
+    ADMIN_PERMISSIONS.RESTAURANTS_MANAGE,
+    ADMIN_PERMISSIONS.DELIVERY_VIEW,
+    ADMIN_PERMISSIONS.DELIVERY_MANAGE,
+    ADMIN_PERMISSIONS.CUSTOMERS_VIEW,
+    ADMIN_PERMISSIONS.MAP_VIEW,
+  ],
+
+  [ADMIN_ROLES.FINANCE_ADMIN]: [
+    ADMIN_PERMISSIONS.DASHBOARD_VIEW,
+    ADMIN_PERMISSIONS.ANALYTICS_VIEW,
+    ADMIN_PERMISSIONS.PAYMENTS_VIEW,
+    ADMIN_PERMISSIONS.PAYMENTS_MANAGE,
+    ADMIN_PERMISSIONS.COMMISSIONS_VIEW,
+    ADMIN_PERMISSIONS.COMMISSIONS_MANAGE,
+    ADMIN_PERMISSIONS.SETTLEMENTS_VIEW,
+    ADMIN_PERMISSIONS.SETTLEMENTS_MANAGE,
+    ADMIN_PERMISSIONS.PROMOTIONS_VIEW,
+    ADMIN_PERMISSIONS.SETTINGS_VIEW,
+  ],
+
+  [ADMIN_ROLES.SUPPORT_ADMIN]: [
+    ADMIN_PERMISSIONS.DASHBOARD_VIEW,
+    ADMIN_PERMISSIONS.ORDERS_VIEW,
+    ADMIN_PERMISSIONS.CUSTOMERS_VIEW,
+    ADMIN_PERMISSIONS.SUPPORT_VIEW,
+    ADMIN_PERMISSIONS.SUPPORT_MANAGE,
+    ADMIN_PERMISSIONS.MAP_VIEW,
+  ],
+}
+
+const ORDER_STATUS_ALIASES = {
+  placed: 'PLACED',
+  accepted: 'ACCEPTED',
+  preparing: 'PREPARING',
+  ready_for_pickup: 'READY_FOR_PICKUP',
+  out_for_delivery: 'OUT_FOR_DELIVERY',
+  delivered: 'DELIVERED',
+  cancelled: 'CANCELLED',
+}
+
+const DELIVERY_STATUS_ALIASES = {
+  pending: 'PENDING',
+  assigned: 'ASSIGNED',
+  arrived_at_restaurant: 'ARRIVED_AT_RESTAURANT',
+  reached_restaurant: 'REACHED_RESTAURANT',
+  picked_up: 'PICKED_UP',
+  on_the_way: 'ON_THE_WAY',
+  reached_customer: 'REACHED_CUSTOMER',
+  delivered: 'DELIVERED',
+  cancelled: 'CANCELLED',
+}
+
+module.exports = {
+  ADMIN_ROLES,
+  ADMIN_PERMISSIONS,
+  ROLE_PERMISSIONS,
+  ORDER_STATUS_ALIASES,
+  DELIVERY_STATUS_ALIASES,
+}

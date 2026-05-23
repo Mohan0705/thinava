@@ -1,0 +1,49 @@
+{
+  "name": "thinava",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently \"npm run dev:frontend\" \"npm run dev:backend\"",
+    "frontend": "node scripts/run-next.cjs dev",
+    "backend": "cd server && npm run dev",
+    "dev:frontend": "node scripts/run-next.cjs dev",
+    "dev:backend": "cd server && npm run dev",
+    "build": "node scripts/run-next.cjs build",
+    "start": "node scripts/run-next.cjs start",
+    "lint": "next lint",
+    "seed:admins": "cd server && npm run seed:admins",
+    "postinstall": "cd server && npm install"
+  },
+  "dependencies": {
+    "axios": "^1.6.0",
+    "class-variance-authority": "^0.7.0",
+    "clsx": "^2.1.0",
+    "dotenv": "^17.4.2",
+    "framer-motion": "^11.0.0",
+    "lucide-react": "^0.344.0",
+    "next": "^15.0.0",
+    "next-pwa": "^5.6.0",
+    "node-fetch": "^2.7.0",
+    "pg": "^8.21.0",
+    "react": "^18.3.0",
+    "react-dom": "^18.3.0",
+    "recharts": "^3.8.1",
+    "socket.io-client": "^4.8.1",
+    "sonner": "^1.4.0",
+    "tailwind-merge": "^2.2.0",
+    "tailwindcss-animate": "^1.0.7",
+    "zustand": "^4.5.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0",
+    "autoprefixer": "^10.4.0",
+    "concurrently": "^8.2.0",
+    "eslint": "^8.56.0",
+    "eslint-config-next": "^15.0.0",
+    "postcss": "^8.4.0",
+    "tailwindcss": "^3.4.0",
+    "typescript": "^5.3.0"
+  }
+}

@@ -1,0 +1,39 @@
+Mounting routes...
+✓ Auth routes mounted
+✓ Restaurants routes mounted
+✓ Menu routes mounted
+✓ Orders routes mounted
+✓ Orders advanced routes mounted
+✓ Users routes mounted
+✓ Restaurant panel routes mounted
+✓ Restaurant auth routes mounted
+✓ Rider auth routes mounted
+✓ Admin extended routes mounted
+✓ Delivery routes mounted
+✓ Search routes mounted
+✓ Reviews routes mounted
+✓ Ratings routes mounted
+✓ Coupons routes mounted
+Connected to Supabase PostgreSQL
+✓ Features database schema initialized successfully
+🔄 Fixing restaurant schema for registration...
+✅ Restaurant schema migration complete
+🔄 Rebuilding restaurant menu schema...
+✅ Restaurant menu schema rebuild complete
+🔄 Applying order privacy, payment status & rating schema...
+✅ Order privacy, payment status & rating schema applied
+✓ notes column already exists in order_items
+✓ cancelled_at column already exists in orders
+✓ delivered_at column already exists in orders
+✓ picked_up_at column already exists in orders
+✓ delivery_assigned_at column already exists in orders
+✓ cancellation_reason column already exists in orders
+✓ payment_status column already exists in orders
+✓ delivery_partner_id column already exists in orders
+✓ delivery_status column already exists in orders
+✓ cancelled_at column already exists in delivery_assignments
+✓ delivered_at column already exists in delivery_assignments
+✓ cancelled_at column already exists in active_deliveries
+✓ delivered_at column already exists in active_deliveries
+✓ Order lifecycle columns migration complete
+Server running on port 5000
