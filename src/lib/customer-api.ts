@@ -72,8 +72,25 @@ const mapMenuItem = (menuItem: Record<string, any>): MenuItem => ({
 })
 
 export async function fetchRestaurants() {
-  const response = await apiRequest<RestaurantApiResponse>('/restaurants')
-  return (response.restaurants || []).map(mapRestaurant)
+  try {
+    const response = await apiRequest<RestaurantApiResponse>('/restaurants')
+    
+    // Debug logging
+    console.log('[FETCH] Restaurants response:', response)
+    
+    if (!response || typeof response !== 'object') {
+      console.error('[FETCH] Invalid restaurants response type:', typeof response)
+      throw new Error('Invalid restaurants response')
+    }
+    
+    const restaurants = response.restaurants || []
+    console.log('[FETCH] Got', restaurants.length, 'restaurants')
+    
+    return restaurants.map(mapRestaurant)
+  } catch (error) {
+    console.error('[FETCH] Failed to fetch restaurants:', error)
+    throw error
+  }
 }
 
 export async function fetchRestaurant(restaurantId: string) {

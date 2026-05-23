@@ -272,6 +272,13 @@ const shouldRetry = (error: unknown, attempt: number): boolean => {
 }
 
 export async function apiRequest<T>(path: string, options: ApiOptions = {}): Promise<T> {
+  // Validate API configuration
+  if (!API_BASE_URL) {
+    const errMsg = 'API_BASE_URL is not configured. Check that NEXT_PUBLIC_API_URL environment variable is set.'
+    console.error('[API] ❌', errMsg)
+    throw new ApiError(errMsg, 0)
+  }
+
   const { token, headers, ...rest } = options
   const scope = getAuthScopeFromPath(path)
   const resolvedToken = getTokenForScope(scope, token)
