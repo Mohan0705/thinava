@@ -2,6 +2,7 @@ const express = require('express')
 const router = express.Router()
 const pool = require('../database/connection')
 const { asyncHandler } = require('../utils/asyncHandler')
+const { authenticateAdmin } = require('../modules/admin/middleware/auth')
 
 // Get all restaurants
 router.get('/', asyncHandler(async (req, res) => {
@@ -40,7 +41,7 @@ router.get('/:id', asyncHandler(async (req, res) => {
 }))
 
 // Create restaurant (admin only)
-router.post('/', asyncHandler(async (req, res) => {
+router.post('/', authenticateAdmin, asyncHandler(async (req, res) => {
   const {
     name, image, logo, rating, delivery_time, price_for_one,
     cuisines, offer, featured, formatted_address, latitude, longitude
@@ -56,7 +57,7 @@ router.post('/', asyncHandler(async (req, res) => {
 }))
 
 // Update restaurant (admin only)
-router.put('/:id', asyncHandler(async (req, res) => {
+router.put('/:id', authenticateAdmin, asyncHandler(async (req, res) => {
   const {
     name, image, logo, rating, delivery_time, price_for_one,
     cuisines, offer, featured, is_open, formatted_address, latitude, longitude
@@ -80,7 +81,7 @@ router.put('/:id', asyncHandler(async (req, res) => {
 }))
 
 // Delete restaurant (admin only)
-router.delete('/:id', asyncHandler(async (req, res) => {
+router.delete('/:id', authenticateAdmin, asyncHandler(async (req, res) => {
   await pool.query('DELETE FROM restaurants WHERE id = $1', [req.params.id])
   res.json({ success: true, message: 'Restaurant deleted successfully' })
 }))

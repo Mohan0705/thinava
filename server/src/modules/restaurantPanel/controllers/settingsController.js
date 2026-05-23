@@ -18,10 +18,9 @@ const updateSettings = async (req, res, next) => {
     )
 
     // Emit socket event on status changes
-    const io = req.app.get('io')
-    if (io && settings.status) {
+    if (settings.status) {
       const SocketEventsHandler = require('../../../realtime/socketEventsHandler')
-      const handler = new SocketEventsHandler(io)
+      const handler = new SocketEventsHandler()
       await handler.emitRestaurantStatusUpdated(req.restaurantOwner.restaurantId, settings.status)
     }
 

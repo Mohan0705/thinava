@@ -1,8 +1,8 @@
 const bcrypt = require('bcryptjs')
-const jwt = require('jsonwebtoken')
 const pool = require('../../../database/connection')
 const { OWNER_ROLE } = require('../constants')
-const { getRestaurantJwtSecret } = require('../middleware/auth')
+const { signRestaurantToken, verifyRestaurantTokenIgnoreExp } = require('../../../lib/auth/tokenService')
+const { logger } = require('../../../lib/logger')
 
 const buildOwnerPayload = (row) => ({
   id: row.id,
@@ -37,7 +37,7 @@ const decodeRestaurantRefreshToken = (token) => {
   }
 
   try {
-    return jwt.verify(token, getRestaurantJwtSecret(), { ignoreExpiration: true })
+    return verifyRestaurantTokenIgnoreExp(token)
   } catch {
     const error = new Error('Invalid or expired token')
     error.status = 401
@@ -46,36 +46,83 @@ const decodeRestaurantRefreshToken = (token) => {
 }
 
 const loginRestaurantOwner = async ({ email, password }) => {
+  logger.info('Restaurant login attempt', { tag: 'auth', email })
+
   const owner = await getOwnerByEmail(email)
 
-  if (!owner || !owner.is_active) {
+  if (!owner) {
+    logger.warn('Restaurant login: owner not found', { tag: 'auth', email })
     const error = new Error('Invalid email or password')
     error.status = 401
+    throw error
+  }
+
+  logger.info('Restaurant login: owner found', { 
+    tag: 'auth', 
+    email,
+    ownerId: owner.id,
+    isActive: owner.is_active,
+    restaurantStatus: owner.restaurant_status,
+    passwordHashExists: !!owner.password_hash,
+    passwordHashLength: owner.password_hash?.length
+  })
+
+  if (!owner.is_active) {
+    logger.warn('Restaurant login: owner inactive', { tag: 'auth', email, ownerId: owner.id, isActive: owner.is_active })
+    const error = new Error('Account disabled. Please contact support.')
+    error.status = 401
+    throw error
+  }
+
+  if (owner.restaurant_status === 'PENDING_APPROVAL') {
+    logger.info('Restaurant login: pending approval', { tag: 'auth', email, restaurantStatus: owner.restaurant_status })
+    // Try password verification first to distinguish between auth and approval issues
+    const matches = await bcrypt.compare(password, owner.password_hash)
+    if (!matches) {
+      logger.warn('Restaurant login: password mismatch on pending restaurant', { tag: 'auth', email, ownerId: owner.id })
+      const error = new Error('Invalid email or password')
+      error.status = 401
+      throw error
+    }
+    // Password is valid but restaurant is pending
+    const error = new Error('Your restaurant account is pending approval from THINAVA admin.')
+    error.status = 403
+    error.code = 'PENDING_APPROVAL'
+    throw error
+  }
+
+  if (owner.restaurant_status === 'REJECTED' || owner.restaurant_status === 'SUSPENDED') {
+    logger.warn('Restaurant login: blocked', { tag: 'auth', email, restaurantStatus: owner.restaurant_status })
+    const error = new Error(`Your restaurant account has been ${owner.restaurant_status.toLowerCase()}. Please contact support.`)
+    error.status = 403
     throw error
   }
 
   const matches = await bcrypt.compare(password, owner.password_hash)
 
   if (!matches) {
+    logger.warn('Restaurant login: password mismatch', { tag: 'auth', email, ownerId: owner.id })
     const error = new Error('Invalid email or password')
     error.status = 401
     throw error
   }
+  
+  logger.info('Restaurant login: password verified', { tag: 'auth', email, ownerId: owner.id })
 
   await pool.query(
     'UPDATE restaurant_users SET last_login_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = $1',
     [owner.id]
   )
 
-  const token = jwt.sign(
-    {
-      restaurantUserId: owner.id,
-      restaurantId: owner.restaurant_id,
-      role: OWNER_ROLE,
-    },
-    getRestaurantJwtSecret(),
-    { expiresIn: '7d' }
-  )
+  const token = signRestaurantToken(owner)
+
+  logger.info('Restaurant login successful', {
+    tag: 'auth',
+    email,
+    ownerId: owner.id,
+    restaurantId: owner.restaurant_id,
+    restaurantStatus: owner.restaurant_status,
+  })
 
   return {
     token,
@@ -104,18 +151,10 @@ const getCurrentRestaurantOwner = async (restaurantUserId) => {
 
 const refreshRestaurantOwnerSession = async (token) => {
   const decoded = decodeRestaurantRefreshToken(token)
-  const owner = await getCurrentRestaurantOwner(decoded.restaurantUserId)
+  const owner = await getCurrentRestaurantOwner(decoded.sub)
 
   return {
-    token: jwt.sign(
-      {
-        restaurantUserId: decoded.restaurantUserId,
-        restaurantId: decoded.restaurantId,
-        role: OWNER_ROLE,
-      },
-      getRestaurantJwtSecret(),
-      { expiresIn: '7d' }
-    ),
+    token: signRestaurantToken(owner),
     owner,
   }
 }

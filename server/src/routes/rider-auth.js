@@ -13,10 +13,8 @@
 const express = require('express')
 const router = express.Router()
 const bcrypt = require('bcryptjs')
-const jwt = require('jsonwebtoken')
 const pool = require('../database/connection')
-
-const DELIVERY_JWT_SECRET = process.env.DELIVERY_JWT_SECRET || 'delivery-secret-key-prod'
+const { signRiderToken, verifyRiderToken } = require('../lib/auth/tokenService')
 
 // Validation helpers
 const validateEmail = (email) => {
@@ -32,20 +30,29 @@ const validatePhone = (phone) => {
 // Error handler
 const asyncHandler = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next)
 
+const { logger } = require('../lib/logger')
+
 // Middleware: Authenticate rider
 const authenticateRider = (req, res, next) => {
   const token = req.headers.authorization?.split(' ')[1]
   
   if (!token) {
-    return res.status(401).json({ success: false, error: 'No token provided' })
+    logger.warn('Rider auth: no token provided', { tag: 'auth', requestId: req?.id })
+    return res.status(401).json({ success: false, error: 'No token provided', code: 'NO_TOKEN' })
   }
   
   try {
-    const decoded = jwt.verify(token, DELIVERY_JWT_SECRET)
-    req.rider = decoded
+    const decoded = verifyRiderToken(token)
+    req.rider = {
+      id: decoded.sub,
+      phone: decoded.phone,
+      fullName: decoded.fullName,
+    }
+    logger.debug('Rider authenticated', { tag: 'auth', riderId: decoded.sub, requestId: req?.id })
     next()
   } catch (error) {
-    res.status(401).json({ success: false, error: 'Invalid or expired token' })
+    logger.warn('Rider auth failed', { tag: 'auth', error: error.message, requestId: req?.id })
+    res.status(401).json({ success: false, error: 'Invalid or expired token', code: 'INVALID_TOKEN' })
   }
 }
 
@@ -267,15 +274,12 @@ router.post('/login', asyncHandler(async (req, res) => {
   )
 
   // Generate JWT
-  const token = jwt.sign(
-    {
-      id: rider.id,
-      phone: rider.phone,
-      fullName: rider.full_name
-    },
-    DELIVERY_JWT_SECRET,
-    { expiresIn: '7d' }
-  )
+  const token = signRiderToken({
+    id: rider.id,
+    phone: rider.phone,
+    email: rider.email,
+    full_name: rider.full_name,
+  })
 
   return res.json({
     success: true,

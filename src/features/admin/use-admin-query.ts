@@ -1,6 +1,6 @@
 'use client'
 
-import { DependencyList, useEffect, useState } from 'react'
+import { DependencyList, useCallback, useEffect, useRef, useState } from 'react'
 
 export function useAdminQuery<T>(
   loader: () => Promise<T>,
@@ -10,50 +10,47 @@ export function useAdminQuery<T>(
   const [data, setData] = useState<T | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const loaderRef = useRef(loader)
+  loaderRef.current = loader
+  const mountedRef = useRef(true)
 
-  useEffect(() => {
-    let mounted = true
-    let timer: ReturnType<typeof setInterval> | null = null
-
-    const run = async (isInitial = false) => {
-      if (isInitial) {
-        setLoading(true)
-      }
-
-      try {
-        const result = await loader()
-        if (!mounted) {
-          return
-        }
-        setData(result)
-        setError(null)
-      } catch (err) {
-        if (!mounted) {
-          return
-        }
-        setError(err instanceof Error ? err.message : 'Failed to load admin data')
-      } finally {
-        if (mounted && isInitial) {
-          setLoading(false)
-        }
-      }
+  const fetchData = useCallback(async (isInitial = false) => {
+    if (isInitial) {
+      setLoading(true)
     }
 
-    run(true)
+    try {
+      const result = await loaderRef.current()
+      if (!mountedRef.current) return
+      setData(result)
+      setError(null)
+    } catch (err) {
+      if (!mountedRef.current) return
+      setError(err instanceof Error ? err.message : 'Failed to load admin data')
+    } finally {
+      if (mountedRef.current && isInitial) {
+        setLoading(false)
+      }
+    }
+  }, [])
+
+  useEffect(() => {
+    mountedRef.current = true
+    let timer: ReturnType<typeof setInterval> | null = null
+
+    fetchData(true)
 
     if (intervalMs > 0) {
       timer = setInterval(() => {
-        void run(false)
+        fetchData(false)
       }, intervalMs)
     }
 
     return () => {
-      mounted = false
-      if (timer) {
-        clearInterval(timer)
-      }
+      mountedRef.current = false
+      if (timer) clearInterval(timer)
     }
   }, deps)
 
-  return { data, loading, error, setData }
+  return { data, loading, error, setData, refetch: () => fetchData(false) }
 }

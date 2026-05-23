@@ -1,8 +1,7 @@
 const bcrypt = require('bcryptjs')
-const jwt = require('jsonwebtoken')
 const pool = require('../../../database/connection')
-const { getAdminJwtSecret } = require('../middleware/auth')
-const { logger } = require('../../../utils/logger')
+const { signAdminToken, verifyAdminTokenIgnoreExp } = require('../../../lib/auth/tokenService')
+const { logger } = require('../../../lib/logger')
 const {
   emitOrderAssigned,
   emitOrderStatusUpdated,
@@ -108,15 +107,7 @@ const sanitizeAdmin = (row) => ({
   last_login_at: row.last_login_at,
 })
 
-const buildAdminToken = (admin) =>
-  jwt.sign(
-    {
-      adminUserId: admin.id,
-      role: admin.role,
-    },
-    getAdminJwtSecret(),
-    { expiresIn: '12h' }
-  )
+const buildAdminToken = (admin) => signAdminToken(admin)
 
 const decodeAdminRefreshToken = (token) => {
   if (!token) {
@@ -126,7 +117,7 @@ const decodeAdminRefreshToken = (token) => {
   }
 
   try {
-    return jwt.verify(token, getAdminJwtSecret(), { ignoreExpiration: true })
+    return verifyAdminTokenIgnoreExp(token)
   } catch {
     const error = new Error('Invalid or expired admin token')
     error.status = 401
@@ -250,7 +241,7 @@ const fetchAdminById = async (adminUserId) => {
 
 const refreshAdminSession = async (token) => {
   const decoded = decodeAdminRefreshToken(token)
-  const admin = await fetchAdminById(decoded.adminUserId)
+  const admin = await fetchAdminById(decoded.sub)
 
   return {
     token: buildAdminToken(admin),

@@ -61,7 +61,7 @@ export function PhoneAuthForm({
       ) : null}
 
       <div className="rounded-2xl border border-orange-100 bg-orange-50/80 px-4 py-3 text-sm text-orange-800">
-        Development mode is using a static OTP. You’ll verify with <span className="font-semibold">123456</span>.
+        Using development OTP mode. Check the toast or console for the code.
       </div>
 
       <Button type="submit" className="w-full" size="lg" disabled={loading}>

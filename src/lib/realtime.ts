@@ -1,5 +1,5 @@
 import { io, Socket } from 'socket.io-client'
-import { API_BASE_URL } from '@/lib/api'
+import { apiConfig } from '@/config/api'
 import { useEffect, useRef } from 'react'
 
 export type RealtimeRole = 'admin' | 'customer' | 'delivery_partner' | 'restaurant'
@@ -7,15 +7,10 @@ export type RealtimeRole = 'admin' | 'customer' | 'delivery_partner' | 'restaura
 type SubscribeResponse = {
   success: boolean
   error?: string
+  rooms?: string[]
 }
 
-const getSocketBaseUrl = () => {
-  const explicitUrl = process.env.NEXT_PUBLIC_SOCKET_URL
-  if (explicitUrl) {
-    return explicitUrl
-  }
-  return API_BASE_URL.replace(/\/api\/?$/, '')
-}
+const getSocketBaseUrl = () => apiConfig.socketUrl
 
 const sockets = new Map<string, { socket: Socket; refCount: number }>()
 
@@ -28,6 +23,7 @@ export const getRealtimeSocket = (role: RealtimeRole, token: string) => {
   const existing = sockets.get(key)
   if (existing) {
     existing.refCount++
+    console.log(`[SOCKET] Reusing existing socket for ${role}`)
     return existing.socket
   }
 
@@ -40,11 +36,33 @@ export const getRealtimeSocket = (role: RealtimeRole, token: string) => {
   })
 
   socket.on('connect', () => {
+    console.log('[SOCKET] Connected', { socketId: socket.id, role })
     socket.emit('session:subscribe', { role, token }, (response: SubscribeResponse) => {
       if (!response?.success) {
-        console.error(response?.error || 'Realtime subscription failed')
+        console.error('[SOCKET] Subscription failed:', response?.error || 'Unknown error')
+      } else {
+        console.log('[SOCKET] Subscription successful', {
+          socketId: socket.id,
+          role,
+          rooms: response?.rooms || 'unknown',
+        })
       }
     })
+  })
+
+  socket.on('disconnect', (reason) => {
+    console.log('[SOCKET] Disconnected', { socketId: socket.id, role, reason })
+  })
+
+  socket.on('connect_error', (error) => {
+    console.error('[SOCKET] Connection error', { message: error.message, role })
+  })
+
+  // Listen to all events for debugging
+  socket.onAny((event, ...args) => {
+    if (event !== 'heartbeat' && event !== 'session:subscribed') {
+      console.log('[SOCKET] Received event', { event, role, socketId: socket.id })
+    }
   })
 
   sockets.set(key, { socket, refCount: 1 })

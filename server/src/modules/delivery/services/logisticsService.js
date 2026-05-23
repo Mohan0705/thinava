@@ -1,17 +1,19 @@
+const env = require('../../../config/env')
+
 const TADEPALLIGUDEM_CENTER = {
   latitude: 16.8148,
   longitude: 81.527,
 }
 
 const DELIVERY_PAY_DEFAULTS = {
-  basePay: Number(process.env.DELIVERY_BASE_PAY || 0),
-  perKmRate: Number(process.env.DELIVERY_PER_KM_RATE || 10),
-  nightPerKmRate: Number(process.env.DELIVERY_NIGHT_PER_KM_RATE || 13),
-  surgeBonus: Number(process.env.DELIVERY_SURGE_BONUS || 10),
-  rainBonus: Number(process.env.DELIVERY_RAIN_BONUS || 15),
+  basePay: env.DELIVERY_BASE_PAY,
+  perKmRate: env.DELIVERY_PER_KM_RATE,
+  nightPerKmRate: env.DELIVERY_NIGHT_PER_KM_RATE,
+  surgeBonus: env.DELIVERY_SURGE_BONUS,
+  rainBonus: env.DELIVERY_RAIN_BONUS,
 }
 
-const DEFAULT_GPS_RADIUS_METERS = Number(process.env.DELIVERY_GPS_RADIUS_METERS || 75)
+const DEFAULT_GPS_RADIUS_METERS = env.DELIVERY_GPS_RADIUS_METERS
 
 const hashNumber = (seed, min, max) => {
   const value = String(seed || 'thinava')
@@ -85,7 +87,7 @@ const isNightWindow = (date = new Date()) => {
   return hour >= 22 || hour < 6
 }
 
-const shouldApplyRainBonus = () => String(process.env.DELIVERY_RAIN_MODE || 'false').toLowerCase() === 'true'
+const shouldApplyRainBonus = () => String(env.DELIVERY_RAIN_MODE).toLowerCase() === 'true'
 
 const isCoordinatePair = (value) =>
   Boolean(
@@ -106,9 +108,8 @@ const getEffectivePerKmRate = (now = new Date()) =>
   isNightWindow(now) ? DELIVERY_PAY_DEFAULTS.nightPerKmRate : DELIVERY_PAY_DEFAULTS.perKmRate
 
 const getGoogleMapsKey = () =>
-  process.env.GOOGLE_MAPS_SERVER_KEY ||
-  process.env.GOOGLE_MAPS_API_KEY ||
-  process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ||
+  env.GOOGLE_MAPS_SERVER_KEY ||
+  env.GOOGLE_MAPS_API_KEY ||
   ''
 
 const fetchGoogleRouteMetrics = async ({ origin, restaurant, customer }) => {

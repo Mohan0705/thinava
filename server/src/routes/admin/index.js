@@ -4,7 +4,7 @@ const { body, validationResult } = require('express-validator')
 const adminService = require('../../modules/admin/services/adminService')
 const { authenticateAdmin, authorizeAdmin } = require('../../modules/admin/middleware/auth')
 const { ADMIN_PERMISSIONS } = require('../../modules/admin/constants')
-const { logger } = require('../../utils/logger')
+const { logger } = require('../../lib/logger')
 
 const router = express.Router()
 

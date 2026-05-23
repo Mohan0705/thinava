@@ -9,6 +9,7 @@ export interface AuthVerificationSession {
   expiresAt: string
   resendAvailableAt: string
   purpose: 'login' | 'signup'
+  helperOtp?: string
 }
 
 export interface AuthProfileStats {

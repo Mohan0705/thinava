@@ -2,7 +2,7 @@ const express = require('express')
 const router = express.Router()
 const pool = require('../database/connection')
 const { asyncHandler } = require('../utils/asyncHandler')
-const { logger } = require('../utils/logger')
+const { logger } = require('../lib/logger')
 
 // Get full menu for a restaurant (customer-facing)
 router.get('/restaurant/:restaurantId', asyncHandler(async (req, res) => {

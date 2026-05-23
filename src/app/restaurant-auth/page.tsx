@@ -201,7 +201,15 @@ export default function RestaurantAuthPage() {
       setSession(response.owner, response.token)
       toast.success(`Welcome back, ${response.owner.full_name}`)
       router.replace('/restaurant/dashboard')
-    } catch (error) {
+    } catch (error: any) {
+      // Handle pending approval status
+      if (error.status === 403 && error.approvalStatus === 'PENDING_APPROVAL') {
+        setAuthStatus('PENDING_APPROVAL')
+        setAuthMessage('Our onboarding team is reviewing your restaurant details. You\'ll receive approval shortly.')
+        setAuthEmail(loginForm.email)
+        return
+      }
+      
       // Extract real error message instead of generic "Login failed"
       const message = error instanceof Error ? error.message : 'Unable to sign in'
       toast.error(message)
@@ -227,10 +235,10 @@ export default function RestaurantAuthPage() {
         setAuthStatus('PENDING_APPROVAL')
         setAuthMessage('Our onboarding team is reviewing your restaurant details. You\'ll receive approval shortly.')
         setAuthEmail(signupForm.ownerEmail)
+      } else {
+        toast.error(data.error || 'Registration failed. Please check your details.')
       }
     } catch (error: any) {
-      console.error('Registration error:', error)
-      console.error('Error response:', error.response?.data)
       const message = error.response?.data?.error || error.message || 'Registration failed'
       toast.error(message)
     } finally {

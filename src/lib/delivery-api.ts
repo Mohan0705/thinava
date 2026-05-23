@@ -51,7 +51,7 @@ export const deliveryApi = {
   },
 
   setOnlineStatus(token: string, isOnline: boolean) {
-    return apiRequest<{ success: boolean; is_online: boolean }>(
+    return apiRequest<{ success: boolean; is_online: boolean; online_since?: string | null }>(
       '/delivery/auth/online-status',
       {
         method: 'POST',

@@ -29,6 +29,10 @@ export const useAdminAuthStore = create<AdminAuthState>()(
       setHydrated: (hydrated) => set({ hydrated }),
       logout: () => {
         syncAuthCookie('admin', null)
+        // SECURITY: Clear old global key for migration
+        if (typeof window !== 'undefined') {
+          window.localStorage.removeItem('thinava-admin-auth')
+        }
         set({ token: null, admin: null })
       },
     }),

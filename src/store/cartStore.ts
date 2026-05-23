@@ -4,10 +4,12 @@ import { CartItem, MenuItem } from '@/types'
 
 interface CartStore {
   items: CartItem[]
+  userId: string | null // Track which user owns this cart
   addItem: (menuItem: MenuItem) => void
   removeItem: (menuItemId: string) => void
   updateQuantity: (menuItemId: string, quantity: number) => void
   clearCart: () => void
+  setUserId: (userId: string | null) => void // Set when user logs in
   getSubtotal: () => number
   getItemCount: () => number
 }
@@ -16,6 +18,16 @@ export const useCartStore = create<CartStore>()(
   persist(
     (set, get) => ({
       items: [],
+      userId: null,
+      
+      setUserId: (userId) => {
+        set({ userId })
+        // When user changes, clear old cart if coming from different user
+        if (userId === null) {
+          // Logout: clear cart
+          set({ items: [] })
+        }
+      },
       
       addItem: (menuItem) => {
         const items = get().items
@@ -70,6 +82,10 @@ export const useCartStore = create<CartStore>()(
     }),
     {
       name: 'cart-storage',
+      partialize: (state) => ({
+        items: state.items,
+        userId: state.userId,
+      }),
     }
   )
 )

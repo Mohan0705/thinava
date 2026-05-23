@@ -10,6 +10,15 @@ interface DeliveryAuthStore {
   hydrated: boolean
   loading: boolean
   error: string | null
+  
+  // Realtime-updated stats (separate from partner object)
+  realtimeStats: {
+    todayEarnings: number
+    todayDeliveries: number
+    floatingCash: number
+    rating: number
+    isOnline: boolean
+  }
 
   setSession: (session: DeliveryAuthSession) => void
   setPartner: (partner: DeliveryPartner) => void
@@ -19,6 +28,14 @@ interface DeliveryAuthStore {
   setError: (error: string | null) => void
   logout: () => void
   clearError: () => void
+  
+  // Realtime stats update methods
+  updateTodayEarnings: (amount: number) => void
+  updateTodayDeliveries: (count: number) => void
+  updateFloatingCash: (amount: number) => void
+  updateRating: (rating: number) => void
+  updateOnlineStatus: (isOnline: boolean) => void
+  syncPartnerStats: (stats: Partial<DeliveryPartner>) => void
 }
 
 export const useDeliveryAuthStore = create<DeliveryAuthStore>()(
@@ -30,6 +47,13 @@ export const useDeliveryAuthStore = create<DeliveryAuthStore>()(
       hydrated: false,
       loading: false,
       error: null,
+      realtimeStats: {
+        todayEarnings: 0,
+        todayDeliveries: 0,
+        floatingCash: 0,
+        rating: 0,
+        isOnline: false,
+      },
 
       setSession: (session) => {
         syncAuthCookie('delivery', session.token)
@@ -67,16 +91,118 @@ export const useDeliveryAuthStore = create<DeliveryAuthStore>()(
       logout: () => {
         syncAuthCookie('delivery', null)
         syncLegacyDeliveryToken(null)
+        // SECURITY: Clear old global key for migration
+        if (typeof window !== 'undefined') {
+          window.localStorage.removeItem('delivery-auth-storage')
+        }
         set({
           token: null,
           partner: null,
           isLoggedIn: false,
           error: null,
+          realtimeStats: {
+            todayEarnings: 0,
+            todayDeliveries: 0,
+            floatingCash: 0,
+            rating: 0,
+            isOnline: false,
+          },
         })
       },
 
       clearError: () => {
         set({ error: null })
+      },
+
+      // Realtime stats update methods
+      updateTodayEarnings: (amount: number) => {
+        set((state) => ({
+          realtimeStats: {
+            ...state.realtimeStats,
+            todayEarnings: amount,
+          },
+        }))
+      },
+
+      updateTodayDeliveries: (count: number) => {
+        set((state) => ({
+          realtimeStats: {
+            ...state.realtimeStats,
+            todayDeliveries: count,
+          },
+        }))
+      },
+
+      updateFloatingCash: (amount: number) => {
+        set((state) => ({
+          realtimeStats: {
+            ...state.realtimeStats,
+            floatingCash: amount,
+          },
+        }))
+      },
+
+      updateRating: (rating: number) => {
+        set((state) => ({
+          realtimeStats: {
+            ...state.realtimeStats,
+            rating: rating,
+          },
+        }))
+      },
+
+      updateOnlineStatus: (isOnline: boolean) => {
+        set((state) => ({
+          realtimeStats: {
+            ...state.realtimeStats,
+            isOnline: isOnline,
+          },
+        }))
+      },
+
+      syncPartnerStats: (stats: Partial<DeliveryPartner>) => {
+        set((state) => {
+          const updates: any = {}
+          
+          // Update realtimeStats if relevant fields are in the incoming stats
+          if ('total_deliveries' in stats) {
+            updates.realtimeStats = {
+              ...state.realtimeStats,
+              todayDeliveries: stats.total_deliveries,
+            }
+          }
+          
+          if ('average_rating' in stats) {
+            updates.realtimeStats = {
+              ...updates.realtimeStats || state.realtimeStats,
+              rating: stats.average_rating,
+            }
+          }
+          
+          if ('cash_in_hand' in stats) {
+            updates.realtimeStats = {
+              ...updates.realtimeStats || state.realtimeStats,
+              floatingCash: stats.cash_in_hand,
+            }
+          }
+          
+          if ('is_online' in stats) {
+            updates.realtimeStats = {
+              ...updates.realtimeStats || state.realtimeStats,
+              isOnline: stats.is_online,
+            }
+          }
+          
+          // Update partner if it exists
+          if (state.partner) {
+            updates.partner = {
+              ...state.partner,
+              ...stats,
+            }
+          }
+          
+          return updates
+        })
       },
     }),
     {

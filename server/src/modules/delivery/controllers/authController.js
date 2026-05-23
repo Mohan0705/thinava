@@ -1,5 +1,6 @@
 const authService = require('../services/authService')
 const orderService = require('../services/orderService')
+const { logger } = require('../../../lib/logger')
 
 const register = async (req, res, next) => {
   try {
@@ -72,12 +73,49 @@ const refreshSession = async (req, res, next) => {
 const setOnlineStatus = async (req, res, next) => {
   try {
     const { is_online } = req.body
+    const riderId = req.deliveryPartner.id
 
-    const result = await authService.setDeliveryPartnerOnlineStatus(req.deliveryPartner.id, is_online)
+    logger.info('Online status toggle request', {
+      tag: 'rider',
+      riderId,
+      is_online,
+    })
+
+    const result = await authService.setDeliveryPartnerOnlineStatus(riderId, is_online)
 
     if (result.is_online) {
       orderService.dispatchPendingOrders(5).catch((error) => {
-        console.error('Failed to retry pending dispatch after rider came online', error)
+        logger.error('Failed to retry pending dispatch after rider came online', {
+          tag: 'dispatch',
+          error: error.message,
+          riderId,
+        })
+      })
+    }
+
+    // Emit websocket events for realtime sync
+    const io = req.app?.get('io')
+    if (io) {
+      const room = `delivery_partner:${riderId}`
+      io.to(room).emit('riderStatusUpdated', {
+        riderId,
+        isOnline: result.is_online,
+        currentStatus: result.current_status,
+        timestamp: new Date().toISOString(),
+      })
+
+      io.to('delivery:fleet').emit('riderStatusChanged', {
+        riderId,
+        isOnline: result.is_online,
+        currentStatus: result.current_status,
+        timestamp: new Date().toISOString(),
+      })
+
+      logger.debug('Websocket events emitted for online status change', {
+        tag: 'realtime',
+        riderId,
+        room,
+        fleetEvent: 'riderStatusChanged',
       })
     }
 
@@ -85,6 +123,7 @@ const setOnlineStatus = async (req, res, next) => {
       success: true,
       is_online: result.is_online,
       current_status: result.current_status,
+      online_since: result.online_since,
     })
   } catch (error) {
     next(error)

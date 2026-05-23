@@ -82,7 +82,31 @@ ADD COLUMN IF NOT EXISTS rating_sum DECIMAL(10, 2) DEFAULT 0;
 
 -- 6. CREATE INDEX FOR payment_status queries
 CREATE INDEX IF NOT EXISTS idx_orders_payment_status ON orders(payment_status);
-CREATE INDEX IF NOT EXISTS idx_orders_status_payment ON orders(status, payment_status);
+CREATE INDEX IF NOT EXISTS idx_orders_status_payment ON orders(status, payment_method);
+
+-- 7. ADD review_status TO orders TABLE
+ALTER TABLE orders
+ADD COLUMN IF NOT EXISTS review_status VARCHAR(20) DEFAULT 'pending',
+ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMP;
+
+UPDATE orders SET review_status = 'pending' WHERE review_status IS NULL;
+
+-- 8. ADD moderation columns TO order_reviews
+ALTER TABLE order_reviews
+ADD COLUMN IF NOT EXISTS is_verified_purchase BOOLEAN DEFAULT TRUE,
+ADD COLUMN IF NOT EXISTS is_reported BOOLEAN DEFAULT FALSE,
+ADD COLUMN IF NOT EXISTS is_hidden BOOLEAN DEFAULT FALSE,
+ADD COLUMN IF NOT EXISTS reported_at TIMESTAMP,
+ADD COLUMN IF NOT EXISTS report_reason TEXT,
+ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMP;
+
+-- 9. Ensure food_item_reviews has unique constraint
+CREATE UNIQUE INDEX IF NOT EXISTS idx_food_item_reviews_unique ON food_item_reviews(order_id, menu_item_id);
+
+-- 10. Ensure order_reviews has all needed indexes
+CREATE INDEX IF NOT EXISTS idx_order_reviews_created_at ON order_reviews(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_order_reviews_is_hidden ON order_reviews(is_hidden);
+CREATE INDEX IF NOT EXISTS idx_orders_review_status ON orders(review_status);
 `
 
 async function ensureOrderPrivacyAndRatingSchema() {

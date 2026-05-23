@@ -1,4 +1,5 @@
-const jwt = require('jsonwebtoken')
+const { verifyRiderToken } = require('../../../lib/auth/tokenService')
+const { logger } = require('../../../lib/logger')
 
 const authenticateDeliveryPartner = async (req, res, next) => {
   try {
@@ -6,25 +7,38 @@ const authenticateDeliveryPartner = async (req, res, next) => {
 
     if (!token) {
       return res.status(401).json({
+        success: false,
         error: 'No token provided',
-        status: 401,
+        code: 'NO_TOKEN',
       })
     }
 
-    const decoded = jwt.verify(token, process.env.DELIVERY_JWT_SECRET || 'delivery-secret-key')
+    const decoded = verifyRiderToken(token)
 
     req.deliveryPartner = {
-      id: decoded.id,
+      id: decoded.sub,
       email: decoded.email,
       phone: decoded.phone,
-      full_name: decoded.full_name,
+      full_name: decoded.fullName,
     }
+
+    logger.debug('Delivery partner authenticated', {
+      tag: 'auth',
+      riderId: decoded.sub,
+      requestId: req.id,
+    })
 
     next()
   } catch (error) {
+    logger.warn('Delivery partner auth failed', {
+      tag: 'auth',
+      error: error.message,
+      requestId: req?.id,
+    })
     res.status(401).json({
+      success: false,
       error: 'Invalid or expired token',
-      status: 401,
+      code: 'INVALID_TOKEN',
     })
   }
 }

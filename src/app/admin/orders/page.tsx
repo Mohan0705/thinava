@@ -10,6 +10,7 @@ import { adminApi } from '@/features/admin/api'
 import { useAdminAuthStore } from '@/features/admin/auth-store'
 import { adminPermissions } from '@/features/admin/permissions'
 import { useAdminQuery } from '@/features/admin/use-admin-query'
+import { useAdminRealtimeSync } from '@/lib/realtimeManager'
 import { formatPrice } from '@/lib/utils'
 
 type OrderFilters = {
@@ -55,6 +56,8 @@ export default function AdminOrdersPage() {
   }, [partnersQuery.data])
 
   const refresh = () => setRefreshKey((current) => current + 1)
+
+  useAdminRealtimeSync(token, () => refresh())
 
   const handleStatusUpdate = async (orderId: string, status: string) => {
     try {

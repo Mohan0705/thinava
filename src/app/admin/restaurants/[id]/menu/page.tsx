@@ -14,7 +14,7 @@ import { Button } from '@/components/ui/Button'
 import { adminApi } from '@/features/admin/api'
 import { useAdminAuthStore } from '@/features/admin/auth-store'
 import { adminPermissions } from '@/features/admin/permissions'
-import { getRealtimeSocket } from '@/lib/realtime'
+import { useAdminRealtimeSync } from '@/lib/realtimeManager'
 
 interface Category {
   id: string
@@ -108,16 +108,9 @@ export default function AdminRestaurantMenuPage() {
 
   useEffect(() => {
     fetchMenu()
-    if (!token || !restaurantId) return
-
-    const socket = getRealtimeSocket('admin', token)
-    socket.on('menuUpdated', (data: any) => {
-      if (data.restaurantId === restaurantId) {
-        fetchMenu()
-      }
-    })
-    return () => { socket.off('menuUpdated') }
   }, [token, restaurantId, fetchMenu])
+
+  useAdminRealtimeSync(token, () => fetchMenu())
 
   const filteredItems = selectedCategory
     ? items.filter(i => i.category_id === selectedCategory)

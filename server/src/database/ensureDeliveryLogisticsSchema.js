@@ -24,6 +24,7 @@ const ensureDeliveryLogisticsSchema = async () => {
       ADD COLUMN IF NOT EXISTS acceptance_rate DECIMAL(5, 2) DEFAULT 100,
       ADD COLUMN IF NOT EXISTS cancellation_rate DECIMAL(5, 2) DEFAULT 0,
       ADD COLUMN IF NOT EXISTS online_minutes_today INTEGER DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS online_since TIMESTAMP,
       ADD COLUMN IF NOT EXISTS last_latitude DECIMAL(10, 8),
       ADD COLUMN IF NOT EXISTS last_longitude DECIMAL(11, 8),
       ADD COLUMN IF NOT EXISTS last_location_at TIMESTAMP;

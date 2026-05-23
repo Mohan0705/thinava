@@ -4,12 +4,13 @@ const { body, validationResult } = require('express-validator')
 const authService = require('../modules/auth/services/authService')
 const { authenticateCustomer } = require('../modules/auth/middleware/auth')
 const { INDIAN_COUNTRY_CODE, PHONE_REGEX } = require('../modules/auth/constants')
+const env = require('../config/env')
 
 const router = express.Router()
 
 const otpSendLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: Number(process.env.CUSTOMER_AUTH_SEND_LIMIT_MAX || 10),
+  max: env.CUSTOMER_AUTH_SEND_LIMIT_MAX,
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: (req) => {
@@ -75,7 +76,7 @@ router.post(
     body('purpose').optional().isIn(['login', 'signup']).withMessage('Invalid auth purpose'),
   ]),
   asyncHandler(async (req, res) => {
-    const otpSession = await authService.sendOtp({
+    const otpSession = await authService.requestOtp({
       phone: req.body.phone,
       countryCode: req.body.country_code || INDIAN_COUNTRY_CODE,
       fullName: req.body.full_name,

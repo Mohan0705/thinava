@@ -27,13 +27,14 @@ import { adminApi } from '@/features/admin/api'
 import { useAdminAuthStore } from '@/features/admin/auth-store'
 import { adminPermissions } from '@/features/admin/permissions'
 import { useAdminQuery } from '@/features/admin/use-admin-query'
+import { useAdminRealtimeSync } from '@/lib/realtimeManager'
 import { formatPrice } from '@/lib/utils'
 
 const pieColors = ['#f97316', '#fb7185', '#f59e0b', '#0ea5e9', '#111827']
 
 export default function AdminDashboardPage() {
   const token = useAdminAuthStore((state) => state.token)
-  const { data, loading, error } = useAdminQuery(
+  const { data, loading, error, refetch } = useAdminQuery(
     async () => {
       const response = await adminApi.getDashboard(token || '')
       return response.dashboard
@@ -41,6 +42,8 @@ export default function AdminDashboardPage() {
     [token],
     15000
   )
+
+  useAdminRealtimeSync(token, () => refetch())
 
   return (
     <AdminPageShell

@@ -1,16 +1,23 @@
+
+
 const CUSTOMER_AUTH_ROLE = 'customer'
 
-const STATIC_MOCK_OTP = process.env.MOCK_OTP_CODE || '123456'
-const OTP_EXPIRY_MINUTES = Number(process.env.OTP_EXPIRY_MINUTES || 5)
-const OTP_RESEND_COOLDOWN_SECONDS = Number(process.env.OTP_RESEND_COOLDOWN_SECONDS || 30)
-const OTP_MAX_ATTEMPTS = Number(process.env.OTP_MAX_ATTEMPTS || 5)
+const env = require('../../config/env')
+
+const DEV_MODE = env.DEV_MODE === 'true' || env.DEV_MODE === true
+const OTP_EXPIRY_MINUTES = env.OTP_EXPIRY_MINUTES
+const OTP_RESEND_COOLDOWN_SECONDS = env.OTP_RESEND_COOLDOWN_SECONDS
+const OTP_MAX_ATTEMPTS = env.OTP_MAX_ATTEMPTS
+
+const generateOtp = () => String(Math.floor(100000 + Math.random() * 900000))
 
 const PHONE_REGEX = /^[6-9]\d{9}$/
 const INDIAN_COUNTRY_CODE = '+91'
 
 module.exports = {
   CUSTOMER_AUTH_ROLE,
-  STATIC_MOCK_OTP,
+  DEV_MODE,
+  generateOtp,
   OTP_EXPIRY_MINUTES,
   OTP_RESEND_COOLDOWN_SECONDS,
   OTP_MAX_ATTEMPTS,

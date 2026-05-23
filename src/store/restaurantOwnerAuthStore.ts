@@ -27,6 +27,10 @@ export const useRestaurantOwnerAuthStore = create<RestaurantOwnerAuthStore>()(
       setHydrated: (hydrated) => set({ hydrated }),
       logout: () => {
         syncAuthCookie('restaurant', null)
+        // SECURITY: Clear old global key for migration
+        if (typeof window !== 'undefined') {
+          window.localStorage.removeItem('restaurant-owner-auth')
+        }
         set({ token: null, owner: null })
       },
     }),

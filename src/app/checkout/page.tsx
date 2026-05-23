@@ -225,7 +225,8 @@ export default function CheckoutPage() {
 
     try {
       const orderData = {
-        user_id: user?.id,
+        // SECURITY: Do NOT send user_id - it's determined by JWT authentication
+        // Frontend should never send user_id; let backend use req.customer.id from verified JWT
         address_id: selectedAddressDetails.legacyAddressId || undefined,
         restaurant_id: restaurantId,
         items: items.map((item) => ({
@@ -264,6 +265,13 @@ export default function CheckoutPage() {
       const data = await response.json().catch(() => ({}))
 
       if (!response.ok) {
+        // Handle specific auth errors
+        if (response.status === 401) {
+          throw new Error('Your session has expired. Please log in again and try placing the order.')
+        }
+        if (response.status === 403) {
+          throw new Error('You do not have permission to place this order. Please make sure you are logged in correctly.')
+        }
         throw new Error(data?.error || 'Failed to place order')
       }
 
@@ -276,7 +284,9 @@ export default function CheckoutPage() {
       toast.success('Order placed successfully!')
       router.push('/orders')
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to place order')
+      const errorMessage = error instanceof Error ? error.message : 'Failed to place order'
+      console.error('[CHECKOUT_ERROR]', errorMessage)
+      toast.error(errorMessage)
     } finally {
       setLoading(false)
     }

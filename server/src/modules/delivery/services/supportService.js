@@ -1,8 +1,9 @@
 const pool = require('../../../database/connection')
+const env = require('../../../config/env')
 
-const SUPPORT_PHONE = process.env.SUPPORT_PHONE || '+918978992808'
-const SUPPORT_WHATSAPP = process.env.SUPPORT_WHATSAPP || '918978992808'
-const SUPPORT_EMAIL = process.env.SUPPORT_EMAIL || 'support@thinava.com'
+const SUPPORT_PHONE = env.SUPPORT_PHONE
+const SUPPORT_WHATSAPP = env.SUPPORT_WHATSAPP
+const SUPPORT_EMAIL = env.SUPPORT_EMAIL
 
 const getSupportInfo = async () => ({
   phone: SUPPORT_PHONE,
@@ -17,7 +18,7 @@ const notifyAdminCashPickupRequest = async (partnerId, requestId, amount) => {
   )
   const partner = partnerResult.rows[0]
 
-  const io = require('../../../realtime/socketServer').getIoInstance()
+  const io = require('../../../realtime/socketServer').getIO()
   if (io) {
     io.to('admin:global').emit('cash_pickup_requested', {
       request_id: requestId,

@@ -13,7 +13,7 @@
 const pool = require('../../database/connection')
 const { emitOrderStatusUpdated, emitDeliveryStatusUpdated } = require('../../realtime/orderEvents')
 const SocketEventsHandler = require('../../realtime/socketEventsHandler')
-const { getIoInstance } = require('../../realtime/socketServer')
+const { getIO } = require('../../realtime/socketServer')
 
 // ============================================================
 // CENTRALIZED ORDER STATUS CONSTANTS
@@ -170,8 +170,8 @@ const validateOrderTransition = (currentStatus, nextStatus) => {
  */
 const updateOrderLifecycleState = async (orderId, newStatus, options = {}) => {
   const client = await pool.connect()
-  const io = getIoInstance()
-  const socketHandler = io ? new SocketEventsHandler(io) : null
+  const io = getIO()
+  const socketHandler = new SocketEventsHandler()
 
   const normalizedStatus = normalizeStatus(newStatus)
 
@@ -394,15 +394,13 @@ const updateOrderLifecycleState = async (orderId, newStatus, options = {}) => {
     }).catch((err) => console.error('Failed to emit delivery status update:', err))
 
     // Emit granular events
-    if (socketHandler) {
-      if (isDelivered) {
-        socketHandler.emitOrderDelivered(orderId, { userId: order.customer_id })
-          .catch((err) => console.error('Failed to emit order delivered event:', err))
-      }
-      if (isCancelled) {
-        socketHandler.emitOrderRejected(orderId, { userId: order.customer_id }, options.reason || 'Order cancelled')
-          .catch((err) => console.error('Failed to emit order rejected event:', err))
-      }
+    if (isDelivered) {
+      socketHandler.emitOrderDelivered(orderId, { userId: order.customer_id })
+        .catch((err) => console.error('Failed to emit order delivered event:', err))
+    }
+    if (isCancelled) {
+      socketHandler.emitOrderRejected(orderId, { userId: order.customer_id }, options.reason || 'Order cancelled')
+        .catch((err) => console.error('Failed to emit order rejected event:', err))
     }
 
     // Emit to rider room

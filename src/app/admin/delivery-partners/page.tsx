@@ -9,8 +9,8 @@ import { Button } from '@/components/ui/Button'
 import { adminApi } from '@/features/admin/api'
 import { useAdminAuthStore } from '@/features/admin/auth-store'
 import { adminPermissions } from '@/features/admin/permissions'
-import { getRealtimeSocket } from '@/lib/realtime'
-import { ManualRiderForm } from '@/app/admin/approvals/ManualRiderForm' // Reuse existing manual form
+import { useAdminRealtimeSync } from '@/lib/realtimeManager'
+import { ManualRiderForm } from '@/app/admin/approvals/ManualRiderForm'
 
 export default function AdminDeliveryPartnersPage() {
   const token = useAdminAuthStore((state) => state.token)
@@ -32,21 +32,9 @@ export default function AdminDeliveryPartnersPage() {
 
   useEffect(() => {
     fetchRiders()
-    if (!token) return
-
-    const socket = getRealtimeSocket('admin', token)
-
-    const handleStatusChange = (data: any) => {
-      setRiders(prev => prev.map(r => 
-        r.id === data.riderId ? { ...r, status: data.status } : r
-      ))
-    }
-
-    socket.on('riderStatusChanged', handleStatusChange)
-    return () => {
-      socket.off('riderStatusChanged', handleStatusChange)
-    }
   }, [token])
+
+  useAdminRealtimeSync(token, () => fetchRiders())
 
   const handleUpdateStatus = async (id: string, status: string) => {
     try {

@@ -4,6 +4,7 @@ import { User } from '@/types'
 import type { Address } from '@/types'
 import type { AuthProfileStats, AuthVerificationSession } from '@/features/auth/types'
 import { syncAuthCookie } from '@/lib/auth/session'
+import { useCartStore } from '@/store/cartStore'
 
 interface AuthStore {
   user: User | null
@@ -34,6 +35,8 @@ export const useAuthStore = create<AuthStore>()(
 
       setAuth: (user, token, stats = null) => {
         syncAuthCookie('customer', token)
+        // SECURITY: Set cart owner to this user
+        useCartStore.setState({ userId: user.id })
         set({ user, token, stats, pendingVerification: null })
       },
       setUser: (user) => {
@@ -87,8 +90,15 @@ export const useAuthStore = create<AuthStore>()(
         set({ hydrated })
       },
       logout: () => {
+        // SECURITY: Clear all persisted stores for this user
         syncAuthCookie('customer', null)
-        set({ user: null, token: null, stats: null, pendingVerification: null })
+        // Clear cart for this user
+        useCartStore.setState({ items: [], userId: null })
+        // Clear old global key for migration
+        if (typeof window !== 'undefined') {
+          window.localStorage.removeItem('auth-storage')
+        }
+        set({ user: null, token: null, stats: null, pendingVerification: null, hydrated: false })
       },
 
       isAuthenticated: () => {
@@ -96,7 +106,13 @@ export const useAuthStore = create<AuthStore>()(
       },
     }),
     {
-      name: 'auth-storage',
+      name: 'auth-storage', // NOTE: Storage key is GLOBAL during login. User-scoped during logout.
+      partialize: (state) => ({
+        user: state.user,
+        token: state.token,
+        stats: state.stats,
+        pendingVerification: state.pendingVerification,
+      }),
       onRehydrateStorage: () => (state) => {
         if (state?.token) {
           syncAuthCookie('customer', state.token)

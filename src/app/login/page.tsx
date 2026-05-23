@@ -57,9 +57,14 @@ export default function LoginPage() {
         expiresAt: result.expiresAt,
         resendAvailableAt: result.resendAvailableAt,
         purpose: 'login',
+        helperOtp: result.helperOtp,
       })
 
-      toast.success('Mock OTP sent. Use 123456 to continue.')
+      if (result.helperOtp) {
+        toast.success(`Dev mode: use OTP ${result.helperOtp}`)
+      } else {
+        toast.success('OTP sent to your phone')
+      }
       router.push(`/verify-otp?next=${encodeURIComponent(getNextPath())}`)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Unable to send OTP')

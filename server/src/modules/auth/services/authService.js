@@ -1,30 +1,22 @@
-const jwt = require('jsonwebtoken')
 const pool = require('../../../database/connection')
-const { getCustomerJwtSecret } = require('../middleware/auth')
+const { signCustomerToken, verifyCustomerTokenIgnoreExp } = require('../../../lib/auth/tokenService')
+const { sendOtp } = require('../../../lib/smsService')
 const {
   INDIAN_COUNTRY_CODE,
   OTP_EXPIRY_MINUTES,
   OTP_MAX_ATTEMPTS,
   OTP_RESEND_COOLDOWN_SECONDS,
-  STATIC_MOCK_OTP,
+  DEV_MODE,
+  generateOtp,
 } = require('../constants')
 
 const normalizePhone = (phone) => String(phone || '').replace(/\D/g, '').slice(-10)
 
 const formatPhone = (phone, countryCode = INDIAN_COUNTRY_CODE) => `${countryCode}${normalizePhone(phone)}`
 
-const createCustomerToken = (user) =>
-  jwt.sign(
-    {
-      userId: user.id,
-      phone: user.phone,
-      role: 'customer',
-    },
-    getCustomerJwtSecret(),
-    { expiresIn: '7d' }
-  )
+const createCustomerToken = (user) => signCustomerToken(user)
 
-const verifyRefreshToken = (token) => {
+const verifyCustomerRefreshToken = (token) => {
   if (!token) {
     const error = new Error('Customer session token is required')
     error.status = 401
@@ -32,7 +24,7 @@ const verifyRefreshToken = (token) => {
   }
 
   try {
-    return jwt.verify(token, getCustomerJwtSecret(), { ignoreExpiration: true })
+    return verifyCustomerTokenIgnoreExp(token)
   } catch {
     const error = new Error('Invalid or expired customer token')
     error.status = 401
@@ -118,8 +110,8 @@ const getCustomerProfile = async (userId) => {
 }
 
 const refreshCustomerSession = async (token) => {
-  const decoded = verifyRefreshToken(token)
-  const profile = await getCustomerProfile(decoded.userId)
+  const decoded = verifyCustomerRefreshToken(token)
+  const profile = await getCustomerProfile(decoded.sub)
 
   return {
     token: createCustomerToken(profile.user),
@@ -128,7 +120,7 @@ const refreshCustomerSession = async (token) => {
   }
 }
 
-const sendOtp = async ({ phone, countryCode = INDIAN_COUNTRY_CODE, fullName = null, email = null, purpose = 'login' }) => {
+const requestOtp = async ({ phone, countryCode = INDIAN_COUNTRY_CODE, fullName = null, email = null, purpose = 'login' }) => {
   const normalizedPhone = normalizePhone(phone)
 
   const recentSessionResult = await pool.query(
@@ -163,6 +155,8 @@ const sendOtp = async ({ phone, countryCode = INDIAN_COUNTRY_CODE, fullName = nu
     [normalizedPhone, countryCode]
   )
 
+  const otpCode = generateOtp()
+
   const result = await pool.query(
     `INSERT INTO customer_otp_sessions (
        phone, country_code, otp_code, full_name, email, purpose, expires_at, resend_available_at
@@ -183,7 +177,7 @@ const sendOtp = async ({ phone, countryCode = INDIAN_COUNTRY_CODE, fullName = nu
     [
       normalizedPhone,
       countryCode,
-      STATIC_MOCK_OTP,
+      otpCode,
       fullName,
       email,
       purpose,
@@ -192,12 +186,16 @@ const sendOtp = async ({ phone, countryCode = INDIAN_COUNTRY_CODE, fullName = nu
     ]
   )
 
+  const verification_id = result.rows[0].id
+
+  sendOtp({ phone: normalizedPhone, otp: otpCode, countryCode })
+
   return {
-    verification_id: result.rows[0].id,
+    verification_id,
     phone: formatPhone(normalizedPhone, countryCode),
     expires_at: result.rows[0].expires_at,
     resend_available_at: result.rows[0].resend_available_at,
-    helper_otp: STATIC_MOCK_OTP,
+    ...(DEV_MODE ? { helper_otp: otpCode } : {}),
   }
 }
 
@@ -257,7 +255,7 @@ const verifyOtp = async ({ verificationId, phone, countryCode = INDIAN_COUNTRY_C
       throw error
     }
 
-    if (String(otp) !== STATIC_MOCK_OTP) {
+    if (String(otp) !== String(otpSession.otp_code)) {
       await client.query(
         `UPDATE customer_otp_sessions
          SET attempt_count = attempt_count + 1,
@@ -608,7 +606,7 @@ const deleteAddress = async (userId, addressId) => {
 module.exports = {
   normalizePhone,
   formatPhone,
-  sendOtp,
+  requestOtp,
   verifyOtp,
   refreshCustomerSession,
   getCustomerProfile,

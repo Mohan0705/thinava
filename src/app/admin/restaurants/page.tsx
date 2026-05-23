@@ -10,8 +10,8 @@ import { Button } from '@/components/ui/Button'
 import { adminApi } from '@/features/admin/api'
 import { useAdminAuthStore } from '@/features/admin/auth-store'
 import { adminPermissions } from '@/features/admin/permissions'
-import { getRealtimeSocket } from '@/lib/realtime'
-import { ManualRestaurantForm } from '@/app/admin/approvals/ManualRestaurantForm' // We will reuse the manual registration form!
+import { useAdminRealtimeSync } from '@/lib/realtimeManager'
+import { ManualRestaurantForm } from '@/app/admin/approvals/ManualRestaurantForm'
 
 export default function AdminRestaurantsPage() {
   const router = useRouter()
@@ -34,21 +34,9 @@ export default function AdminRestaurantsPage() {
 
   useEffect(() => {
     fetchRestaurants()
-    if (!token) return
-
-    const socket = getRealtimeSocket('admin', token)
-
-    const handleStatusChange = (data: any) => {
-      setRestaurants(prev => prev.map(r => 
-        r.id === data.restaurantId ? { ...r, status: data.status, is_open: data.status === 'OPEN' } : r
-      ))
-    }
-
-    socket.on('restaurantStatusChanged', handleStatusChange)
-    return () => {
-      socket.off('restaurantStatusChanged', handleStatusChange)
-    }
   }, [token])
+
+  useAdminRealtimeSync(token, () => fetchRestaurants())
 
   const handleUpdateStatus = async (id: string, status: string) => {
     try {

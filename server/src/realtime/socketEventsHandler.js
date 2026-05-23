@@ -1,393 +1,253 @@
-/**
- * THINAVA Socket.IO Events Handler
- * Central hub for all real-time events
- * 
- * Events:
- * - restaurantStatusUpdated
- * - orderAssigned
- * - orderAccepted
- * - orderRejected
- * - orderPickedUp
- * - orderDelivered
- * - riderLocationUpdated
- * - restaurantApproved
- * - restaurantRejected
- * - riderApproved
- * - riderRejected
- */
-
 const pool = require('../database/connection')
+const { getIO, emitToRoom, ROOMS } = require('./socketServer')
+const {
+  emitOrderStatusUpdated,
+  emitDeliveryStatusUpdated,
+  EVENTS,
+} = require('./orderEvents')
+
+const orderScopedLegacyEvents = async (orderId, eventName, extraPayload = {}) => {
+  const io = getIO()
+  if (!io) return
+
+  const result = await pool.query(
+    `SELECT o.id, o.user_id, o.restaurant_id, o.delivery_partner_id, o.status, o.delivery_status,
+            u.name AS customer_name, r.name AS restaurant_name,
+            dp.full_name AS rider_name
+     FROM orders o
+     JOIN users u ON u.id = o.user_id
+     JOIN restaurants r ON r.id = o.restaurant_id
+     LEFT JOIN delivery_partners dp ON dp.id = o.delivery_partner_id
+     WHERE o.id = $1`,
+    [orderId]
+  )
+
+  const row = result.rows[0]
+  if (!row) return
+
+  const payload = { orderId, timestamp: new Date().toISOString(), ...extraPayload }
+
+  switch (eventName) {
+    case 'orderAssigned':
+      if (row.delivery_partner_id) {
+        const riderResult = await pool.query(
+          'SELECT full_name, phone, profile_image FROM delivery_partners WHERE id = $1',
+          [row.delivery_partner_id]
+        )
+        const rider = riderResult.rows[0]
+        const riderPayload = {
+          ...payload,
+          riderId: row.delivery_partner_id,
+          riderName: rider?.full_name,
+          riderPhone: rider?.phone,
+          riderImage: rider?.profile_image,
+          message: 'Your order is being picked up!',
+        }
+        emitToRoom(ROOMS.customer(row.user_id), 'orderAssigned', riderPayload)
+        emitToRoom(ROOMS.deliveryPartner(row.delivery_partner_id), 'orderAssigned', {
+          ...riderPayload,
+          restaurantId: row.restaurant_id,
+          message: 'New order assigned. Please proceed to restaurant.',
+        })
+        emitToRoom(ROOMS.restaurant(row.restaurant_id), 'orderAssigned', {
+          ...riderPayload,
+          riderName: rider?.full_name,
+        })
+      }
+      break
+
+    case 'orderAccepted':
+      emitToRoom(ROOMS.customer(row.user_id), 'orderAccepted', {
+        ...payload,
+        message: 'Restaurant has confirmed your order!',
+      })
+      emitToRoom(ROOMS.restaurant(row.restaurant_id), 'orderAccepted', {
+        ...payload,
+        message: 'Order confirmed. Start preparing!',
+      })
+      break
+
+    case 'orderRejected':
+      emitToRoom(ROOMS.customer(row.user_id), 'orderRejected', {
+        ...payload,
+        title: 'Order Cancelled',
+        message: extraPayload.message || 'Sorry! Your order was cancelled by the restaurant.',
+        reason: extraPayload.reason || 'Order rejected',
+        refundMessage: 'Your payment will be refunded within 2-3 business days.',
+        actionable: true,
+        actions: [
+          { text: 'Retry Order', action: 'retry' },
+          { text: 'Go Home', action: 'home' },
+        ],
+        animate: true,
+      })
+      break
+
+    case 'orderPickedUp':
+      emitToRoom(ROOMS.customer(row.user_id), 'orderPickedUp', {
+        ...payload,
+        message: 'Your order is on the way!',
+        restaurantName: row.restaurant_name,
+        status: 'ON_THE_WAY',
+        showLiveTracking: true,
+      })
+      break
+
+    case 'orderDelivered':
+      emitToRoom(ROOMS.customer(row.user_id), 'orderDelivered', {
+        ...payload,
+        message: 'Your order has been delivered!',
+        showRating: true,
+      })
+      break
+  }
+
+  await logSocketEvent(eventName, orderId, 'order', extraPayload)
+}
 
 class SocketEventsHandler {
-  constructor(io) {
-    this.io = io
-  }
-
-  // ============================================================
-  // RESTAURANT EVENTS
-  // ============================================================
-
-  /**
-   * Emit when restaurant changes status (OPEN, TEMPORARILY_UNAVAILABLE, CLOSED)
-   */
   async emitRestaurantStatusUpdated(restaurantId, status, timestamp = new Date()) {
-    if (!this.io) return
+    const io = getIO()
+    if (!io) return
 
-    // Emit to admin
-    this.io.to('admin:global').emit('restaurantStatusUpdated', {
-      restaurantId,
-      status,
-      timestamp,
-      type: 'restaurant_status_change'
+    emitToRoom(ROOMS.ADMIN_GLOBAL, 'restaurantStatusUpdated', {
+      restaurantId, status, timestamp, type: 'restaurant_status_change',
     })
 
-    // Emit to customers (so they see restaurants greyed out/hidden)
-    this.io.emit('restaurantStatusUpdated', {
-      restaurantId,
-      status,
-      timestamp
-    })
+    io.emit('restaurantStatusUpdated', { restaurantId, status, timestamp })
 
-    // Log event
-    await this.logSocketEvent('restaurantStatusUpdated', restaurantId, 'restaurant', { status })
+    await logSocketEvent('restaurantStatusUpdated', restaurantId, 'restaurant', { status })
   }
 
-  /**
-   * Emit when admin approves restaurant
-   */
   async emitRestaurantApproved(restaurantId, details = {}) {
-    if (!this.io) return
+    const io = getIO()
+    if (!io) return
 
-    this.io.to('admin:global').emit('restaurantApproved', {
-      restaurantId,
-      timestamp: new Date(),
-      ...details
-    })
-
-    this.io.to(`restaurant:${restaurantId}`).emit('restaurantApproved', {
+    emitToRoom(ROOMS.ADMIN_GLOBAL, 'restaurantApproved', { restaurantId, timestamp: new Date(), ...details })
+    emitToRoom(ROOMS.restaurant(restaurantId), 'restaurantApproved', {
       message: 'Your restaurant has been approved! You can now start managing orders.',
-      timestamp: new Date()
+      timestamp: new Date(),
     })
 
-    await this.logSocketEvent('restaurantApproved', restaurantId, 'restaurant', {})
+    await logSocketEvent('restaurantApproved', restaurantId, 'restaurant', {})
   }
 
-  /**
-   * Emit when admin rejects restaurant
-   */
   async emitRestaurantRejected(restaurantId, reason = '') {
-    if (!this.io) return
+    if (!getIO()) return
 
-    this.io.to('admin:global').emit('restaurantRejected', {
-      restaurantId,
-      reason,
-      timestamp: new Date()
-    })
-
-    this.io.to(`restaurant:${restaurantId}`).emit('restaurantRejected', {
+    emitToRoom(ROOMS.ADMIN_GLOBAL, 'restaurantRejected', { restaurantId, reason, timestamp: new Date() })
+    emitToRoom(ROOMS.restaurant(restaurantId), 'restaurantRejected', {
       message: 'Your restaurant application was not approved',
-      reason,
-      timestamp: new Date()
+      reason, timestamp: new Date(),
     })
 
-    await this.logSocketEvent('restaurantRejected', restaurantId, 'restaurant', { reason })
+    await logSocketEvent('restaurantRejected', restaurantId, 'restaurant', { reason })
   }
 
-  // ============================================================
-  // ORDER EVENTS
-  // ============================================================
-
-  /**
-   * Emit when order is assigned to a rider
-   */
   async emitOrderAssigned(orderId, riderId, restaurantId, customerData = {}) {
-    if (!this.io) return
-
-    // Get rider details
-    const riderResult = await pool.query(
-      'SELECT full_name, phone, profile_image FROM delivery_partners WHERE id = $1',
-      [riderId]
-    )
-
-    const rider = riderResult.rows[0]
-
-    // To customer - show assigned rider details
-    this.io.to(`customer:${customerData.userId}`).emit('orderAssigned', {
-      orderId,
-      riderId,
-      riderName: rider?.full_name,
-      riderPhone: rider?.phone,
-      riderImage: rider?.profile_image,
-      message: 'Your order is being picked up!',
-      timestamp: new Date()
-    })
-
-    // To rider - notify about assignment
-    this.io.to(`delivery_partner:${riderId}`).emit('orderAssigned', {
-      orderId,
-      restaurantId,
-      message: 'New order assigned. Please proceed to restaurant.',
-      timestamp: new Date()
-    })
-
-    // To restaurant - confirm assignment
-    this.io.to(`restaurant:${restaurantId}`).emit('orderAssigned', {
-      orderId,
-      riderName: rider?.full_name,
-      timestamp: new Date()
-    })
-
-    await this.logSocketEvent('orderAssigned', orderId, 'order', { riderId, restaurantId })
+    await orderScopedLegacyEvents(orderId, 'orderAssigned', { riderId, restaurantId, customerData })
   }
 
-  /**
-   * Emit when restaurant accepts order
-   */
   async emitOrderAccepted(orderId, restaurantId, customerData = {}) {
-    if (!this.io) return
-
-    this.io.to(`customer:${customerData.userId}`).emit('orderAccepted', {
-      orderId,
-      message: 'Restaurant has confirmed your order!',
-      timestamp: new Date()
-    })
-
-    this.io.to(`restaurant:${restaurantId}`).emit('orderAccepted', {
-      orderId,
-      message: 'Order confirmed. Start preparing!',
-      timestamp: new Date()
-    })
-
-    await this.logSocketEvent('orderAccepted', orderId, 'order', {})
+    await emitOrderStatusUpdated(orderId, { accepted: true })
+    await orderScopedLegacyEvents(orderId, 'orderAccepted', { restaurantId, customerData })
   }
 
-  /**
-   * Emit when restaurant rejects order (WITH ANIMATED POPUP)
-   */
   async emitOrderRejected(orderId, customerData = {}, reason = 'Order rejected') {
-    if (!this.io) return
-
-    // This is critical - show POPUP to customer
-    this.io.to(`customer:${customerData.userId}`).emit('orderRejected', {
-      orderId,
-      title: 'Order Cancelled',
-      message: 'Sorry! Your order was cancelled by the restaurant.',
-      reason,
-      refundMessage: 'Your payment will be refunded within 2-3 business days.',
-      actionable: true,
-      actions: [
-        { text: 'Retry Order', action: 'retry' },
-        { text: 'Go Home', action: 'home' }
-      ],
-      timestamp: new Date(),
-      animate: true // Show animation
-    })
-
-    await this.logSocketEvent('orderRejected', orderId, 'order', { reason })
+    await emitOrderStatusUpdated(orderId, { cancelled: true })
+    await orderScopedLegacyEvents(orderId, 'orderRejected', { customerData, reason, message: reason })
   }
 
-  /**
-   * Emit when rider picks up order
-   */
   async emitOrderPickedUp(orderId, customerData = {}, restaurantName = '') {
-    if (!this.io) return
-
-    this.io.to(`customer:${customerData.userId}`).emit('orderPickedUp', {
-      orderId,
-      message: 'Your order is on the way!',
-      restaurantName,
-      status: 'ON_THE_WAY',
-      timestamp: new Date(),
-      showLiveTracking: true
-    })
-
-    await this.logSocketEvent('orderPickedUp', orderId, 'order', {})
+    await emitDeliveryStatusUpdated(orderId, { picked_up: true })
+    await orderScopedLegacyEvents(orderId, 'orderPickedUp', { customerData, restaurantName })
   }
 
-  /**
-   * Emit when order is delivered
-   */
   async emitOrderDelivered(orderId, customerData = {}) {
-    if (!this.io) return
-
-    this.io.to(`customer:${customerData.userId}`).emit('orderDelivered', {
-      orderId,
-      message: 'Your order has been delivered!',
-      timestamp: new Date(),
-      showRating: true // Show rating popup
-    })
-
-    await this.logSocketEvent('orderDelivered', orderId, 'order', {})
+    await emitDeliveryStatusUpdated(orderId, { delivered: true })
+    await orderScopedLegacyEvents(orderId, 'orderDelivered', { customerData })
   }
 
-  // ============================================================
-  // RIDER EVENTS
-  // ============================================================
-
-  /**
-   * Emit rider location update for live tracking
-   */
   async emitRiderLocationUpdated(riderId, orderId, lat, lon, details = {}) {
-    if (!this.io) return
+    const io = getIO()
+    if (!io) return
 
-    // Broadcast to order room (customer + restaurant + rider)
-    this.io.to(`order:${orderId}`).emit('riderLocationUpdated', {
-      riderId,
-      orderId,
-      latitude: lat,
-      longitude: lon,
-      timestamp: new Date(),
-      ...details
-    })
+    const payload = { riderId, orderId, latitude: lat, longitude: lon, timestamp: new Date(), ...details }
 
-    // Also broadcast globally for admin tracking
-    this.io.to('admin:global').emit('riderLocationUpdated', {
-      riderId,
-      orderId,
-      latitude: lat,
-      longitude: lon,
-      timestamp: new Date()
-    })
+    emitToRoom(ROOMS.admin(riderId), 'riderLocationUpdated', payload)
+    io.to(`order:${orderId}`).emit('riderLocationUpdated', payload)
 
-    await this.logSocketEvent('riderLocationUpdated', orderId, 'order', { riderId, lat, lon })
+    await logSocketEvent('riderLocationUpdated', orderId, 'order', { riderId, lat, lon })
   }
 
-  /**
-   * Emit active order notification to rider (floating banner)
-   */
   async emitRiderActiveOrderNotification(riderId, orderId, orderData = {}) {
-    if (!this.io) return
+    if (!getIO()) return
 
-    this.io.to(`delivery_partner:${riderId}`).emit('activeOrderNotification', {
-      orderId,
-      message: 'You have an active delivery in progress',
-      orderData,
-      actionable: true,
-      timestamp: new Date()
+    emitToRoom(ROOMS.deliveryPartner(riderId), 'activeOrderNotification', {
+      orderId, message: 'You have an active delivery in progress',
+      orderData, actionable: true, timestamp: new Date(),
     })
 
-    await this.logSocketEvent('activeOrderNotification', orderId, 'order', { riderId })
+    await logSocketEvent('activeOrderNotification', orderId, 'order', { riderId })
   }
 
-  /**
-   * Emit when admin approves rider
-   */
   async emitRiderApproved(riderId, details = {}) {
-    if (!this.io) return
+    if (!getIO()) return
 
-    this.io.to('admin:global').emit('riderApproved', {
-      riderId,
-      timestamp: new Date(),
-      ...details
-    })
-
-    this.io.to(`delivery_partner:${riderId}`).emit('riderApproved', {
+    emitToRoom(ROOMS.ADMIN_GLOBAL, 'riderApproved', { riderId, timestamp: new Date(), ...details })
+    emitToRoom(ROOMS.deliveryPartner(riderId), 'riderApproved', {
       message: 'Congratulations! You have been approved. You can now start accepting deliveries.',
-      timestamp: new Date()
+      timestamp: new Date(),
     })
 
-    await this.logSocketEvent('riderApproved', riderId, 'rider', {})
+    await logSocketEvent('riderApproved', riderId, 'rider', {})
   }
 
-  /**
-   * Emit when admin rejects rider
-   */
   async emitRiderRejected(riderId, reason = '') {
-    if (!this.io) return
+    if (!getIO()) return
 
-    this.io.to('admin:global').emit('riderRejected', {
-      riderId,
-      reason,
-      timestamp: new Date()
-    })
-
-    this.io.to(`delivery_partner:${riderId}`).emit('riderRejected', {
+    emitToRoom(ROOMS.ADMIN_GLOBAL, 'riderRejected', { riderId, reason, timestamp: new Date() })
+    emitToRoom(ROOMS.deliveryPartner(riderId), 'riderRejected', {
       message: 'Your application was not approved at this time.',
-      reason,
-      timestamp: new Date()
+      reason, timestamp: new Date(),
     })
 
-    await this.logSocketEvent('riderRejected', riderId, 'rider', { reason })
+    await logSocketEvent('riderRejected', riderId, 'rider', { reason })
   }
 
-  // ============================================================
-  // HELPER METHODS
-  // ============================================================
-
-  // ============================================================
-  // RATING EVENTS
-  // ============================================================
-
-  /**
-   * Emit when an order is rated — updates ratings in real-time
-   * across all platform surfaces (customer app, restaurant dashboard,
-   * rider app, admin panel).
-   */
   async emitOrderRated(orderId, restaurantId, riderId, restaurantRating, riderRating, customerData = {}) {
-    if (!this.io) return
+    if (!getIO()) return
 
-    // To customer — hide "Rate Order" button, show updated rating
-    this.io.to(`customer:${customerData.userId}`).emit('orderRated', {
-      orderId,
-      restaurant_rating: restaurantRating,
-      rider_rating: riderRating,
-      timestamp: new Date(),
-    })
+    const payload = { orderId, restaurant_rating: restaurantRating, rider_rating: riderRating, timestamp: new Date() }
 
-    // To restaurant — update dashboard review analytics
-    this.io.to(`restaurant:${restaurantId}`).emit('orderRated', {
-      orderId,
-      restaurant_rating: restaurantRating,
-      timestamp: new Date(),
-    })
+    emitToRoom(ROOMS.customer(customerData.userId), 'orderRated', payload)
+    emitToRoom(ROOMS.restaurant(restaurantId), 'orderRated', { orderId, restaurant_rating: restaurantRating, timestamp: new Date() })
 
-    // To rider — update rider rating
     if (riderId) {
-      this.io.to(`delivery_partner:${riderId}`).emit('orderRated', {
-        orderId,
-        rider_rating: riderRating,
-        timestamp: new Date(),
-      })
+      emitToRoom(ROOMS.deliveryPartner(riderId), 'orderRated', { orderId, rider_rating: riderRating, timestamp: new Date() })
     }
 
-    // To admin — update review analytics
-    this.io.to('admin:global').emit('orderRated', {
-      orderId,
-      restaurantId,
-      riderId,
-      restaurant_rating: restaurantRating,
-      rider_rating: riderRating,
-      timestamp: new Date(),
-    })
+    emitToRoom(ROOMS.ADMIN_GLOBAL, 'orderRated', { ...payload, restaurantId, riderId })
 
-    // Log event
-    await this.logSocketEvent('orderRated', orderId, 'order', {
-      restaurantId, riderId, restaurantRating, riderRating
-    })
+    await logSocketEvent('orderRated', orderId, 'order', { restaurantId, riderId, restaurantRating, riderRating })
   }
 
-  /**
-   * Log socket events to database for audit trail
-   */
-  async logSocketEvent(eventName, subjectId, subjectType, payload = {}) {
-    try {
-      await pool.query(
-        `INSERT INTO socket_events_log (event_name, subject_id, subject_type, payload)
-         VALUES ($1, $2, $3, $4)`,
-        [eventName, subjectId, subjectType, JSON.stringify(payload)]
-      )
-    } catch (error) {
-      console.error('Failed to log socket event:', error)
-      // Don't throw - continue processing
-    }
-  }
-
-  /**
-   * Emit bulk status update
-   */
   async emitBulkUpdate(updateType, data = {}) {
-    if (!this.io) return
-    this.io.emit(`bulk:${updateType}`, data)
+    const io = getIO()
+    if (!io) return
+    io.emit(`bulk:${updateType}`, data)
+  }
+}
+
+const logSocketEvent = async (eventName, subjectId, subjectType, payload = {}) => {
+  try {
+    await pool.query(
+      `INSERT INTO socket_events_log (event_name, subject_id, subject_type, payload)
+       VALUES ($1, $2, $3, $4)`,
+      [eventName, subjectId, subjectType, JSON.stringify(payload)]
+    )
+  } catch (error) {
+    console.error('Failed to log socket event:', error)
   }
 }
 

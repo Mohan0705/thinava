@@ -1,9 +1,6 @@
-const jwt = require('jsonwebtoken')
 const pool = require('../../../database/connection')
+const { verifyRestaurantToken } = require('../../../lib/auth/tokenService')
 const { OWNER_ROLE } = require('../constants')
-
-const getRestaurantJwtSecret = () =>
-  process.env.RESTAURANT_JWT_SECRET || process.env.JWT_SECRET || 'restaurant-secret-key'
 
 const authenticateRestaurantOwner = async (req, res, next) => {
   try {
@@ -16,7 +13,7 @@ const authenticateRestaurantOwner = async (req, res, next) => {
       })
     }
 
-    const decoded = jwt.verify(token, getRestaurantJwtSecret())
+    const decoded = verifyRestaurantToken(token)
 
     if (decoded.role !== OWNER_ROLE) {
       return res.status(403).json({
@@ -31,13 +28,29 @@ const authenticateRestaurantOwner = async (req, res, next) => {
        FROM restaurant_users ru
        JOIN restaurants r ON r.id = ru.restaurant_id
        WHERE ru.id = $1`,
-      [decoded.restaurantUserId]
+      [decoded.sub]
     )
 
     if (result.rows.length === 0 || !result.rows[0].is_active) {
       return res.status(401).json({
         success: false,
         error: 'Restaurant owner account not found',
+      })
+    }
+
+    const rStatus = result.rows[0].restaurant_status
+    if (rStatus === 'PENDING_APPROVAL') {
+      return res.status(403).json({
+        success: false,
+        error: 'Your restaurant account is pending approval from THINAVA admin.',
+        status: rStatus,
+      })
+    }
+    if (rStatus === 'REJECTED' || rStatus === 'SUSPENDED') {
+      return res.status(403).json({
+        success: false,
+        error: `Your restaurant account has been ${rStatus.toLowerCase()}. Please contact support.`,
+        status: rStatus,
       })
     }
 
@@ -63,5 +76,4 @@ const authenticateRestaurantOwner = async (req, res, next) => {
 
 module.exports = {
   authenticateRestaurantOwner,
-  getRestaurantJwtSecret,
 }

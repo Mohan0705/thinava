@@ -18,9 +18,13 @@
 const express = require('express')
 const router = express.Router()
 const pool = require('../database/connection')
+const { authenticateAdmin } = require('../modules/admin/middleware/auth')
 
 // Error handler
 const asyncHandler = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next)
+
+// All admin-extended routes require admin authentication
+router.use(authenticateAdmin)
 
 // ============================================================
 // RESTAURANT APPROVALS
@@ -445,15 +449,15 @@ router.post('/restaurants/register-manual', asyncHandler(async (req, res) => {
     )
     console.log('✅ Approval record created (auto-approved)')
 
-    // Create restaurant user with hashed password
+    // Create restaurant user with hashed password - explicitly set is_active = true
     const bcrypt = require('bcryptjs')
     const hashedPassword = await bcrypt.hash(password || 'DefaultTemp123!', 10)
 
     const userResult = await client.query(
-      `INSERT INTO restaurant_users (restaurant_id, email, password_hash, full_name, phone, role)
-       VALUES ($1, $2, $3, $4, $5, $6)
+      `INSERT INTO restaurant_users (restaurant_id, email, password_hash, full_name, phone, role, is_active)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
        RETURNING id`,
-      [restaurantId, ownerEmail, hashedPassword, ownerName, ownerPhone || null, 'restaurant_owner']
+      [restaurantId, ownerEmail, hashedPassword, ownerName, ownerPhone || null, 'restaurant_owner', true]
     )
     console.log('✅ Restaurant user created')
 

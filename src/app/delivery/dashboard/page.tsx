@@ -22,6 +22,8 @@ import { Card, CardContent } from '@/components/ui/Card'
 import { DeliveryBottomNav } from '@/components/delivery/DeliveryBottomNav'
 import { deliveryApi } from '@/lib/delivery-api'
 import { useDeliveryAuthStore } from '@/store/deliveryAuthStore'
+import { useRiderDashboardSync } from '@/lib/realtimeManager'
+import { logSocketStatus } from '@/lib/socket-debug'
 import { API_BASE_URL } from '@/lib/api'
 import type { RiderWallet, CashPickupRequest } from '@/types/delivery'
 
@@ -57,8 +59,62 @@ export default function DeliveryDashboardPage() {
       router.push('/delivery/login')
       return
     }
+    
+    // STEP 1-2: Verify socket connection status
+    logSocketStatus('[DASHBOARD_MOUNT] Socket status check')
+    const riderId = useDeliveryAuthStore.getState().partner?.id
+    console.log('[DASHBOARD] Dashboard mounted', {
+      tokenLength: token.length,
+      riderId,
+      timestamp: new Date().toISOString(),
+    })
+    
     void loadDashboard()
   }, [router, token])
+
+  // Setup realtime synchronization for dashboard updates
+  useRiderDashboardSync(token, (event) => {
+    console.log('[DASHBOARD] Event callback triggered:', event.type)
+    // Sync local state with realtime updates from store
+    const store = useDeliveryAuthStore.getState()
+    
+    if (event.type === 'earnings_updated' && event.data?.earnings) {
+      const newEarnings = Number(event.data.earnings.total_amount || store.realtimeStats.todayEarnings || 0)
+      const newDeliveries = Number(event.data.earnings.deliveries || store.realtimeStats.todayDeliveries || 0)
+      console.log('[DASHBOARD] Updating from earnings_updated:', { newEarnings, newDeliveries })
+      setTodayEarnings(newEarnings)
+      setTodayDeliveries(newDeliveries)
+    }
+    
+    if (event.type === 'stats_updated' && event.data?.stats) {
+      const stats = event.data.stats
+      console.log('[DASHBOARD] Updating from stats_updated:', stats)
+      if (stats.average_rating) setRating(Number(stats.average_rating))
+      if (stats.total_deliveries) setTodayDeliveries(Number(stats.total_deliveries))
+      if (stats.total_earned) setTodayEarnings(Number(stats.total_earned))
+    }
+    
+    if (event.type === 'wallet_updated' && event.data?.wallet) {
+      console.log('[DASHBOARD] Updating from wallet_updated:', event.data.wallet)
+      // Wallet state will be updated via store
+    }
+  })
+
+  // STEP 12: Fallback polling every 5 seconds for missed events
+  useEffect(() => {
+    if (!token) return
+    
+    console.log('[DASHBOARD] Starting fallback polling interval')
+    const pollInterval = setInterval(() => {
+      console.log('[DASHBOARD] Fallback poll triggered')
+      void loadDashboard()
+    }, 5000)
+    
+    return () => {
+      clearInterval(pollInterval)
+      console.log('[DASHBOARD] Stopped fallback polling')
+    }
+  }, [token])
 
   useEffect(() => {
     if (!isOnline) {
@@ -66,12 +122,12 @@ export default function DeliveryDashboardPage() {
       return
     }
 
-    const baseMinutes = Number(partner?.online_minutes_today || 0)
-    const startTime = Date.now()
-
     const updateTime = () => {
-      const elapsedSeconds = Math.floor((Date.now() - startTime) / 1000)
-      const totalSeconds = baseMinutes * 60 + elapsedSeconds
+      const onlineSince = partner?.online_since
+      if (!onlineSince) return
+
+      const elapsedMs = Date.now() - new Date(onlineSince).getTime()
+      const totalSeconds = Math.floor(elapsedMs / 1000)
       const hours = Math.floor(totalSeconds / 3600)
       const minutes = Math.floor((totalSeconds % 3600) / 60)
       setDisplayOnlineTime(`${hours}h ${minutes}m`)
@@ -80,17 +136,22 @@ export default function DeliveryDashboardPage() {
     updateTime()
     const interval = setInterval(updateTime, 1000)
     return () => clearInterval(interval)
-  }, [isOnline])
+  }, [isOnline, partner?.online_since])
 
   const loadDashboard = async () => {
     try {
+      console.log('[DASHBOARD] Loading dashboard data...')
       const [earningsResult, profileResult] = await Promise.all([
         deliveryApi.getTodayEarnings(token!),
         deliveryApi.getProfile(token!),
       ])
 
-      setTodayEarnings(Number(earningsResult.earnings.total_amount || 0))
-      setTodayDeliveries(Number(earningsResult.earnings.deliveries || 0))
+      const earnings = Number(earningsResult.earnings.total_amount || 0)
+      const deliveries = Number(earningsResult.earnings.deliveries || 0)
+      console.log('[DASHBOARD] API earnings:', { earnings, deliveries })
+      
+      setTodayEarnings(earnings)
+      setTodayDeliveries(deliveries)
       setPartner(profileResult.profile)
       setIsOnline(profileResult.profile.is_online)
       setRating(Number(profileResult.profile.average_rating || 0))
@@ -141,7 +202,11 @@ export default function DeliveryDashboardPage() {
       const nextOnline = result.is_online
       setIsOnline(nextOnline)
       if (partner) {
-        setPartner({ ...partner, is_online: nextOnline })
+        setPartner({
+          ...partner,
+          is_online: nextOnline,
+          online_since: result.online_since ?? (nextOnline ? new Date().toISOString() : null),
+        })
       }
       toast.success(nextOnline ? 'You are live for new dispatch offers.' : 'You are offline for now.')
     } catch (error) {

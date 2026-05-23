@@ -43,6 +43,7 @@ export interface DeliveryPartner {
   acceptance_rate?: number
   cancellation_rate?: number
   online_minutes_today?: number
+  online_since?: string | null
   cash_in_hand?: number
   bank_account_name?: string
   bank_account_number?: string

@@ -1,3 +1,4 @@
+import { apiConfig } from '@/config/api'
 import { useAuthStore } from '@/store/authStore'
 import { useDeliveryAuthStore } from '@/store/deliveryAuthStore'
 import { useRestaurantOwnerAuthStore } from '@/store/restaurantOwnerAuthStore'
@@ -13,15 +14,19 @@ import {
 } from '@/lib/auth/session'
 import type { AuthScope } from '@/lib/auth/cookies'
 
-export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'
+export const API_BASE_URL = apiConfig.baseUrl
 
 export class ApiError extends Error {
   status: number
+  code?: string
+  approvalStatus?: string
 
-  constructor(message: string, status: number) {
+  constructor(message: string, status: number, code?: string, approvalStatus?: string) {
     super(message)
     this.name = 'ApiError'
     this.status = status
+    this.code = code
+    this.approvalStatus = approvalStatus
   }
 }
 
@@ -354,7 +359,12 @@ export async function apiRequest<T>(path: string, options: ApiOptions = {}): Pro
       notifySessionExpired(scope, message.includes('sign in') ? message : 'Your session expired. Please sign in again.')
     }
 
-    throw new ApiError(message, response?.status || 0)
+    throw new ApiError(
+      message, 
+      response?.status || 0,
+      data?.code,
+      data?.approvalStatus
+    )
   }
 
   return data as T

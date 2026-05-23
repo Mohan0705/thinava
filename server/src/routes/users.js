@@ -2,7 +2,19 @@ const express = require('express')
 const router = express.Router()
 const pool = require('../database/connection')
 const { asyncHandler } = require('../utils/asyncHandler')
-const { logger } = require('../utils/logger')
+const { logger } = require('../lib/logger')
+const { authenticateCustomer } = require('../modules/auth/middleware/auth')
+
+// All customer routes require authentication
+router.use(authenticateCustomer)
+
+// Verify user is accessing their own data
+router.use((req, res, next) => {
+  if (req.params.userId && parseInt(req.params.userId) !== req.customer.id) {
+    return res.status(403).json({ success: false, error: 'Forbidden' })
+  }
+  next()
+})
 
 router.get('/:userId/addresses', asyncHandler(async (req, res) => {
   const result = await pool.query(

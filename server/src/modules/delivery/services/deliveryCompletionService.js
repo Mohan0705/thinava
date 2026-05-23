@@ -2,7 +2,7 @@ const pool = require('../../../database/connection')
 const { ORDER_DELIVERY_STATUSES, ASSIGNMENT_STATUSES } = require('../constants')
 const { emitOrderStatusUpdated, emitDeliveryStatusUpdated } = require('../../../realtime/orderEvents')
 const SocketEventsHandler = require('../../../realtime/socketEventsHandler')
-const { getIoInstance } = require('../../../realtime/socketServer')
+const { getIO } = require('../../../realtime/socketServer')
 const { validateOrderTransition } = require('../../orders/orderLifecycleService')
 
 const ACTIVE_TERMINAL_STATUSES = [
@@ -28,8 +28,8 @@ const toNumber = (value) => Number(value || 0)
  */
 const completeDelivery = async (orderId, partnerId, options = {}) => {
   const client = await pool.connect()
-  const io = getIoInstance()
-  const socketHandler = io ? new SocketEventsHandler(io) : null
+  const io = getIO()
+  const socketHandler = new SocketEventsHandler()
 
   try {
     await client.query('BEGIN')
@@ -219,15 +219,23 @@ const completeDelivery = async (orderId, partnerId, options = {}) => {
     }).catch((err) => console.error('Failed to emit delivery status update:', err))
 
     // Emit granular events via SocketEventsHandler
-    if (socketHandler) {
-      socketHandler.emitOrderDelivered(orderId, {
-        userId: order.customer_id,
-      }).catch((err) => console.error('Failed to emit order delivered event:', err))
-    }
+    socketHandler.emitOrderDelivered(orderId, {
+      userId: order.customer_id,
+    }).catch((err) => console.error('Failed to emit order delivered event:', err))
 
     // Emit to rider room directly
     if (io && resolvedPartnerId) {
-      io.to(`delivery_partner:${resolvedPartnerId}`).emit('delivery_completed', {
+      const riderRoom = `delivery_partner:${resolvedPartnerId}`
+      
+      // STEP 3: Log delivery_completed emission
+      console.log('[EMIT_delivery_completed]', {
+        orderId,
+        riderId: resolvedPartnerId,
+        room: riderRoom,
+        payout: payoutAmount,
+      })
+      
+      io.to(riderRoom).emit('delivery_completed', {
         order_id: orderId,
         payout_amount: payoutAmount,
         distance_km: finalDistance,
@@ -235,6 +243,99 @@ const completeDelivery = async (orderId, partnerId, options = {}) => {
         message: 'Delivery completed! Earnings added to your wallet.',
         timestamp: completedAt.toISOString(),
       })
+
+      // 11. Fetch and emit updated rider stats to dashboard
+      try {
+        const riderStatsResult = await pool.query(
+          `SELECT
+             dp.id,
+             dp.full_name,
+             dp.total_deliveries,
+             dp.average_rating,
+             dp.is_online,
+             COALESCE(rw.floating_cash, 0) AS floating_cash,
+             COALESCE(rw.total_earned, 0) AS total_earned
+           FROM delivery_partners dp
+           LEFT JOIN rider_wallets rw ON rw.delivery_partner_id = dp.id
+           WHERE dp.id = $1::uuid`,
+          [resolvedPartnerId]
+        )
+
+        if (riderStatsResult.rows.length > 0) {
+          const riderStats = riderStatsResult.rows[0]
+
+          // STEP 3: Log earnings_updated emission
+          console.log('[EMIT_earnings_updated]', {
+            riderId: resolvedPartnerId,
+            room: riderRoom,
+            totalEarnings: riderStats.total_earned,
+            deliveries: riderStats.total_deliveries,
+          })
+
+          // Emit earnings update
+          io.to(riderRoom).emit('delivery:earnings_updated', {
+            earnings: {
+              total_amount: Number(riderStats.total_earned || 0),
+              deliveries: Number(riderStats.total_deliveries || 0),
+              payout_amount: payoutAmount,
+              latest_order_id: orderId,
+            },
+            changed_at: completedAt.toISOString(),
+          })
+
+          // Emit wallet update
+          if (order.payment_method === 'cod') {
+            console.log('[EMIT_wallet_updated]', {
+              riderId: resolvedPartnerId,
+              room: riderRoom,
+              floatingCash: riderStats.floating_cash,
+            })
+
+            io.to(riderRoom).emit('delivery:wallet_updated', {
+              wallet: {
+                floating_cash: Number(riderStats.floating_cash || 0),
+                latest_order_id: orderId,
+              },
+              changed_at: completedAt.toISOString(),
+            })
+          }
+
+          // STEP 3: Log stats_updated emission
+          console.log('[EMIT_stats_updated]', {
+            riderId: resolvedPartnerId,
+            room: riderRoom,
+            deliveries: riderStats.total_deliveries,
+            rating: riderStats.average_rating,
+            earnings: riderStats.total_earned,
+            floating_cash: riderStats.floating_cash,
+          })
+
+          // Emit stats update (consolidated)
+          io.to(riderRoom).emit('delivery:stats_updated', {
+            stats: {
+              total_deliveries: Number(riderStats.total_deliveries || 0),
+              average_rating: Number(riderStats.average_rating || 0),
+              is_online: Boolean(riderStats.is_online),
+              floating_cash: Number(riderStats.floating_cash || 0),
+              total_earned: Number(riderStats.total_earned || 0),
+            },
+            changed_at: completedAt.toISOString(),
+          })
+
+          console.log('[REALTIME_STATS]', {
+            riderId: resolvedPartnerId,
+            event: 'delivery_completed',
+            stats: {
+              deliveries: riderStats.total_deliveries,
+              earnings: riderStats.total_earned,
+              floating_cash: riderStats.floating_cash,
+              rating: riderStats.average_rating,
+            },
+          })
+        }
+      } catch (err) {
+        console.error('[REALTIME_STATS_ERROR] Failed to emit rider stats:', err.message)
+      }
     }
 
     // Emit to admin global
@@ -270,8 +371,8 @@ const completeDelivery = async (orderId, partnerId, options = {}) => {
  */
 const cancelDelivery = async (orderId, reason, cancelledBy, options = {}) => {
   const client = await pool.connect()
-  const io = getIoInstance()
-  const socketHandler = io ? new SocketEventsHandler(io) : null
+  const io = getIO()
+  const socketHandler = new SocketEventsHandler()
 
   try {
     await client.query('BEGIN')
@@ -413,11 +514,9 @@ const cancelDelivery = async (orderId, reason, cancelledBy, options = {}) => {
     }).catch((err) => console.error('Failed to emit delivery status update:', err))
 
     // Emit granular cancellation event to customer
-    if (socketHandler) {
-      socketHandler.emitOrderRejected(orderId, {
-        userId: order.customer_id,
-      }, reason || 'Order cancelled').catch((err) => console.error('Failed to emit order rejected event:', err))
-    }
+    socketHandler.emitOrderRejected(orderId, {
+      userId: order.customer_id,
+    }, reason || 'Order cancelled').catch((err) => console.error('Failed to emit order rejected event:', err))
 
     // Emit to rider room
     if (io && riderId) {

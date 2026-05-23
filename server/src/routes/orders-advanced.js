@@ -18,13 +18,17 @@ const express = require('express')
 const router = express.Router()
 const pool = require('../database/connection')
 const { validateOrderTransition } = require('../modules/orders/orderLifecycleService')
+const { authenticateCustomer } = require('../modules/auth/middleware/auth')
+const { authenticateAdmin } = require('../modules/admin/middleware/auth')
+const { authenticateRestaurantOwner } = require('../modules/restaurantPanel/middleware/auth')
+const { authenticateDeliveryPartner } = require('../modules/delivery/middleware/auth')
 
 const asyncHandler = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next)
 
 // ============================================================
 // CREATE ORDER
 // ============================================================
-router.post('/create', asyncHandler(async (req, res) => {
+router.post('/create', authenticateCustomer, asyncHandler(async (req, res) => {
   const {
     userId,
     restaurantId,
@@ -113,7 +117,7 @@ router.post('/create', asyncHandler(async (req, res) => {
 // ============================================================
 // ASSIGN RIDER TO ORDER
 // ============================================================
-router.post('/:id/assign-rider', asyncHandler(async (req, res) => {
+router.post('/:id/assign-rider', authenticateAdmin, asyncHandler(async (req, res) => {
   const { id: orderId } = req.params
   const { riderId, assignmentMethod } = req.body // assignmentMethod: 'auto', 'manual'
 
@@ -250,7 +254,7 @@ router.post('/:id/assign-rider', asyncHandler(async (req, res) => {
 // ============================================================
 // RESTAURANT REJECTS ORDER
 // ============================================================
-router.post('/:id/reject', asyncHandler(async (req, res) => {
+router.post('/:id/reject', authenticateRestaurantOwner, asyncHandler(async (req, res) => {
   const { id: orderId } = req.params
   const { reason } = req.body
 
@@ -350,7 +354,7 @@ router.post('/:id/reject', asyncHandler(async (req, res) => {
 // ============================================================
 // RESTAURANT ACCEPTS/CONFIRMS ORDER
 // ============================================================
-router.post('/:id/accept', asyncHandler(async (req, res) => {
+router.post('/:id/accept', authenticateRestaurantOwner, asyncHandler(async (req, res) => {
   const { id: orderId } = req.params
 
   const client = await pool.connect()
@@ -437,7 +441,7 @@ router.post('/:id/accept', asyncHandler(async (req, res) => {
 // ============================================================
 // RESTAURANT MARKS READY FOR PICKUP
 // ============================================================
-router.post('/:id/ready-for-pickup', asyncHandler(async (req, res) => {
+router.post('/:id/ready-for-pickup', authenticateRestaurantOwner, asyncHandler(async (req, res) => {
   const { id: orderId } = req.params
 
   const client = await pool.connect()
@@ -519,7 +523,7 @@ router.post('/:id/ready-for-pickup', asyncHandler(async (req, res) => {
 // ============================================================
 // RIDER PICKS UP ORDER
 // ============================================================
-router.post('/:id/picked-up', asyncHandler(async (req, res) => {
+router.post('/:id/picked-up', authenticateDeliveryPartner, asyncHandler(async (req, res) => {
   const { id: orderId } = req.params
 
   const client = await pool.connect()
@@ -602,7 +606,7 @@ router.post('/:id/picked-up', asyncHandler(async (req, res) => {
 // ============================================================
 // RIDER DELIVERS ORDER
 // ============================================================
-router.post('/:id/delivered', asyncHandler(async (req, res) => {
+router.post('/:id/delivered', authenticateDeliveryPartner, asyncHandler(async (req, res) => {
   const { id: orderId } = req.params
 
   const client = await pool.connect()
@@ -699,7 +703,7 @@ router.post('/:id/delivered', asyncHandler(async (req, res) => {
 // ============================================================
 // GET ACTIVE ORDER FOR RIDER
 // ============================================================
-router.get('/rider/:riderId/active', asyncHandler(async (req, res) => {
+router.get('/rider/:riderId/active', authenticateDeliveryPartner, asyncHandler(async (req, res) => {
   const { riderId } = req.params
 
   const result = await pool.query(

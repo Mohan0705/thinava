@@ -1,10 +1,8 @@
-const jwt = require('jsonwebtoken')
-const { getCustomerJwtSecret } = require('../modules/auth/middleware/auth')
-const { getAdminJwtSecret } = require('../modules/admin/middleware/auth')
-const { getRestaurantJwtSecret } = require('../modules/restaurantPanel/middleware/auth')
+const { verifyCustomerToken, verifyAdminToken, verifyRiderToken, verifyRestaurantToken } = require('../lib/auth/tokenService')
+const env = require('../config/env')
+const { logger } = require('../lib/logger')
 
-const DELIVERY_JWT_SECRET = process.env.DELIVERY_JWT_SECRET || 'delivery-secret-key'
-const DEFAULT_FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000'
+const DEFAULT_FRONTEND_URL = env.FRONTEND_URL
 
 const ROLES = {
   ADMIN: 'admin',
@@ -23,6 +21,12 @@ const ROOMS = {
 }
 
 let socketServer = null
+let heartbeatInterval = null
+
+const MAX_LISTENERS_PER_SOCKET = 20
+const MAX_CONNECTIONS = 200
+const HEARTBEAT_INTERVAL_MS = 25000
+const STALE_SOCKET_TIMEOUT_MS = 60000
 
 const authenticateRealtimeSession = ({ role, token }) => {
   if (!role || !token) {
@@ -33,34 +37,34 @@ const authenticateRealtimeSession = ({ role, token }) => {
 
   switch (role) {
     case ROLES.DELIVERY_PARTNER: {
-      const decoded = jwt.verify(token, DELIVERY_JWT_SECRET)
+      const decoded = verifyRiderToken(token)
       return {
         role,
-        subjectId: decoded.id,
-        rooms: [ROOMS.deliveryPartner(decoded.id), ROOMS.DELIVERY_FLEET],
+        subjectId: decoded.sub,
+        rooms: [ROOMS.deliveryPartner(decoded.sub), ROOMS.DELIVERY_FLEET],
       }
     }
     case ROLES.CUSTOMER: {
-      const decoded = jwt.verify(token, getCustomerJwtSecret())
+      const decoded = verifyCustomerToken(token)
       return {
         role,
-        subjectId: decoded.userId,
-        rooms: [ROOMS.customer(decoded.userId)],
+        subjectId: decoded.sub,
+        rooms: [ROOMS.customer(decoded.sub)],
       }
     }
     case ROLES.ADMIN: {
-      const decoded = jwt.verify(token, getAdminJwtSecret())
+      const decoded = verifyAdminToken(token)
       return {
         role,
-        subjectId: decoded.adminUserId,
-        rooms: [ROOMS.admin(decoded.adminUserId), ROOMS.ADMIN_GLOBAL],
+        subjectId: decoded.sub,
+        rooms: [ROOMS.admin(decoded.sub), ROOMS.ADMIN_GLOBAL],
       }
     }
     case ROLES.RESTAURANT: {
-      const decoded = jwt.verify(token, getRestaurantJwtSecret())
+      const decoded = verifyRestaurantToken(token)
       return {
         role,
-        subjectId: decoded.restaurantUserId,
+        subjectId: decoded.sub,
         rooms: [ROOMS.restaurant(decoded.restaurantId)],
       }
     }
@@ -73,130 +77,212 @@ const authenticateRealtimeSession = ({ role, token }) => {
 }
 
 let connectionCount = 0
-const MAX_CONNECTIONS = 200
 const eventRateMap = new Map()
+
+const startHeartbeat = (io) => {
+  if (heartbeatInterval) clearInterval(heartbeatInterval)
+  heartbeatInterval = setInterval(() => {
+    const now = Date.now()
+    const sockets = io.sockets.sockets
+    if (!sockets) return
+
+    for (const [id, socket] of sockets) {
+      try {
+        const lastPing = socket.data._lastPing || 0
+        if (now - lastPing > STALE_SOCKET_TIMEOUT_MS) {
+          logger.warn('Stale socket disconnected', { socketId: id, tag: 'realtime' })
+          socket.disconnect(true)
+          continue
+        }
+        socket.emit('heartbeat', { timestamp: new Date().toISOString() })
+      } catch (err) {
+        logger.error('Heartbeat error', { error: err, socketId: id, tag: 'realtime' })
+      }
+    }
+
+    // Clean stale eventRateMap entries
+    if (eventRateMap.size > 10000) {
+      const cutoff = now - 60000
+      for (const [key, time] of eventRateMap) {
+        if (time < cutoff) eventRateMap.delete(key)
+      }
+    }
+  }, HEARTBEAT_INTERVAL_MS)
+  heartbeatInterval.unref()
+}
+
+const stopHeartbeat = () => {
+  if (heartbeatInterval) {
+    clearInterval(heartbeatInterval)
+    heartbeatInterval = null
+  }
+}
 
 const createSocketServer = (httpServer, options = {}) => {
   const { Server } = require('socket.io')
-
   const io = new Server(httpServer, {
     cors: {
-      origin: options.origin || DEFAULT_FRONTEND_URL,
+      origin: options.corsOrigin || DEFAULT_FRONTEND_URL,
+      methods: ['GET', 'POST'],
       credentials: true,
     },
     maxHttpBufferSize: 1e6,
-    pingTimeout: 60000,
-    pingInterval: 25000,
-    transports: ['websocket'],
-    allowEIO3: false,
+    pingTimeout: 30000,
+    pingInterval: 10000,
     connectionStateRecovery: {
       maxDisconnectionDuration: 2 * 60 * 1000,
     },
   })
 
-  const isRateLimited = (socketId) => {
-    const now = Date.now()
-    const lastEvent = eventRateMap.get(socketId) || 0
-    if (now - lastEvent < 100) {
-      return true
+  io.use((socket, next) => {
+    if (connectionCount >= (options.maxConnections || MAX_CONNECTIONS)) {
+      return next(new Error('Server at maximum connection capacity'))
     }
-    eventRateMap.set(socketId, now)
-    return false
-  }
+    socket.setMaxListeners(MAX_LISTENERS_PER_SOCKET)
+    socket.data._lastPing = Date.now()
+    next()
+  })
 
   io.on('connection', (socket) => {
-    connectionCount++
-    console.log(`[REALTIME] Socket connected (${connectionCount} total)`)
+    connectionCount += 1
 
-    socket.on('disconnect', (reason) => {
-      connectionCount--
-      eventRateMap.delete(socket.id)
-      console.log(`[REALTIME] Socket disconnected: ${reason} (${connectionCount} total)`)
+    socket.on('heartbeat', () => {
+      socket.data._lastPing = Date.now()
     })
 
-    if (connectionCount > MAX_CONNECTIONS) {
-      console.warn(`[REALTIME] Connection limit exceeded, rejecting socket ${socket.id}`)
-      socket.emit('server:error', { message: 'Server connection limit reached. Please try again later.' })
-      socket.disconnect(true)
-      return
-    }
-
-    socket.on('session:subscribe', (payload = {}, callback = () => undefined) => {
-      if (isRateLimited(socket.id)) return
-
+    socket.on('session:subscribe', (payload) => {
       try {
         const session = authenticateRealtimeSession(payload)
-        session.rooms.forEach((room) => socket.join(room))
         socket.data.session = session
-
-        callback({
-          success: true,
+        session.rooms.forEach((room) => socket.join(room))
+        
+        // STEP 2: Log room subscription
+        console.log('[SOCKET_SUBSCRIBE]', {
+          socketId: socket.id,
           role: session.role,
-          subject_id: session.subjectId,
+          riderId: session.subjectId,
           rooms: session.rooms,
+          connectedAt: new Date().toISOString(),
         })
+        
+        // Verify rooms in adapter
+        if (session.role === ROLES.DELIVERY_PARTNER) {
+          const riderRoom = `delivery_partner:${session.subjectId}`
+          const socketsInRoom = io.sockets.adapter.rooms.get(riderRoom)
+          console.log('[ROOM_VERIFY]', {
+            riderId: session.subjectId,
+            riderRoom,
+            socketsInRoom: socketsInRoom ? socketsInRoom.size : 0,
+            thisSocketId: socket.id,
+          })
+        }
+        
+        socket.emit('session:subscribed', { rooms: session.rooms })
       } catch (error) {
-        callback({
-          success: false,
-          error: error.message || 'Realtime authentication failed',
-          status: error.status || 401,
+        console.error('[SOCKET_SUBSCRIBE_ERROR]', {
+          socketId: socket.id,
+          error: error.message,
+          role: payload?.role,
+        })
+        socket.emit('error', {
+          message: error.message || 'Realtime authentication failed',
         })
       }
     })
 
-    socket.on('session:unsubscribe', (_payload = {}, callback = () => undefined) => {
-      if (isRateLimited(socket.id)) return
+    socket.on('event:emit', (payload, acknowledgement) => {
+      if (!socket.data.session) {
+        if (acknowledgement) acknowledgement({ error: 'Not authenticated' })
+        return
+      }
 
-      const joinedRooms = socket.data?.session?.rooms || []
-      joinedRooms.forEach((room) => socket.leave(room))
-      socket.data.session = null
-      callback({ success: true })
+      const { event, data, target } = payload
+
+      if (!event || !data || !target) {
+        if (acknowledgement) acknowledgement({ error: 'Event, data, and target are required' })
+        return
+      }
+
+      const rateKey = `${socket.id}:${event}`
+      const now = Date.now()
+      const lastEmit = eventRateMap.get(rateKey) || 0
+
+      if (now - lastEmit < 100) {
+        if (acknowledgement) acknowledgement({ error: 'Rate limited' })
+        return
+      }
+
+      eventRateMap.set(rateKey, now)
+
+      const room = ROOMS[target.type]?.(target.id)
+      if (!room) {
+        if (acknowledgement) acknowledgement({ error: `Unknown target type: ${target.type}` })
+        return
+      }
+
+      io.to(room).emit(event, {
+        ...data,
+        _meta: { source: socket.id, timestamp: new Date().toISOString() },
+      })
+
+      if (acknowledgement) acknowledgement({ success: true })
     })
 
-    socket.on('order:join', ({ orderId }, callback = () => undefined) => {
-      if (isRateLimited(socket.id)) return
-
-      socket.join(`order:${orderId}`)
-      callback({ success: true, room: `order:${orderId}` })
-    })
-
-    socket.on('order:leave', ({ orderId }, callback = () => undefined) => {
-      if (isRateLimited(socket.id)) return
-
-      socket.leave(`order:${orderId}`)
-      callback({ success: true, room: `order:${orderId}` })
+    socket.on('disconnect', () => {
+      connectionCount -= 1
+      eventRateMap.delete(socket.id)
     })
   })
 
+  startHeartbeat(io)
   socketServer = io
   return io
 }
 
-const getSocketServer = () => socketServer
-const getIoInstance = () => socketServer
-
-const emitToRoom = (room, event, payload) => {
-  if (!socketServer || !room || !event) {
-    return
+const closeSocketServer = async () => {
+  stopHeartbeat()
+  if (socketServer) {
+    await socketServer.close()
+    socketServer = null
+    connectionCount = 0
+    eventRateMap.clear()
   }
-
-  socketServer.to(room).emit(event, payload)
 }
 
-setInterval(() => {
-  const now = Date.now()
-  for (const [socketId, lastEvent] of eventRateMap) {
-    if (now - lastEvent > 60000) {
-      eventRateMap.delete(socketId)
-    }
+const getIO = () => socketServer
+const getIoInstance = getIO
+
+const emitToRoom = (room, event, data) => {
+  const io = socketServer
+  if (!io) {
+    return false
   }
-}, 60000)
+  
+  // Log delivery_partner events for debugging
+  if (room.startsWith('delivery_partner:') && event.startsWith('delivery:')) {
+    console.log('[REALTIME_EMIT]', {
+      room,
+      event,
+      dataKeys: Object.keys(data || {}),
+    })
+  }
+  
+  io.to(room).emit(event, {
+    ...data,
+    _meta: {
+      timestamp: new Date().toISOString(),
+    },
+  })
+  return true
+}
 
 module.exports = {
+  createSocketServer,
+  closeSocketServer,
+  getIO,
+  getIoInstance,
+  emitToRoom,
   ROLES,
   ROOMS,
-  createSocketServer,
-  emitToRoom,
-  getSocketServer,
-  getIoInstance,
+  authenticateRealtimeSession,
 }

@@ -121,8 +121,13 @@ export default function VerifyOtpPage() {
         verificationId: result.verificationId,
         expiresAt: result.expiresAt,
         resendAvailableAt: result.resendAvailableAt,
+        helperOtp: result.helperOtp,
       })
-      toast.success('OTP resent. Use 123456 to continue.')
+      if (result.helperOtp) {
+        toast.success(`Dev mode: use OTP ${result.helperOtp}`)
+      } else {
+        toast.success('OTP resent')
+      }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Unable to resend OTP')
     } finally {
@@ -139,9 +144,11 @@ export default function VerifyOtpPage() {
       <form onSubmit={handleVerify} className="space-y-5">
         <OtpInputGroup value={otp} onChange={setOtp} />
 
-        <div className="rounded-2xl border border-orange-100 bg-orange-50/80 px-4 py-3 text-sm text-orange-800">
-          Development helper: use OTP <span className="font-semibold">123456</span>
-        </div>
+        {pendingVerification?.helperOtp && (
+          <div className="rounded-2xl border border-orange-100 bg-orange-50/80 px-4 py-3 text-sm text-orange-800">
+            Development helper: use OTP <span className="font-semibold">{pendingVerification.helperOtp}</span>
+          </div>
+        )}
 
         <Button type="submit" className="w-full" size="lg" disabled={loading}>
           {loading ? 'Verifying...' : 'Verify and Continue'}

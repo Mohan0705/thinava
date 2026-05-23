@@ -4,7 +4,8 @@ import React, { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { Mail, Lock, Phone, Truck, Loader2, AlertTriangle, Clock } from 'lucide-react'
-import axios from 'axios'
+import { httpClient } from '@/lib/api-client'
+import { useDeliveryAuthStore } from '@/store/deliveryAuthStore'
 import Link from 'next/link'
 
 export default function RiderAuthPage() {
@@ -37,22 +38,25 @@ export default function RiderAuthPage() {
     setIsLoading(true)
 
     try {
-      const response = await axios.post('/api/rider-auth/login', loginForm)
+      const response = await httpClient.post('/rider-auth/login', loginForm)
+      const data = response.data
 
-      if (response.data.success) {
-        localStorage.setItem('riderToken', response.data.token)
-        localStorage.setItem('riderUser', JSON.stringify(response.data.rider))
+      if (data.success) {
+        useDeliveryAuthStore.getState().setSession({
+          token: data.token,
+          partner: data.rider,
+        })
 
         toast.success('Login successful!')
-        router.push('/rider/dashboard')
+        router.push('/delivery/dashboard')
       }
     } catch (error: any) {
-      const data = error.response?.data
-      if (data?.status && ['PENDING', 'REJECTED', 'SUSPENDED'].includes(data.status)) {
-        setAuthStatus(data.status)
-        setAuthMessage(data.error || 'Your account is under review.')
+      const errData = error.response?.data
+      if (errData?.status && ['PENDING', 'REJECTED', 'SUSPENDED'].includes(errData.status)) {
+        setAuthStatus(errData.status)
+        setAuthMessage(errData.error || 'Your account is under review.')
       } else {
-        const message = data?.error || 'Login failed'
+        const message = errData?.error || error.message || 'Login failed'
         toast.error(message)
       }
     } finally {
@@ -65,13 +69,14 @@ export default function RiderAuthPage() {
     setIsLoading(true)
 
     try {
-      const response = await axios.post('/api/rider-auth/register', signupForm)
+      const response = await httpClient.post('/rider-auth/register', signupForm)
+      const data = response.data
 
-      if (response.data.success) {
-        toast.success('Registration successful! Awaiting admin approval.')
+      if (data.success) {
+        toast.success('Registration submitted! Awaiting admin approval.')
         setAuthStatus('PENDING')
         setAuthMessage('Your delivery partner application is under review. Please wait for admin approval.')
-        
+
         setSignupForm({
           fullName: '',
           phone: '',
@@ -82,12 +87,11 @@ export default function RiderAuthPage() {
           vehicleNumber: '',
           aadharNumber: '',
           drivingLicenseNumber: '',
-          zone: ''
+          zone: '',
         })
       }
-    } catch (error) {
-      const err = error as any
-      const message = err.response?.data?.error || 'Registration failed'
+    } catch (error: any) {
+      const message = error.response?.data?.error || error.message || 'Registration failed'
       toast.error(message)
     } finally {
       setIsLoading(false)

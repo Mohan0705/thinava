@@ -3,6 +3,7 @@ const router = express.Router()
 const pool = require('../database/connection')
 const { asyncHandler } = require('../utils/asyncHandler')
 const { authenticateCustomer } = require('../modules/auth/middleware/auth')
+const { authenticateAdmin } = require('../modules/admin/middleware/auth')
 const { emitOrderCreated, emitOrderStatusUpdated } = require('../realtime/orderEvents')
 
 const normalizeOrderStatus = (status) => {
@@ -124,14 +125,20 @@ router.get('/:id', asyncHandler(async (req, res) => {
 }))
 
 // Create order
-router.post('/', asyncHandler(async (req, res) => {
+router.post('/', authenticateCustomer, asyncHandler(async (req, res) => {
   const client = await pool.connect()
   
   try {
     await client.query('BEGIN')
     
+    // Log incoming request for debugging
+    console.log('📋 Order creation request:', {
+      authenticatedUserId: req.customer.id,
+      authenticatedCustomerData: { id: req.customer.id, name: req.customer.name },
+      requestBodyKeys: Object.keys(req.body),
+    })
+    
     const {
-      user_id,
       restaurant_id,
       address_id,
       delivery_address,
@@ -145,50 +152,47 @@ router.post('/', asyncHandler(async (req, res) => {
       payment_method
     } = req.body
 
+    // SECURITY: Always use authenticated customer ID from JWT, never trust frontend-provided user_id
+    // Frontend should NOT send user_id at all - auth is handled via JWT token
+    const authenticatedUserId = req.customer.id
+    
+    console.log('✅ Using authenticated user ID:', authenticatedUserId)
+
     if (!restaurant_id || !Array.isArray(items) || items.length === 0 || !payment_method) {
+      console.log('❌ Missing required fields:', { restaurant_id, itemsCount: items?.length, payment_method })
       return res.status(400).json({
         error: 'restaurant_id, items, and payment_method are required',
       })
     }
 
     if (!address_id && !delivery_address?.full_address) {
+      console.log('❌ Missing delivery address')
       return res.status(400).json({
         error: 'delivery_address is required when address_id is not provided',
       })
     }
 
-    let resolvedUserId = user_id
+    // Use authenticated user ID - this is the source of truth
+    let resolvedUserId = authenticatedUserId
+    console.log('🔒 Order will be created for authenticated user:', resolvedUserId)
 
-    if (!resolvedUserId) {
+    // Update authenticated user profile from delivery contact info if provided
+    if (delivery_address?.contact_name || delivery_address?.phone || delivery_address?.email) {
       const contactName = delivery_address?.contact_name?.trim()
       const contactPhone = delivery_address?.phone?.trim()
       const contactEmail = delivery_address?.email?.trim()
 
-      if (!contactName || !contactPhone) {
-        return res.status(400).json({
-          error: 'delivery_address.contact_name and delivery_address.phone are required',
-        })
-      }
-
-      const existingUser = await client.query(
-        'SELECT id FROM users WHERE phone = $1',
-        [contactPhone]
-      )
-
-      if (existingUser.rows.length > 0) {
-        resolvedUserId = existingUser.rows[0].id
-
+      if (contactName || contactPhone || contactEmail) {
+        console.log('📝 Updating user profile from delivery address')
         await client.query(
-          'UPDATE users SET name = $1, email = COALESCE($2, email), updated_at = CURRENT_TIMESTAMP WHERE id = $3',
-          [contactName, contactEmail || null, resolvedUserId]
+          'UPDATE users SET name = COALESCE($1, name), phone = COALESCE($2, phone), email = COALESCE($3, email), updated_at = CURRENT_TIMESTAMP WHERE id = $4',
+          [
+            contactName || null,
+            contactPhone || null,
+            contactEmail || null,
+            authenticatedUserId
+          ]
         )
-      } else {
-        const createdUser = await client.query(
-          'INSERT INTO users (name, phone, email) VALUES ($1, $2, $3) RETURNING id',
-          [contactName, contactPhone, contactEmail || null]
-        )
-
-        resolvedUserId = createdUser.rows[0].id
       }
     }
 
@@ -213,6 +217,15 @@ router.post('/', asyncHandler(async (req, res) => {
 
     const normalizedStatus = normalizeOrderStatus(status)
     const resolvedTotal = total ?? total_amount
+    
+    console.log('💾 Creating order in database:', {
+      userId: resolvedUserId,
+      restaurantId: restaurant_id,
+      addressId: resolvedAddressId,
+      itemsCount: items.length,
+      total: resolvedTotal,
+      paymentMethod: payment_method
+    })
     
     const orderResult = await client.query(
       `INSERT INTO orders (user_id, restaurant_id, address_id, subtotal, delivery_fee, tax, total, payment_method, status, estimated_delivery)
@@ -242,6 +255,14 @@ router.post('/', asyncHandler(async (req, res) => {
     }
     
     await client.query('COMMIT')
+    
+    console.log('✅ Order created successfully:', {
+      orderId: order.id,
+      userId: order.user_id,
+      restaurantId: order.restaurant_id,
+      status: order.status,
+      total: order.total
+    })
 
     emitOrderCreated(order.id).catch((error) => {
       console.error('[REALTIME_ERROR] Failed to emit order creation event:', error.message)
@@ -250,6 +271,11 @@ router.post('/', asyncHandler(async (req, res) => {
     res.status(201).json({ success: true, order })
   } catch (error) {
     await client.query('ROLLBACK').catch(() => {})
+    console.error('❌ Order creation error:', {
+      message: error.message,
+      authenticatedUserId: req.customer.id,
+      stack: error.stack
+    })
     throw error
   } finally {
     client.release()
@@ -257,7 +283,7 @@ router.post('/', asyncHandler(async (req, res) => {
 }))
 
 // Update order status (admin only)
-router.put('/:id/status', asyncHandler(async (req, res) => {
+router.put('/:id/status', authenticateAdmin, asyncHandler(async (req, res) => {
   const normalizedStatus = normalizeOrderStatus(req.body.status)
 
   if (!normalizedStatus) {

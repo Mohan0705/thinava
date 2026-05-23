@@ -1,8 +1,5 @@
-const jwt = require('jsonwebtoken')
 const pool = require('../../../database/connection')
-
-const getCustomerJwtSecret = () =>
-  process.env.CUSTOMER_JWT_SECRET || process.env.JWT_SECRET || 'thinava-customer-secret'
+const { verifyCustomerToken } = require('../../../lib/auth/tokenService')
 
 const authenticateCustomer = async (req, res, next) => {
   try {
@@ -15,7 +12,7 @@ const authenticateCustomer = async (req, res, next) => {
       })
     }
 
-    const decoded = jwt.verify(token, getCustomerJwtSecret())
+    const decoded = verifyCustomerToken(token)
     const result = await pool.query(
       `SELECT id,
               COALESCE(full_name, name) AS full_name,
@@ -29,7 +26,7 @@ const authenticateCustomer = async (req, res, next) => {
               last_login
        FROM users
        WHERE id = $1`,
-      [decoded.userId]
+      [decoded.sub]
     )
 
     if (result.rows.length === 0) {
@@ -43,6 +40,7 @@ const authenticateCustomer = async (req, res, next) => {
 
     req.customer = {
       id: user.id,
+      userId: user.id,
       name: user.name || user.full_name,
       fullName: user.full_name || user.name,
       phone: user.phone,
@@ -65,5 +63,4 @@ const authenticateCustomer = async (req, res, next) => {
 
 module.exports = {
   authenticateCustomer,
-  getCustomerJwtSecret,
 }

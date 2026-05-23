@@ -20,15 +20,9 @@
 const express = require('express')
 const router = express.Router()
 const bcrypt = require('bcryptjs')
-const jwt = require('jsonwebtoken')
 const { body, validationResult } = require('express-validator')
 const pool = require('../database/connection')
-
-const RESTAURANT_JWT_SECRET = process.env.RESTAURANT_JWT_SECRET || 'restaurant-secret-key-prod'
-
-// ============================================================
-// SECURITY: Input Validation & Sanitization
-// ============================================================
+const { signRestaurantToken, verifyRestaurantToken } = require('../lib/auth/tokenService')
 
 const BCRYPT_ROUNDS = 10
 const MAX_LOGIN_ATTEMPTS = 5
@@ -58,8 +52,13 @@ const authenticateRestaurant = (req, res, next) => {
   }
   
   try {
-    const decoded = jwt.verify(token, RESTAURANT_JWT_SECRET)
-    req.restaurant = decoded
+    const decoded = verifyRestaurantToken(token)
+    req.restaurant = {
+      restaurantUserId: decoded.sub,
+      restaurantId: decoded.restaurantId,
+      email: decoded.email,
+      fullName: decoded.fullName,
+    }
     next()
   } catch (error) {
     res.status(401).json({ success: false, error: 'Invalid or expired token' })
@@ -122,10 +121,10 @@ router.post('/register', asyncHandler(async (req, res) => {
     })
   }
 
-  if (password.length < 6) {
+  if (password.length < 8) {
     return res.status(400).json({ 
       success: false, 
-      error: 'Password must be at least 6 characters' 
+      error: 'Password must be at least 8 characters' 
     })
   }
 
@@ -238,14 +237,22 @@ router.post('/register', asyncHandler(async (req, res) => {
     // Hash password with bcrypt (10 salt rounds for production)
     const hashedPassword = await bcrypt.hash(password, BCRYPT_ROUNDS)
 
-    // Create restaurant user
+    // Create restaurant user - explicitly set is_active = true
     const userResult = await client.query(
       `INSERT INTO restaurant_users 
-       (restaurant_id, email, password_hash, full_name, phone, role)
-       VALUES ($1, $2, $3, $4, $5, $6)
+       (restaurant_id, email, password_hash, full_name, phone, role, is_active)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
        RETURNING id`,
-      [restaurantId, ownerEmail, hashedPassword, ownerName, ownerPhone, 'restaurant_owner']
+      [restaurantId, ownerEmail, hashedPassword, ownerName, ownerPhone, 'restaurant_owner', true]
     )
+    
+    console.log('✅ Restaurant user created:', {
+      userId: userResult.rows[0].id,
+      email: ownerEmail,
+      restaurantId,
+      passwordHashLength: hashedPassword.length,
+      isActive: true
+    })
 
     // Log approval history
     await client.query(
@@ -343,14 +350,25 @@ router.post('/login', asyncHandler(async (req, res) => {
   }
 
   // Verify password
+  console.log('🔍 Login attempt:', {
+    email,
+    userFound: true,
+    restaurantStatus: user.restaurant_status,
+    passwordHashExists: !!user.password_hash,
+    passwordHashLength: user.password_hash?.length
+  })
+  
   const isPasswordValid = await bcrypt.compare(password, user.password_hash)
   
   if (!isPasswordValid) {
+    console.log('❌ Password mismatch:', { email, userId: user.id })
     return res.status(401).json({ 
       success: false, 
       error: 'Invalid credentials' 
     })
   }
+  
+  console.log('✅ Password verified:', { email, userId: user.id })
 
   // Update last login
   await pool.query(
@@ -359,16 +377,12 @@ router.post('/login', asyncHandler(async (req, res) => {
   )
 
   // Generate JWT
-  const token = jwt.sign(
-    {
-      restaurantUserId: user.id,
-      restaurantId: user.restaurant_id,
-      email: user.email,
-      fullName: user.full_name
-    },
-    RESTAURANT_JWT_SECRET,
-    { expiresIn: '7d' }
-  )
+  const token = signRestaurantToken({
+    id: user.id,
+    email: user.email,
+    full_name: user.full_name,
+    restaurant_id: user.restaurant_id,
+  })
 
   return res.json({
     success: true,

@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { CheckCircle2, XCircle, Clock, Search, Filter, MoreVertical, Download } from 'lucide-react'
-import axios from 'axios'
+import { httpClient } from '@/lib/api-client'
 import { toast } from 'sonner'
 
 interface PendingRestaurant {
@@ -47,7 +47,7 @@ export function AdminRestaurantApprovals() {
 
   const fetchPendingRestaurants = async () => {
     try {
-      const response = await axios.get('/api/admin-extended/restaurants/pending')
+      const response = await httpClient.get('/admin-extended/restaurants/pending')
       setRestaurants(response.data.pending)
     } catch (error) {
       toast.error('Failed to fetch pending restaurants')
@@ -58,7 +58,7 @@ export function AdminRestaurantApprovals() {
 
   const handleApprove = async (restaurantId: string) => {
     try {
-      await axios.post(`/api/admin-extended/restaurants/${restaurantId}/approve`)
+      await httpClient.post(`/admin-extended/restaurants/${restaurantId}/approve`)
       toast.success('Restaurant approved!')
       setRestaurants(restaurants.filter(r => r.restaurant_id !== restaurantId))
     } catch (error) {
@@ -73,7 +73,7 @@ export function AdminRestaurantApprovals() {
     }
 
     try {
-      await axios.post(`/api/admin-extended/restaurants/${restaurantId}/reject`, {
+      await httpClient.post(`/admin-extended/restaurants/${restaurantId}/reject`, {
         rejectionReason: rejectReason
       })
       toast.success('Restaurant rejected')
@@ -227,7 +227,7 @@ export function AdminRiderApprovals() {
 
   const fetchPendingRiders = async () => {
     try {
-      const response = await axios.get('/api/admin-extended/riders/pending')
+      const response = await httpClient.get('/admin-extended/riders/pending')
       setRiders(response.data.pending)
     } catch (error) {
       toast.error('Failed to fetch pending riders')
@@ -238,7 +238,7 @@ export function AdminRiderApprovals() {
 
   const handleApprove = async (riderId: string) => {
     try {
-      await axios.post(`/api/admin-extended/riders/${riderId}/approve`)
+      await httpClient.post(`/admin-extended/riders/${riderId}/approve`)
       toast.success('Rider approved!')
       setRiders(riders.filter(r => r.id !== riderId))
     } catch (error) {
@@ -253,7 +253,7 @@ export function AdminRiderApprovals() {
     }
 
     try {
-      await axios.post(`/api/admin-extended/riders/${riderId}/reject`, {
+      await httpClient.post(`/admin-extended/riders/${riderId}/reject`, {
         rejectionReason: rejectReason
       })
       toast.success('Rider rejected')
@@ -424,7 +424,7 @@ export function AdminMenuManagement() {
 
   const fetchCategories = async () => {
     try {
-      const response = await axios.get('/api/admin-extended/menu/categories')
+      const response = await httpClient.get('/admin-extended/menu/categories')
       setCategories(response.data.categories)
       if (response.data.categories.length > 0) {
         setSelectedCategory(response.data.categories[0].id)
@@ -437,7 +437,7 @@ export function AdminMenuManagement() {
 
   const fetchItems = async (categoryId: string) => {
     try {
-      const response = await axios.get(`/api/admin-extended/menu/items/${categoryId}`)
+      const response = await httpClient.get(`/admin-extended/menu/items/${categoryId}`)
       setItems(response.data.items)
     } catch (error) {
       toast.error('Failed to fetch items')
@@ -446,7 +446,7 @@ export function AdminMenuManagement() {
 
   const handleCreateCategory = async () => {
     try {
-      await axios.post('/api/admin-extended/menu/category/create', newCategory)
+      await httpClient.post('/admin-extended/menu/category/create', newCategory)
       toast.success('Category created!')
       setNewCategory({ name: '', description: '', icon: '', displayOrder: 0 })
       setShowNewCategoryForm(false)
@@ -463,7 +463,7 @@ export function AdminMenuManagement() {
     }
 
     try {
-      await axios.post('/api/admin-extended/menu/item/create', {
+      await httpClient.post('/admin-extended/menu/item/create', {
         categoryId: selectedCategory,
         name: newItem.name,
         description: newItem.description,

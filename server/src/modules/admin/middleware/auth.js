@@ -1,9 +1,6 @@
-const jwt = require('jsonwebtoken')
 const pool = require('../../../database/connection')
+const { verifyAdminToken } = require('../../../lib/auth/tokenService')
 const { ROLE_PERMISSIONS } = require('../constants')
-
-const getAdminJwtSecret = () =>
-  process.env.ADMIN_JWT_SECRET || process.env.JWT_SECRET || 'thinava-admin-secret'
 
 const hydrateAdminUser = async (adminUserId) => {
   const result = await pool.query(
@@ -27,8 +24,8 @@ const authenticateAdmin = async (req, res, next) => {
       })
     }
 
-    const decoded = jwt.verify(token, getAdminJwtSecret())
-    const admin = await hydrateAdminUser(decoded.adminUserId)
+    const decoded = verifyAdminToken(token)
+    const admin = await hydrateAdminUser(decoded.sub)
 
     if (!admin || !admin.is_active) {
       return res.status(401).json({
@@ -75,5 +72,4 @@ const authorizeAdmin = (...requiredPermissions) => (req, res, next) => {
 module.exports = {
   authenticateAdmin,
   authorizeAdmin,
-  getAdminJwtSecret,
 }

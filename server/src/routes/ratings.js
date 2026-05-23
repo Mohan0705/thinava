@@ -23,9 +23,8 @@ router.get('/eligibility', authenticateCustomer, asyncHandler(async (req, res) =
   const customerId = req.customer.id
 
   const result = await pool.query(
-    `SELECT o.id, o.status, o.restaurant_id, r.name AS restaurant_name,
-            dp.full_name AS rider_name,
-            EXISTS(SELECT 1 FROM order_reviews WHERE order_id = o.id AND customer_id = $1) AS already_rated
+    `SELECT o.id, o.status, o.review_status, o.restaurant_id, r.name AS restaurant_name,
+            dp.full_name AS rider_name
      FROM orders o
      LEFT JOIN restaurants r ON r.id = o.restaurant_id
      LEFT JOIN delivery_partners dp ON dp.id = o.delivery_partner_id
@@ -35,7 +34,7 @@ router.get('/eligibility', authenticateCustomer, asyncHandler(async (req, res) =
     [customerId]
   )
 
-  const eligibleOrders = result.rows.filter(row => !row.already_rated)
+  const eligibleOrders = result.rows.filter(row => row.review_status !== 'reviewed')
 
   res.json({
     success: true,
@@ -43,8 +42,8 @@ router.get('/eligibility', authenticateCustomer, asyncHandler(async (req, res) =
       id: row.id,
       restaurant_name: row.restaurant_name,
       rider_name: row.rider_name,
-      already_rated: row.already_rated,
-      can_rate: !row.already_rated,
+      already_rated: row.review_status === 'reviewed',
+      can_rate: row.review_status !== 'reviewed',
     })),
     unrated_count: eligibleOrders.length,
   })

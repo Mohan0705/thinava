@@ -52,6 +52,11 @@ class ReviewAggregationService {
     }
     const order = orderRes.rows[0]
 
+    // Verify customer ownership — only the order owner can review
+    if (String(order.user_id) !== String(customerId)) {
+      throw Object.assign(new Error('You can only review your own orders'), { status: 403 })
+    }
+
     // Prevent duplicate — order_reviews UNIQUE on order_id enforced at DB level,
     // but check application-level anyway
     const dupCheck = await client.query(
@@ -73,8 +78,9 @@ class ReviewAggregationService {
     const reviewRes = await client.query(
       `INSERT INTO order_reviews (
         order_id, customer_id, restaurant_rating, rider_rating,
-        food_quality, delivery_speed, overall_rating, review_text, is_anonymous
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        food_quality, delivery_speed, overall_rating, review_text, is_anonymous,
+        is_verified_purchase, reviewed_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, TRUE, CURRENT_TIMESTAMP)
       RETURNING id`,
       [
         orderId, customerId,
@@ -84,7 +90,7 @@ class ReviewAggregationService {
         deliverySpeed || null,
         overallRating || null,
         reviewText || null,
-        isAnonymous,
+        isAnonymous || false,
       ]
     )
     const reviewId = reviewRes.rows[0].id
@@ -199,6 +205,12 @@ class ReviewAggregationService {
         [newAvg, order.restaurant_id]
       )
     }
+
+    // ─── Mark order as reviewed ───────────────────────────────────
+    await client.query(
+      `UPDATE orders SET review_status = 'reviewed', reviewed_at = CURRENT_TIMESTAMP WHERE id = $1`,
+      [orderId]
+    )
 
     return { reviewId, order }
   }
