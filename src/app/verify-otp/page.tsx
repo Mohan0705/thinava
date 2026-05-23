@@ -12,6 +12,7 @@ import { formatIndianPhone } from '@/features/auth/utils'
 
 export default function VerifyOtpPage() {
   const router = useRouter()
+  const [mounted, setMounted] = useState(false)
   const pendingVerification = useAuthStore((state) => state.pendingVerification)
   const setAuth = useAuthStore((state) => state.setAuth)
   const setPendingVerification = useAuthStore((state) => state.setPendingVerification)
@@ -19,24 +20,17 @@ export default function VerifyOtpPage() {
   const [loading, setLoading] = useState(false)
   const [resendLoading, setResendLoading] = useState(false)
   const [now, setNow] = useState<number | null>(null)
-  const [isClient, setIsClient] = useState(false)
 
-  const getNextPath = () => {
-    if (typeof window === 'undefined') {
-      return '/'
-    }
-    return new URLSearchParams(window.location.search).get('next') || '/'
-  }
-  const entryPath = pendingVerification?.purpose === 'signup' ? '/signup' : '/login'
-
+  // Phase 1: Mount on client only
   useEffect(() => {
-    setIsClient(true)
+    setMounted(true)
     setNow(Date.now())
   }, [])
 
+  // Phase 2: Validation and timer (after mount)
   useEffect(() => {
-    if (!isClient) return
-    
+    if (!mounted) return
+
     if (!pendingVerification) {
       router.replace('/login')
       return
@@ -45,16 +39,23 @@ export default function VerifyOtpPage() {
     if (new Date(pendingVerification.expiresAt).getTime() <= Date.now()) {
       setPendingVerification(null)
       toast.error('Your OTP session expired. Request a new code to continue.')
-      router.replace(`${entryPath}?next=${encodeURIComponent(getNextPath())}`)
+      router.replace(pendingVerification.purpose === 'signup' ? '/signup' : '/login')
       return
     }
 
     const timer = window.setInterval(() => setNow(Date.now()), 1000)
     return () => window.clearInterval(timer)
-  }, [entryPath, pendingVerification, router, setPendingVerification, isClient])
+  }, [mounted, pendingVerification, router, setPendingVerification])
+
+  const getNextPath = () => {
+    if (typeof window === 'undefined') {
+      return '/'
+    }
+    return new URLSearchParams(window.location.search).get('next') || '/'
+  }
 
   const resendRemaining = useMemo(() => {
-    if (!pendingVerification || now === null) {
+    if (!mounted || !pendingVerification || now === null) {
       return 0
     }
 
@@ -62,7 +63,7 @@ export default function VerifyOtpPage() {
       0,
       Math.ceil((new Date(pendingVerification.resendAvailableAt).getTime() - now) / 1000)
     )
-  }, [now, pendingVerification])
+  }, [now, pendingVerification, mounted])
 
   const handleVerify = async (event: FormEvent) => {
     event.preventDefault()
@@ -98,7 +99,7 @@ export default function VerifyOtpPage() {
       if (message.includes('OTP expired') || message.includes('OTP session not found')) {
         setPendingVerification(null)
         toast.error(message)
-        router.replace(`${entryPath}?next=${encodeURIComponent(getNextPath())}`)
+        router.replace(pendingVerification.purpose === 'signup' ? '/signup' : '/login')
         return
       }
 
@@ -146,36 +147,40 @@ export default function VerifyOtpPage() {
     <AuthScreenShell
       eyebrow="Verify OTP"
       title="Almost there."
-      description={`Enter the 6 digit code sent to ${formatIndianPhone(pendingVerification?.phone || '')}.`}
+      description={mounted && pendingVerification ? `Enter the 6 digit code sent to ${formatIndianPhone(pendingVerification.phone || '')}.` : 'Enter the 6 digit verification code.'}
     >
-      <form onSubmit={handleVerify} className="space-y-5">
-        <OtpInputGroup value={otp} onChange={setOtp} />
+      {mounted && pendingVerification ? (
+        <form onSubmit={handleVerify} className="space-y-5">
+          <OtpInputGroup value={otp} onChange={setOtp} />
 
-        {pendingVerification?.helperOtp && (
-          <div className="rounded-2xl border border-orange-100 bg-orange-50/80 px-4 py-3 text-sm text-orange-800">
-            Development helper: use OTP <span className="font-semibold">{pendingVerification.helperOtp}</span>
-          </div>
-        )}
-
-        <Button type="submit" className="w-full" size="lg" disabled={loading}>
-          {loading ? 'Verifying...' : 'Verify and Continue'}
-        </Button>
-
-        <div className="text-center text-sm text-slate-500" suppressHydrationWarning>
-          {resendRemaining > 0 ? (
-            <span>Resend available in {resendRemaining}s</span>
-          ) : (
-            <button
-              type="button"
-              onClick={handleResend}
-              disabled={resendLoading}
-              className="font-semibold text-orange-600 hover:text-orange-700"
-            >
-              {resendLoading ? 'Resending...' : 'Resend OTP'}
-            </button>
+          {pendingVerification.helperOtp && (
+            <div className="rounded-2xl border border-orange-100 bg-orange-50/80 px-4 py-3 text-sm text-orange-800">
+              Development helper: use OTP <span className="font-semibold">{pendingVerification.helperOtp}</span>
+            </div>
           )}
-        </div>
-      </form>
+
+          <Button type="submit" className="w-full" size="lg" disabled={loading}>
+            {loading ? 'Verifying...' : 'Verify and Continue'}
+          </Button>
+
+          <div className="text-center text-sm text-slate-500" suppressHydrationWarning>
+            {resendRemaining > 0 ? (
+              <span>Resend available in {resendRemaining}s</span>
+            ) : (
+              <button
+                type="button"
+                onClick={handleResend}
+                disabled={resendLoading}
+                className="font-semibold text-orange-600 hover:text-orange-700"
+              >
+                {resendLoading ? 'Resending...' : 'Resend OTP'}
+              </button>
+            )}
+          </div>
+        </form>
+      ) : (
+        <div className="text-center text-slate-500">Loading...</div>
+      )}
     </AuthScreenShell>
   )
 }
