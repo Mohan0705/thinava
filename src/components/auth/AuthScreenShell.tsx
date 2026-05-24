@@ -1,8 +1,7 @@
 'use client'
 
-import Link from 'next/link'
 import { motion } from 'framer-motion'
-import { ChevronLeft } from 'lucide-react'
+import { BackButton } from '@/components/layout/BackButton'
 
 export function AuthScreenShell({
   eyebrow,
@@ -21,12 +20,7 @@ export function AuthScreenShell({
     <div className="min-h-screen bg-thinava-bg">
       <div className="relative mx-auto flex min-h-screen max-w-md flex-col px-4 pb-8 pt-5">
         <div className="mb-6 flex items-center justify-between">
-          <Link
-            href="/"
-            className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-thinava-border bg-white shadow-sm transition hover:bg-thinava-bg"
-          >
-            <ChevronLeft className="h-5 w-5 text-thinava-text" />
-          </Link>
+          <BackButton className="rounded-xl" />
           <div className="flex items-center gap-2">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg thinava-gradient-bg">
               <span className="text-sm font-bold text-white">T</span>

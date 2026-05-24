@@ -8,19 +8,31 @@ const { authenticateAdmin } = require('../modules/admin/middleware/auth')
 router.get('/', asyncHandler(async (req, res) => {
   const { featured, cuisine } = req.query
   
-  let query = 'SELECT * FROM restaurants WHERE is_open = true'
+  let query = `
+    SELECT r.*,
+           CASE
+             WHEN COALESCE(r.rating_count, 0) > 0
+             THEN ROUND((COALESCE(r.rating_sum, 0) / NULLIF(r.rating_count, 0))::numeric, 1)
+             ELSE COALESCE(r.rating, 0)
+           END AS average_rating,
+           COALESCE(r.rating_count, 0) AS rating_count
+    FROM restaurants r
+    WHERE TRUE`
   const params = []
   
   if (featured === 'true') {
-    query += ' AND featured = true'
+    query += ' AND r.featured = true'
   }
   
   if (cuisine) {
-    query += ' AND $1 = ANY(cuisines)'
+    query += ' AND $1 = ANY(r.cuisines)'
     params.push(cuisine)
   }
   
-  query += ' ORDER BY rating DESC'
+  query += ` ORDER BY
+    CASE WHEN COALESCE(r.status, CASE WHEN r.is_open THEN 'OPEN' ELSE 'CLOSED' END) = 'OPEN' THEN 0 ELSE 1 END,
+    average_rating DESC,
+    r.name ASC`
   
   const result = await pool.query(query, params)
   res.json({ success: true, restaurants: result.rows })
@@ -29,7 +41,15 @@ router.get('/', asyncHandler(async (req, res) => {
 // Get restaurant by ID
 router.get('/:id', asyncHandler(async (req, res) => {
   const result = await pool.query(
-    'SELECT * FROM restaurants WHERE id = $1',
+    `SELECT r.*,
+            CASE
+              WHEN COALESCE(r.rating_count, 0) > 0
+              THEN ROUND((COALESCE(r.rating_sum, 0) / NULLIF(r.rating_count, 0))::numeric, 1)
+              ELSE COALESCE(r.rating, 0)
+            END AS average_rating,
+            COALESCE(r.rating_count, 0) AS rating_count
+     FROM restaurants r
+     WHERE r.id = $1`,
     [req.params.id]
   )
   

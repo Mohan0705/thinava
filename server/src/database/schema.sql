@@ -16,8 +16,12 @@ CREATE TABLE IF NOT EXISTS addresses (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   label VARCHAR(100) NOT NULL,
+  address_type VARCHAR(40),
   full_address TEXT NOT NULL,
   landmark VARCHAR(255),
+  receiver_name VARCHAR(255),
+  receiver_phone VARCHAR(40),
+  use_account_details BOOLEAN DEFAULT TRUE,
   is_default BOOLEAN DEFAULT FALSE,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP

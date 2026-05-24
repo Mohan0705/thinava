@@ -49,6 +49,9 @@ export default function CheckoutPage() {
 
   const restaurantId = items[0]?.menuItem.restaurantId
   const [restaurant, setRestaurant] = useState<Restaurant | null>(null)
+  const restaurantUnavailable = Boolean(
+    restaurant && (!restaurant.isOpen || (restaurant.status && restaurant.status !== 'OPEN'))
+  )
 
   useEffect(() => {
     let isMounted = true
@@ -149,6 +152,24 @@ export default function CheckoutPage() {
     }
   }, [user])
 
+  useEffect(() => {
+    const activeAddress = addresses.find((address) => address.id === selectedAddress)
+    if (!activeAddress) {
+      return
+    }
+
+    if (activeAddress.useAccountDetails === false) {
+      setContactName(activeAddress.receiverName || '')
+      setPhoneNumber(activeAddress.receiverPhone || '')
+      return
+    }
+
+    if (user) {
+      setContactName(user.fullName || user.name || '')
+      setPhoneNumber(user.phone || '')
+    }
+  }, [addresses, selectedAddress, user])
+
   const handleApplyCoupon = async () => {
     const normalizedCode = couponCode.trim().toUpperCase()
 
@@ -211,6 +232,11 @@ export default function CheckoutPage() {
 
     if (!restaurantId) {
       toast.error('Your cart is missing restaurant information. Please add the item again.')
+      return
+    }
+
+    if (restaurantUnavailable) {
+      toast.error('This restaurant is not accepting orders right now.')
       return
     }
 
@@ -361,6 +387,11 @@ export default function CheckoutPage() {
                             Landmark: {address.landmark}
                           </p>
                         )}
+                        {(address.receiverName || address.receiverPhone) && (
+                          <p className="mt-1 text-xs font-semibold text-gray-700">
+                            Receiver: {[address.receiverName, address.receiverPhone].filter(Boolean).join(' - ')}
+                          </p>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -494,7 +525,9 @@ export default function CheckoutPage() {
                       </div>
                       <div>
                         <h3 className="font-semibold">{restaurant.name}</h3>
-                        <p className="text-sm text-gray-600">{restaurant.deliveryTime}</p>
+                        <p className="text-sm text-gray-600">
+                          {restaurantUnavailable ? 'Currently unavailable' : restaurant.deliveryTime}
+                        </p>
                       </div>
                     </div>
                   )}
@@ -612,9 +645,9 @@ export default function CheckoutPage() {
                       className="w-full bg-slate-900 text-white shadow-lg shadow-slate-900/15 hover:bg-slate-800"
                       size="lg"
                       onClick={handlePlaceOrder}
-                      disabled={loading}
+                      disabled={loading || restaurantUnavailable}
                     >
-                      {loading ? 'Placing Order...' : 'Place Order'}
+                      {loading ? 'Placing Order...' : restaurantUnavailable ? 'Restaurant Unavailable' : 'Place Order'}
                     </Button>
                   </motion.div>
 

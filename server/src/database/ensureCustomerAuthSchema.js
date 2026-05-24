@@ -64,6 +64,38 @@ const ensureCustomerAuthSchema = async () => {
     `)
 
     await client.query(`
+      ALTER TABLE addresses
+      ADD COLUMN IF NOT EXISTS address_type VARCHAR(40),
+      ADD COLUMN IF NOT EXISTS receiver_name VARCHAR(255),
+      ADD COLUMN IF NOT EXISTS receiver_phone VARCHAR(40),
+      ADD COLUMN IF NOT EXISTS use_account_details BOOLEAN DEFAULT TRUE;
+
+      ALTER TABLE user_addresses
+      ADD COLUMN IF NOT EXISTS address_type VARCHAR(40),
+      ADD COLUMN IF NOT EXISTS receiver_name VARCHAR(255),
+      ADD COLUMN IF NOT EXISTS receiver_phone VARCHAR(40),
+      ADD COLUMN IF NOT EXISTS use_account_details BOOLEAN DEFAULT TRUE;
+    `)
+
+    await client.query(`
+      UPDATE user_addresses
+      SET address_type = CASE
+        WHEN LOWER(COALESCE(address_type, label)) IN ('office', 'work') THEN 'Office'
+        WHEN LOWER(COALESCE(address_type, label)) = 'home' THEN 'Home'
+        ELSE 'Other'
+      END
+      WHERE address_type IS NULL OR address_type = '';
+
+      UPDATE addresses
+      SET address_type = CASE
+        WHEN LOWER(COALESCE(address_type, label)) IN ('office', 'work') THEN 'Office'
+        WHEN LOWER(COALESCE(address_type, label)) = 'home' THEN 'Home'
+        ELSE 'Other'
+      END
+      WHERE address_type IS NULL OR address_type = '';
+    `)
+
+    await client.query(`
       CREATE INDEX IF NOT EXISTS idx_customer_otp_sessions_phone
       ON customer_otp_sessions(phone, created_at DESC);
       CREATE INDEX IF NOT EXISTS idx_user_addresses_user_id
@@ -71,7 +103,7 @@ const ensureCustomerAuthSchema = async () => {
     `)
 
     await client.query(`
-      INSERT INTO user_addresses (user_id, label, address, landmark, latitude, longitude, is_default, legacy_address_id, created_at, updated_at)
+      INSERT INTO user_addresses (user_id, label, address, landmark, latitude, longitude, is_default, legacy_address_id, address_type, receiver_name, receiver_phone, use_account_details, created_at, updated_at)
       SELECT
         a.user_id,
         a.label,
@@ -81,6 +113,14 @@ const ensureCustomerAuthSchema = async () => {
         a.longitude,
         a.is_default,
         a.id,
+        COALESCE(a.address_type, CASE
+          WHEN LOWER(a.label) IN ('office', 'work') THEN 'Office'
+          WHEN LOWER(a.label) = 'home' THEN 'Home'
+          ELSE 'Other'
+        END),
+        a.receiver_name,
+        a.receiver_phone,
+        COALESCE(a.use_account_details, TRUE),
         a.created_at,
         a.updated_at
       FROM addresses a

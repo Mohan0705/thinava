@@ -22,11 +22,15 @@ export default function ProfileAddressesPage() {
 
   const handleSaveAddress = async (payload: {
     label: string
+    address_type: 'Home' | 'Office' | 'Other'
     address: string
     landmark?: string
     latitude?: number | null
     longitude?: number | null
     is_default: boolean
+    receiver_name?: string
+    receiver_phone?: string
+    use_account_details: boolean
   }) => {
     if (!token) {
       return
@@ -116,6 +120,11 @@ export default function ProfileAddressesPage() {
                         <p className="text-lg font-black tracking-tight text-[#111827]">
                           {address.label}
                         </p>
+                        {address.addressType && address.addressType !== address.label ? (
+                          <Badge variant="secondary" className="rounded-full bg-slate-100 text-slate-700">
+                            {address.addressType}
+                          </Badge>
+                        ) : null}
                         {address.isDefault ? (
                           <Badge variant="secondary" className="rounded-full bg-[#FFF1E8] text-[#C2410C]">
                             Default
@@ -125,6 +134,11 @@ export default function ProfileAddressesPage() {
                       <p className="text-sm leading-6 text-[#4B5563]">{address.fullAddress}</p>
                       {address.landmark ? (
                         <p className="mt-2 text-sm text-[#6B7280]">Landmark: {address.landmark}</p>
+                      ) : null}
+                      {address.receiverName || address.receiverPhone ? (
+                        <p className="mt-2 text-sm font-medium text-[#374151]">
+                          Receiver: {[address.receiverName, address.receiverPhone].filter(Boolean).join(' - ')}
+                        </p>
                       ) : null}
                       {address.latitude && address.longitude ? (
                         <p className="mt-3 text-xs font-medium uppercase tracking-[0.2em] text-[#9CA3AF]">

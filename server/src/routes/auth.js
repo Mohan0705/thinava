@@ -195,11 +195,15 @@ router.post(
   authenticateCustomer,
   validate([
     body('label').notEmpty().withMessage('Address label is required'),
+    body('address_type').optional().isIn(['Home', 'Office', 'Other']).withMessage('Invalid address type'),
     body('address').notEmpty().withMessage('Address is required'),
     body('landmark').optional({ nullable: true }).isString(),
     body('latitude').optional({ nullable: true }).isFloat({ min: -90, max: 90 }),
     body('longitude').optional({ nullable: true }).isFloat({ min: -180, max: 180 }),
     body('is_default').optional().isBoolean(),
+    body('receiver_name').optional({ nullable: true }).isString().isLength({ max: 255 }),
+    body('receiver_phone').optional({ nullable: true }).isString().isLength({ max: 40 }),
+    body('use_account_details').optional().isBoolean(),
   ]),
   asyncHandler(async (req, res) => {
     const address = await authService.upsertAddress(req.customer.id, req.body)
@@ -215,11 +219,15 @@ router.put(
   authenticateCustomer,
   validate([
     body('label').notEmpty().withMessage('Address label is required'),
+    body('address_type').optional().isIn(['Home', 'Office', 'Other']).withMessage('Invalid address type'),
     body('address').notEmpty().withMessage('Address is required'),
     body('landmark').optional({ nullable: true }).isString(),
     body('latitude').optional({ nullable: true }).isFloat({ min: -90, max: 90 }),
     body('longitude').optional({ nullable: true }).isFloat({ min: -180, max: 180 }),
     body('is_default').optional().isBoolean(),
+    body('receiver_name').optional({ nullable: true }).isString().isLength({ max: 255 }),
+    body('receiver_phone').optional({ nullable: true }).isString().isLength({ max: 40 }),
+    body('use_account_details').optional().isBoolean(),
   ]),
   asyncHandler(async (req, res) => {
     const address = await authService.upsertAddress(req.customer.id, req.body, req.params.addressId)

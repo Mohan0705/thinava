@@ -35,6 +35,15 @@ const inferAddressType = (label: string): AddressType => {
   return 'Other'
 }
 
+const getAddressType = (address?: Address | null): AddressType => {
+  const savedType = address?.addressType
+  if (savedType === 'Home' || savedType === 'Office' || savedType === 'Other') {
+    return savedType
+  }
+
+  return inferAddressType(address?.label || 'Home')
+}
+
 const splitAddress = (value: string) => {
   const parts = value
     .split(',')
@@ -57,11 +66,15 @@ export function AddressEditor({
   saving: boolean
   onSave: (payload: {
     label: string
+    address_type: AddressType
     address: string
     landmark?: string
     latitude?: number | null
     longitude?: number | null
     is_default: boolean
+    receiver_name?: string
+    receiver_phone?: string
+    use_account_details: boolean
   }) => Promise<void> | void
 }) {
   const user = useAuthStore((state) => state.user)
@@ -86,7 +99,11 @@ export function AddressEditor({
     const accountPhone = user?.phone || ''
     const parsedAddress = splitAddress(address?.fullAddress || address?.address || '')
     const initialLabel = address?.label || ''
-    const initialType = inferAddressType(initialLabel || 'Home')
+    const initialType = getAddressType(address)
+    const savedReceiverName = address?.receiverName?.trim() || ''
+    const savedReceiverPhone = address?.receiverPhone?.trim() || ''
+    const useAccountDetails =
+      address?.useAccountDetails ?? (!address || (!savedReceiverName && !savedReceiverPhone))
 
     setDraft({
       label: initialLabel,
@@ -101,9 +118,9 @@ export function AddressEditor({
           ? String(address.longitude)
           : '',
       isDefault: address?.isDefault || false,
-      receiverName: accountName,
-      receiverPhone: accountPhone,
-      useAccountDetails: true,
+      receiverName: useAccountDetails ? accountName : savedReceiverName,
+      receiverPhone: useAccountDetails ? accountPhone : savedReceiverPhone,
+      useAccountDetails,
       addressType: initialType,
     })
   }, [address, user?.fullName, user?.name, user?.phone])
@@ -173,11 +190,15 @@ export function AddressEditor({
 
     onSave({
       label: draft.label.trim() || draft.addressType,
+      address_type: draft.addressType,
       address: composedAddress,
       landmark: draft.landmark.trim() || undefined,
       latitude: draft.latitude ? Number(draft.latitude) : null,
       longitude: draft.longitude ? Number(draft.longitude) : null,
       is_default: draft.isDefault,
+      receiver_name: draft.useAccountDetails ? accountName.trim() : draft.receiverName.trim(),
+      receiver_phone: draft.useAccountDetails ? accountPhone.trim() : draft.receiverPhone.trim(),
+      use_account_details: draft.useAccountDetails,
     })
   }
 

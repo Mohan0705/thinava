@@ -190,7 +190,10 @@ export default function RestaurantPage() {
     )
   }
 
-  const isRestaurantAvailable = restaurant?.status === 'OPEN'
+  const isRestaurantAvailable = restaurant.isOpen && (!restaurant.status || restaurant.status === 'OPEN')
+  const restaurantStatusLabel = restaurant.status === 'TEMPORARILY_UNAVAILABLE'
+    ? 'Currently Unavailable'
+    : 'Currently Closed'
   const heroImage = restaurant.image?.trim() || restaurant.bannerImage?.trim() || FALLBACK_RESTAURANT_IMAGE
 
   return (
@@ -206,16 +209,26 @@ export default function RestaurantPage() {
             <div className="mt-2 flex flex-wrap items-center gap-3 text-sm text-white/90">
               <span className="inline-flex items-center gap-1 rounded-md bg-white/15 px-2 py-0.5 backdrop-blur-sm">
                 <Star className="h-3.5 w-3.5 fill-thinava-rating text-thinava-rating" />
-                <span className="font-semibold">{restaurant.rating}</span>
+                <span className="font-semibold">
+                  {Number(restaurant.rating || 0).toFixed(1)} ({restaurant.ratingCount ?? 0})
+                </span>
               </span>
               <span className="inline-flex items-center gap-1">
                 <Clock className="h-3.5 w-3.5" />
                 {restaurant.deliveryTime}
               </span>
-              <span className="inline-flex items-center gap-1">
+              {restaurant.formattedAddress ? (
+                <span className="inline-flex items-center gap-1">
+                  <MapPin className="h-3.5 w-3.5" />
+                  {restaurant.formattedAddress}
+                </span>
+              ) : null}
+              {!isRestaurantAvailable ? (
+                <span className="inline-flex items-center gap-1 rounded-full bg-white px-2.5 py-1 font-bold text-slate-900">
                 <MapPin className="h-3.5 w-3.5" />
-                {formatPrice(restaurant.priceForOne)} for one
-              </span>
+                  {restaurantStatusLabel}
+                </span>
+              ) : null}
             </div>
           </motion.div>
         </div>
@@ -249,13 +262,13 @@ export default function RestaurantPage() {
       ) : null}
 
       <div className="container mx-auto px-4 py-5 pb-24">
-        {restaurant.status && restaurant.status !== 'OPEN' && (
-          <div className="mb-5 flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3.5 text-sm font-medium text-amber-800">
+        {!isRestaurantAvailable && (
+          <div className="mb-5 flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 text-sm font-semibold text-slate-800 shadow-[0_16px_36px_-28px_rgba(15,23,42,0.35)]">
             <span className="relative flex h-2.5 w-2.5 shrink-0">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-500 opacity-75" />
-              <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-amber-500" />
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-slate-400 opacity-75" />
+              <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-slate-700" />
             </span>
-            This restaurant is not accepting orders. Add-to-cart is disabled.
+            {restaurantStatusLabel}. This restaurant is not accepting orders right now.
           </div>
         )}
 

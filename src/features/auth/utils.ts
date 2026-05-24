@@ -24,6 +24,7 @@ export const getUserInitials = (user?: Pick<User, 'name' | 'fullName'> | null) =
 export const mapAddressResponse = (address: Record<string, any>): Address => ({
   id: address.id,
   label: address.label,
+  addressType: address.address_type || address.addressType || undefined,
   address: address.address || address.full_address || address.fullAddress,
   fullAddress: address.address || address.full_address || address.fullAddress,
   landmark: address.landmark || undefined,
@@ -32,6 +33,9 @@ export const mapAddressResponse = (address: Record<string, any>): Address => ({
   longitude:
     address.longitude === null || address.longitude === undefined ? null : Number(address.longitude),
   isDefault: Boolean(address.is_default ?? address.isDefault),
+  receiverName: address.receiver_name || address.receiverName || undefined,
+  receiverPhone: address.receiver_phone || address.receiverPhone || undefined,
+  useAccountDetails: Boolean(address.use_account_details ?? address.useAccountDetails ?? true),
   legacyAddressId: address.legacy_address_id || address.legacyAddressId || null,
   createdAt: address.created_at || address.createdAt,
   updatedAt: address.updated_at || address.updatedAt,

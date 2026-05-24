@@ -4,7 +4,7 @@ import { motion } from 'framer-motion'
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
-import { ArrowRight, Sparkles, Flame, Timer, Star, Tag } from 'lucide-react'
+import { ArrowRight, Sparkles } from 'lucide-react'
 import Header from '@/components/layout/Header'
 import Footer from '@/components/layout/Footer'
 import MobileNav from '@/components/layout/MobileNav'
@@ -16,44 +16,6 @@ import { useAuthStore } from '@/store/authStore'
 import { HomeActiveOrderCard } from '@/components/customer/HomeActiveOrderCard'
 import { SectionHeading } from '@/components/customer/SectionHeading'
 import { RestaurantCard, RestaurantCardSkeleton } from '@/components/customer/RestaurantCard'
-
-const QUICK_ACTIONS = [
-  {
-    title: 'Free Delivery',
-    subtitle: 'On Rs300+',
-    href: '#restaurants',
-    gradient: 'from-[#FF6B35] to-[#FF8A5B]',
-    icon: Tag,
-  },
-  {
-    title: 'Under Rs99',
-    subtitle: 'Budget picks',
-    href: '/restaurants?category=Snacks',
-    gradient: 'from-[#F97316] to-[#FB923C]',
-    icon: Flame,
-  },
-  {
-    title: 'Fast Delivery',
-    subtitle: '30 mins avg',
-    href: '#restaurants',
-    gradient: 'from-[#1F2937] to-[#374151]',
-    icon: Timer,
-  },
-  {
-    title: 'Best Rated',
-    subtitle: '4.0+ and above',
-    href: '/restaurants',
-    gradient: 'from-[#B45309] to-[#F59E0B]',
-    icon: Star,
-  },
-  {
-    title: 'Biryani',
-    subtitle: 'Local favourites',
-    href: '/restaurants?category=Biryani',
-    gradient: 'from-[#DC2626] to-[#F97316]',
-    icon: Sparkles,
-  },
-]
 
 const PROMO_BANNERS = [
   {
@@ -242,41 +204,6 @@ export default function HomePage() {
         </div>
 
         <HomeActiveOrderCard />
-
-        <section className="mt-5 px-4 md:container md:mx-auto">
-          <SectionHeading
-            title="Order by mood"
-            subtitle="Fast shortcuts for tonight's cravings"
-            className="mb-3"
-          />
-          <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide snap-x snap-mandatory">
-            {QUICK_ACTIONS.map((action, index) => {
-              const Icon = action.icon
-              return (
-                <motion.div
-                  key={action.title}
-                  initial={{ opacity: 0, x: 12 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: index * 0.05 }}
-                  className="snap-start"
-                >
-                  <Link
-                    href={action.href}
-                    className={`flex h-[106px] w-[150px] shrink-0 flex-col justify-between rounded-[1.6rem] bg-gradient-to-br ${action.gradient} p-4 text-white shadow-[0_16px_35px_-16px_rgba(17,24,39,0.42)] transition-transform active:scale-[0.98]`}
-                  >
-                    <span className="flex h-9 w-9 items-center justify-center rounded-2xl bg-white/12 backdrop-blur-sm">
-                      <Icon className="h-[18px] w-[18px] opacity-90" />
-                    </span>
-                    <div>
-                      <p className="text-sm font-bold leading-tight">{action.title}</p>
-                      <p className="mt-1 text-[11px] text-white/78">{action.subtitle}</p>
-                    </div>
-                  </Link>
-                </motion.div>
-              )
-            })}
-          </div>
-        </section>
 
         <section className="mt-6 px-4 md:container md:mx-auto md:py-2">
           <div className="rounded-[2rem] border border-white/75 bg-[linear-gradient(180deg,rgba(255,255,255,0.92),rgba(255,248,244,0.72))] p-4 shadow-[0_20px_45px_-28px_rgba(17,24,39,0.2)] md:p-5">

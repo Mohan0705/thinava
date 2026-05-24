@@ -1,28 +1,33 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { ApiError } from '@/lib/api'
 import { customerAuthApi } from '@/features/auth/api'
 import { useAuthStore } from '@/store/authStore'
 
 export function AuthBootstrap() {
   const token = useAuthStore((state) => state.token)
-  const user = useAuthStore((state) => state.user)
-  const stats = useAuthStore((state) => state.stats)
   const hydrated = useAuthStore((state) => state.hydrated)
   const setAuth = useAuthStore((state) => state.setAuth)
   const logout = useAuthStore((state) => state.logout)
+  const fetchedTokenRef = useRef<string | null>(null)
 
   useEffect(() => {
-    if (!hydrated || !token) {
+    if (!hydrated) {
       return
     }
 
-    if (user && stats !== null) {
+    if (!token) {
+      fetchedTokenRef.current = null
+      return
+    }
+
+    if (fetchedTokenRef.current === token) {
       return
     }
 
     let cancelled = false
+    fetchedTokenRef.current = token
 
     const loadProfile = async () => {
       try {
@@ -42,7 +47,7 @@ export function AuthBootstrap() {
     return () => {
       cancelled = true
     }
-  }, [hydrated, logout, setAuth, stats, token, user])
+  }, [hydrated, logout, setAuth, token])
 
   return null
 }

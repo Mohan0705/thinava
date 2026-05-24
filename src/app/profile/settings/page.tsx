@@ -15,7 +15,6 @@ export default function ProfileSettingsPage() {
   const setUser = useAuthStore((state) => state.setUser)
   const [fullName, setFullName] = useState('')
   const [email, setEmail] = useState('')
-  const [profileImage, setProfileImage] = useState('')
   const [saving, setSaving] = useState(false)
   const initializedForUserIdRef = useRef<string | null>(null)
 
@@ -28,7 +27,6 @@ export default function ProfileSettingsPage() {
     if (initializedForUserIdRef.current !== user.id) {
       setFullName(user.fullName || user.name || '')
       setEmail(user.email || '')
-      setProfileImage(user.profileImage || '')
       initializedForUserIdRef.current = user.id
     }
   }, [user])
@@ -55,7 +53,6 @@ export default function ProfileSettingsPage() {
       const updatedUser = await customerAuthApi.updateProfile(token, {
         full_name: fullName.trim(),
         email: email?.trim() || null,
-        profile_image: profileImage?.trim() || null,
       })
       
       setUser(updatedUser)
@@ -122,7 +119,6 @@ export default function ProfileSettingsPage() {
         <CardContent className="space-y-4">
           <Input value={fullName} onChange={(event) => setFullName(event.target.value)} placeholder="Full name" />
           <Input value={email} onChange={(event) => setEmail(event.target.value)} placeholder="Email address" type="email" />
-          <Input value={profileImage} onChange={(event) => setProfileImage(event.target.value)} placeholder="Profile image URL" />
           <Button onClick={handleSave} disabled={saving}>
             {saving ? 'Saving...' : 'Save Changes'}
           </Button>

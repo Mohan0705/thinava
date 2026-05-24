@@ -15,12 +15,16 @@ export interface User {
 export interface Address {
   id: string
   label: string
+  addressType?: 'Home' | 'Office' | 'Other'
   address?: string
   fullAddress: string
   landmark?: string
   latitude?: number | null
   longitude?: number | null
   isDefault: boolean
+  receiverName?: string
+  receiverPhone?: string
+  useAccountDetails?: boolean
   legacyAddressId?: string | null
   createdAt?: string
   updatedAt?: string
@@ -32,6 +36,7 @@ export interface Restaurant {
   image: string
   logo: string
   rating: number
+  ratingCount?: number
   deliveryTime: string
   priceForOne: number
   cuisines: string[]

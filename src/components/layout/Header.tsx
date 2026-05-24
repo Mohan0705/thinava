@@ -1,18 +1,21 @@
 'use client'
 
 import Link from 'next/link'
+import { usePathname } from 'next/navigation'
 import { ChevronDown, MapPin, ShoppingCart, User } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { useCartStore } from '@/store/cartStore'
 import { useAuthStore } from '@/store/authStore'
 import LiveSearchBar from '@/components/customer/LiveSearchBar'
 import { cn } from '@/lib/utils'
+import { BackButton } from '@/components/layout/BackButton'
 
 type HeaderProps = {
   immersive?: boolean
 }
 
 export default function Header({ immersive = false }: HeaderProps) {
+  const pathname = usePathname()
   const itemCount = useCartStore((state) => state.getItemCount())
   const token = useAuthStore((state) => state.token)
   const user = useAuthStore((state) => state.user)
@@ -22,6 +25,8 @@ export default function Header({ immersive = false }: HeaderProps) {
     defaultAddress?.fullAddress ||
     defaultAddress?.address ||
     'Tadepalligudem, Andhra Pradesh'
+  const locationLabel = defaultAddress?.addressType || defaultAddress?.label || 'Home'
+  const showBackButton = Boolean(pathname && pathname !== '/')
 
   const renderLocationBlock = (dark: boolean) => (
     <Link
@@ -48,7 +53,7 @@ export default function Header({ immersive = false }: HeaderProps) {
                 dark ? 'text-white' : 'text-[#111827]'
               )}
             >
-              Home
+              {locationLabel}
             </span>
             <ChevronDown
               className={cn(
@@ -57,7 +62,7 @@ export default function Header({ immersive = false }: HeaderProps) {
               )}
             />
           </div>
-          <p className={cn('truncate text-sm', dark ? 'text-white/68' : 'text-[#6B7280]')}>
+          <p className={cn('truncate text-sm', dark ? 'text-white/85' : 'text-[#5B6472]')}>
             {locationPreview}
           </p>
         </div>
@@ -122,6 +127,7 @@ export default function Header({ immersive = false }: HeaderProps) {
     <header className="sticky top-0 z-40 border-b border-white/70 bg-[#FFF8F4]/92 backdrop-blur-xl">
       <div className="container mx-auto px-4 py-3">
         <div className="flex items-center gap-4">
+          {showBackButton ? <BackButton /> : null}
           <div className="max-w-[260px] min-w-0">{renderLocationBlock(false)}</div>
           <div className="hidden min-w-0 flex-1 md:block">
             <LiveSearchBar />
@@ -146,6 +152,7 @@ export default function Header({ immersive = false }: HeaderProps) {
             <div className="absolute right-0 top-0 h-24 w-24 rounded-full bg-[#F59E0B]/18 blur-3xl" />
 
             <div className="relative flex items-start justify-between gap-3">
+              {showBackButton ? <BackButton dark /> : null}
               {renderLocationBlock(true)}
               {headerActions}
             </div>
