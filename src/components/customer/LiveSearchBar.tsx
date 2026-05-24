@@ -129,7 +129,7 @@ export default function LiveSearchBar() {
             }}
             onFocus={() => setShowDropdown(true)}
             placeholder={t('searchPlaceholder')}
-            className="w-full pl-12 pr-10 py-3 rounded-full border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 focus:bg-white dark:focus:bg-slate-900 transition-all text-sm font-medium shadow-sm hover:shadow-md"
+            className="w-full rounded-full border border-thinava-border bg-white py-3 pl-12 pr-10 text-sm font-medium text-thinava-text shadow-search placeholder:text-gray-400 transition-all focus:border-thinava-primary focus:bg-white focus:outline-none focus:ring-2 focus:ring-thinava-primary/15"
           />
           {query && (
             <button
@@ -145,8 +145,8 @@ export default function LiveSearchBar() {
             onClick={() => setShowFilters(!showFilters)}
             className={`absolute right-4 top-1/2 -translate-y-1/2 ${
               showFilters || vegOnly !== null || minRating > 0 || maxPrice
-                ? 'text-orange-500'
-                : 'text-gray-400 dark:text-gray-500 hover:text-slate-600 dark:hover:text-slate-300'
+                ? 'text-thinava-primary'
+                : 'text-gray-400 hover:text-thinava-text'
             }`}
             title={t('searchFilters')}
           >

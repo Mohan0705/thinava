@@ -3,7 +3,7 @@
 import { motion } from 'framer-motion'
 import Link from 'next/link'
 import Image from 'next/image'
-import { Plus, Minus, Trash2, ShoppingBag } from 'lucide-react'
+import { Plus, Minus, Trash2, ShoppingBag, ArrowRight } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Card, CardContent } from '@/components/ui/Card'
 import { useCartStore } from '@/store/cartStore'
@@ -11,10 +11,43 @@ import { formatPrice, calculateDeliveryFee, calculateTax } from '@/lib/utils'
 import Header from '@/components/layout/Header'
 import Footer from '@/components/layout/Footer'
 import MobileNav from '@/components/layout/MobileNav'
+import { cn } from '@/lib/utils'
+
+function QuantityControl({
+  quantity,
+  onDecrease,
+  onIncrease,
+}: {
+  quantity: number
+  onDecrease: () => void
+  onIncrease: () => void
+}) {
+  return (
+    <div className="flex items-center gap-1 rounded-full border border-thinava-border bg-thinava-bg p-0.5">
+      <button
+        type="button"
+        onClick={onDecrease}
+        className="flex h-9 w-9 items-center justify-center rounded-full bg-white text-thinava-primary transition hover:bg-orange-50 thinava-touch"
+        aria-label="Decrease quantity"
+      >
+        <Minus className="h-4 w-4" />
+      </button>
+      <span className="min-w-[2rem] text-center text-sm font-bold text-thinava-text">{quantity}</span>
+      <button
+        type="button"
+        onClick={onIncrease}
+        className="flex h-9 w-9 items-center justify-center rounded-full thinava-gradient-bg text-white thinava-touch"
+        aria-label="Increase quantity"
+      >
+        <Plus className="h-4 w-4" />
+      </button>
+    </div>
+  )
+}
 
 export default function CartPage() {
   const { items, updateQuantity, removeItem, getSubtotal } = useCartStore()
-  
+
   const subtotal = getSubtotal()
   const deliveryFee = calculateDeliveryFee(subtotal)
   const tax = calculateTax(subtotal)
@@ -22,17 +55,20 @@ export default function CartPage() {
 
   if (items.length === 0) {
     return (
-      <div className="min-h-screen bg-gray-50 pb-20 md:pb-0">
+      <div className="thinava-page-mobile">
         <Header />
         <div className="container mx-auto px-4 py-16">
-          <div className="text-center">
-            <div className="w-32 h-32 mx-auto mb-6 bg-gray-100 rounded-full flex items-center justify-center">
-              <ShoppingBag className="w-16 h-16 text-gray-400" />
+          <div className="mx-auto max-w-sm text-center">
+            <div className="mx-auto mb-6 flex h-24 w-24 items-center justify-center rounded-2xl bg-orange-50">
+              <ShoppingBag className="h-12 w-12 text-thinava-primary/70" />
             </div>
-            <h2 className="text-2xl font-bold text-gray-900 mb-2">Your cart is empty</h2>
-            <p className="text-gray-600 mb-6">Add items to get started</p>
-            <Link href="/">
-              <Button>Browse Restaurants</Button>
+            <h2 className="text-xl font-bold text-thinava-text">Your cart is empty</h2>
+            <p className="mt-2 text-sm text-gray-500">Discover local favourites and add items to get started.</p>
+            <Link href="/" className="mt-6 inline-flex">
+              <Button className="gap-2">
+                Browse restaurants
+                <ArrowRight className="h-4 w-4" />
+              </Button>
             </Link>
           </div>
         </div>
@@ -43,72 +79,53 @@ export default function CartPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-20 md:pb-0">
+    <div className="thinava-page-mobile">
       <Header />
-      
-      <div className="container mx-auto px-4 py-8">
-        <h1 className="text-3xl font-bold mb-8 text-gray-900">Your Cart</h1>
-        
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Cart Items */}
-          <div className="lg:col-span-2 space-y-4">
+
+      <div className="container mx-auto px-4 py-6">
+        <h1 className="text-xl font-bold text-thinava-text md:text-2xl">Your cart</h1>
+        <p className="mt-1 text-sm text-gray-500">{items.length} item{items.length !== 1 ? 's' : ''}</p>
+
+        <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
+          <div className="space-y-3 lg:col-span-2">
             {items.map((item, index) => (
               <motion.div
                 key={item.menuItem.id}
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: index * 0.05 }}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: index * 0.04 }}
               >
                 <Card>
-                  <CardContent className="p-4">
-                    <div className="flex gap-4">
-                      <div className="w-24 h-24 relative flex-shrink-0">
-                        <Image
-                          src={item.menuItem.image}
-                          alt={item.menuItem.name}
-                          width={100}
-                          height={100}
-                          className="w-full h-full object-cover rounded-xl"
+                  <CardContent className="flex gap-4 p-4">
+                    <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-xl">
+                      <Image
+                        src={item.menuItem.image}
+                        alt={item.menuItem.name}
+                        fill
+                        sizes="80px"
+                        className="object-cover"
+                      />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <h3 className="font-semibold text-thinava-text line-clamp-1">{item.menuItem.name}</h3>
+                      <p className="mt-0.5 text-sm font-semibold text-thinava-primary">
+                        {formatPrice(item.menuItem.price * item.quantity)}
+                      </p>
+                      <p className="text-xs text-gray-500">{formatPrice(item.menuItem.price)} each</p>
+                      <div className="mt-3 flex items-center justify-between">
+                        <QuantityControl
+                          quantity={item.quantity}
+                          onDecrease={() => updateQuantity(item.menuItem.id, item.quantity - 1)}
+                          onIncrease={() => updateQuantity(item.menuItem.id, item.quantity + 1)}
                         />
-                      </div>
-                      <div className="flex-1">
-                        <h3 className="font-semibold text-gray-900 mb-1">
-                          {item.menuItem.name}
-                        </h3>
-                        <p className="text-sm text-gray-600 mb-2">
-                          {formatPrice(item.menuItem.price)}
-                        </p>
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-1">
-                            <Button
-                              size="sm"
-                              className="h-10 w-10 rounded-full border border-orange-200 bg-white p-0 text-xl font-black leading-none text-orange-700 shadow-none hover:bg-orange-100 active:scale-90 transition-transform"
-                              onClick={() => updateQuantity(item.menuItem.id, item.quantity - 1)}
-                            >
-                              <span aria-hidden="true">-</span>
-                              <span className="sr-only">Decrease quantity</span>
-                            </Button>
-                            <span className="min-w-[2.5rem] text-center text-lg font-black text-gray-900 dark:text-white bg-orange-50 dark:bg-slate-800 rounded-lg py-1 px-2">
-                              {item.quantity}
-                            </span>
-                            <Button
-                              size="sm"
-                              className="h-10 w-10 rounded-full bg-gradient-to-r from-orange-500 to-red-500 p-0 text-xl font-black leading-none text-white shadow-lg shadow-orange-500/25 hover:from-orange-600 hover:to-red-600 active:scale-90 transition-transform"
-                              onClick={() => updateQuantity(item.menuItem.id, item.quantity + 1)}
-                            >
-                              <span aria-hidden="true">+</span>
-                              <span className="sr-only">Increase quantity</span>
-                            </Button>
-                          </div>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => removeItem(item.menuItem.id)}
-                            className="text-red-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
-                        </div>
+                        <button
+                          type="button"
+                          onClick={() => removeItem(item.menuItem.id)}
+                          className="rounded-lg p-2 text-gray-400 transition hover:bg-red-50 hover:text-thinava-error"
+                          aria-label="Remove item"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
                       </div>
                     </div>
                   </CardContent>
@@ -117,42 +134,41 @@ export default function CartPage() {
             ))}
           </div>
 
-          {/* Order Summary */}
           <div className="lg:col-span-1">
             <Card className="sticky top-24">
-              <CardContent className="p-6">
-                <h2 className="text-xl font-bold mb-4 text-gray-900">Order Summary</h2>
-                
-                <div className="space-y-3 mb-6">
+              <CardContent className="p-5">
+                <h2 className="font-bold text-thinava-text">Order summary</h2>
+
+                <div className="mt-4 space-y-2.5 text-sm">
                   <div className="flex justify-between text-gray-600">
                     <span>Subtotal</span>
-                    <span>{formatPrice(subtotal)}</span>
+                    <span className="font-medium text-thinava-text">{formatPrice(subtotal)}</span>
                   </div>
                   <div className="flex justify-between text-gray-600">
-                    <span>Delivery Fee</span>
-                    <span>{deliveryFee === 0 ? 'FREE' : formatPrice(deliveryFee)}</span>
+                    <span>Delivery</span>
+                    <span className={cn('font-medium', deliveryFee === 0 && 'text-thinava-success')}>
+                      {deliveryFee === 0 ? 'FREE' : formatPrice(deliveryFee)}
+                    </span>
                   </div>
                   <div className="flex justify-between text-gray-600">
                     <span>Tax (5%)</span>
-                    <span>{formatPrice(tax)}</span>
+                    <span className="font-medium text-thinava-text">{formatPrice(tax)}</span>
                   </div>
-                  <div className="border-t pt-3 flex justify-between font-bold text-lg text-gray-900">
+                  <div className="flex justify-between border-t border-thinava-border pt-3 text-base font-bold text-thinava-text">
                     <span>Total</span>
                     <span>{formatPrice(total)}</span>
                   </div>
                 </div>
 
-                <Link href="/checkout">
-                  <Button
-                    className="w-full bg-slate-900 text-white shadow-lg shadow-slate-900/15 hover:bg-slate-800"
-                    size="lg"
-                  >
-                    Proceed to Checkout
+                <Link href="/checkout" className="mt-5 block">
+                  <Button className="w-full gap-2" size="lg">
+                    Proceed to checkout
+                    <ArrowRight className="h-4 w-4" />
                   </Button>
                 </Link>
 
                 {subtotal < 300 && (
-                  <p className="text-sm text-orange-600 mt-3 text-center">
+                  <p className="mt-3 text-center text-xs text-thinava-primary">
                     Add {formatPrice(300 - subtotal)} more for free delivery
                   </p>
                 )}

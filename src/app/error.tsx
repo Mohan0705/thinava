@@ -1,8 +1,6 @@
 'use client'
 
 import { useEffect } from 'react'
-import { AlertTriangle } from 'lucide-react'
-import { Button } from '@/components/ui/Button'
 import { SUPPORT_TEL } from '@/lib/support'
 
 export default function Error({
@@ -17,28 +15,29 @@ export default function Error({
   }, [error])
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[#fffaf5] px-4">
-      <div className="max-w-lg rounded-[32px] border border-orange-100 bg-white p-8 text-center shadow-[0_30px_80px_-40px_rgba(249,115,22,0.35)]">
-        <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-orange-100 text-orange-600">
-          <AlertTriangle className="h-6 w-6" />
+    <div className="flex min-h-screen items-center justify-center bg-thinava-bg px-4">
+      <div className="max-w-lg rounded-2xl border border-thinava-border bg-white p-8 text-center shadow-card">
+        <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-orange-50 text-2xl">
+          !
         </div>
-        <h1 className="mt-5 text-3xl font-bold text-slate-950">Something went wrong</h1>
-        <p className="mt-3 text-sm text-slate-600">
-          Thinava hit an unexpected issue, but your session and data are safe. Try the page again or reach support if it keeps happening.
+        <h1 className="mt-4 text-xl font-bold text-thinava-text">Something went wrong</h1>
+        <p className="mt-2 text-sm text-gray-600">
+          Thinava hit an unexpected issue. Your session and data are safe. Try again or contact support.
         </p>
         <div className="mt-6 flex flex-wrap justify-center gap-3">
-          <Button type="button" onClick={reset}>
-            Try again
-          </Button>
-          <Button
+          <button
             type="button"
-            variant="outline"
-            onClick={() => {
-              window.location.href = SUPPORT_TEL
-            }}
+            onClick={reset}
+            className="inline-flex h-11 items-center justify-center rounded-xl bg-thinava-primary px-5 text-sm font-semibold text-white transition hover:brightness-105"
+          >
+            Try again
+          </button>
+          <a
+            href={SUPPORT_TEL}
+            className="inline-flex h-11 items-center justify-center rounded-xl border border-thinava-border bg-white px-5 text-sm font-semibold text-thinava-text transition hover:bg-thinava-bg"
           >
             Call support
-          </Button>
+          </a>
         </div>
       </div>
     </div>

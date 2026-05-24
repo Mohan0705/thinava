@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from 'next'
-import { Inter } from 'next/font/google'
+import { Plus_Jakarta_Sans } from 'next/font/google'
 import './globals.css'
 import { Toaster } from 'sonner'
 import { DevCacheReset } from '@/components/app/DevCacheReset'
@@ -7,13 +7,17 @@ import { AuthBootstrap } from '@/features/auth/AuthBootstrap'
 import { AuthSessionEvents } from '@/features/auth/AuthSessionEvents'
 import FloatingSupportButton from '@/components/support/FloatingSupportButton'
 
-const inter = Inter({ subsets: ['latin'] })
+const plusJakarta = Plus_Jakarta_Sans({
+  subsets: ['latin'],
+  variable: '--font-sans',
+  display: 'swap',
+})
 
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
   maximumScale: 1,
-  themeColor: '#f97316',
+  themeColor: '#FF6B35',
 }
 
 export const metadata: Metadata = {
@@ -49,7 +53,7 @@ export default function RootLayout({
           `
         }} />
       </head>
-      <body className={inter.className}>
+      <body className={`${plusJakarta.variable} font-sans`}>
         <DevCacheReset />
         <AuthBootstrap />
         <AuthSessionEvents />

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { motion } from 'framer-motion'
-import { Clock3, Navigation, Sparkles, Truck } from 'lucide-react'
+import { Clock3, Navigation, Truck } from 'lucide-react'
 import { apiRequest } from '@/lib/api'
 import { getRealtimeSocket, releaseRealtimeSocket } from '@/lib/realtime'
 import { useAuthStore } from '@/store/authStore'
@@ -26,51 +26,31 @@ const stageIndexForOrder = (order: ActiveCustomerOrder) => {
   const status = normalize(order.status)
   const deliveryStatus = normalize(order.delivery_status)
 
-  if (status === 'delivered' || deliveryStatus === 'delivered') {
-    return 4
-  }
-
-  if (deliveryStatus === 'reached_customer') {
-    return 3
-  }
-
-  if (deliveryStatus === 'picked_up' || status === 'out_for_delivery') {
-    return 2
-  }
-
-  if (status === 'preparing' || status === 'ready_for_pickup') {
-    return 1
-  }
-
+  if (status === 'delivered' || deliveryStatus === 'delivered') return 4
+  if (deliveryStatus === 'reached_customer') return 3
+  if (deliveryStatus === 'picked_up' || status === 'out_for_delivery') return 2
+  if (status === 'preparing' || status === 'ready_for_pickup') return 1
   return 0
 }
 
-const progressStages = ['Order placed', 'Preparing', 'Picked up', 'Near you', 'Delivered']
+const progressStages = ['Placed', 'Preparing', 'Picked up', 'Near you', 'Delivered']
 
 const playChime = () => {
   try {
-    const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)()
+    const audioCtx = new (window.AudioContext || (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext!)()
     const oscillator = audioCtx.createOscillator()
     const gainNode = audioCtx.createGain()
-
     oscillator.connect(gainNode)
     gainNode.connect(audioCtx.destination)
-
     oscillator.type = 'sine'
     const now = audioCtx.currentTime
-    oscillator.frequency.setValueAtTime(659.25, now) // E5
+    oscillator.frequency.setValueAtTime(659.25, now)
     gainNode.gain.setValueAtTime(0, now)
     gainNode.gain.linearRampToValueAtTime(0.3, now + 0.05)
     gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.3)
-
-    oscillator.frequency.setValueAtTime(783.99, now + 0.15) // G5
-    gainNode.gain.setValueAtTime(0, now + 0.15)
-    gainNode.gain.linearRampToValueAtTime(0.3, now + 0.2)
-    gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.5)
-
     oscillator.start(now)
     oscillator.stop(now + 0.6)
-  } catch (error) {
+  } catch {
     // Ignore audio context autoplay blocks
   }
 }
@@ -112,17 +92,13 @@ export function HomeActiveOrderCard() {
           token,
         })
 
-        if (!mounted) {
-          return
-        }
+        if (!mounted) return
 
         const currentOrder =
           (response.orders || []).find((order) => !terminalStatuses.has(normalize(order.status))) || null
         setActiveOrder(currentOrder)
       } catch {
-        if (mounted) {
-          setActiveOrder(null)
-        }
+        if (mounted) setActiveOrder(null)
       }
     }
 
@@ -132,7 +108,7 @@ export function HomeActiveOrderCard() {
     const refreshFromRealtime = (event?: DeliveryRealtimeEvent) => {
       if (mounted && event?.order) {
         const realtimeOrder = event.order
-        
+
         setActiveOrder((prev) => {
           if (prev && normalize(prev.status) !== normalize(realtimeOrder.status)) {
             playChime()
@@ -141,11 +117,9 @@ export function HomeActiveOrderCard() {
               `Your order is now: ${String(realtimeOrder.status).replace(/_/g, ' ').toUpperCase()}`
             )
           }
-          
-          if (terminalStatuses.has(normalize(realtimeOrder.status))) {
-            return null
-          }
-          
+
+          if (terminalStatuses.has(normalize(realtimeOrder.status))) return null
+
           return {
             id: realtimeOrder.id,
             restaurant_name: realtimeOrder.restaurant_name,
@@ -168,9 +142,7 @@ export function HomeActiveOrderCard() {
     }, 60000)
 
     const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        void loadOrders()
-      }
+      if (document.visibilityState === 'visible') void loadOrders()
     }
     document.addEventListener('visibilitychange', handleVisibilityChange)
 
@@ -186,68 +158,59 @@ export function HomeActiveOrderCard() {
 
   const currentStage = useMemo(() => (activeOrder ? stageIndexForOrder(activeOrder) : 0), [activeOrder])
 
-  if (!hydrated || !token || !activeOrder) {
-    return null
-  }
+  if (!hydrated || !token || !activeOrder) return null
 
   return (
     <motion.section
-      initial={{ opacity: 0, y: 18 }}
+      initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
-      className="container mx-auto px-4 py-8"
+      className="container mx-auto px-4 pt-6"
     >
-      <div className="overflow-hidden rounded-[32px] border border-orange-100 bg-[linear-gradient(135deg,#111827_0%,#1f2937_42%,#f97316_160%)] p-6 text-white shadow-[0_35px_90px_-45px_rgba(249,115,22,0.55)]">
-        <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="overflow-hidden rounded-2xl border border-thinava-border bg-thinava-text p-5 text-white shadow-card">
+        <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <div className="inline-flex items-center gap-2 rounded-full border border-orange-300/20 bg-orange-500/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.22em] text-orange-100">
-              <Sparkles className="h-3.5 w-3.5" />
+            <p className="text-xs font-semibold uppercase tracking-wider text-thinava-primary">
               Active order
-            </div>
-            <h2 className="mt-4 text-2xl font-bold">{activeOrder.restaurant_name || 'Your live order'}</h2>
-            <p className="mt-2 text-sm text-white/70">
-              Rider: {activeOrder.rider_name || 'Assigning delivery partner'}
+            </p>
+            <h2 className="mt-1 text-lg font-bold">{activeOrder.restaurant_name || 'Your order'}</h2>
+            <p className="mt-1 text-sm text-gray-400">
+              Rider: {activeOrder.rider_name || 'Assigning partner'}
             </p>
           </div>
-
           <Link
             href="/orders"
-            className="inline-flex items-center rounded-full bg-white px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-orange-50"
+            className="inline-flex rounded-xl bg-thinava-primary px-4 py-2.5 text-sm font-semibold text-white transition hover:brightness-105"
           >
-            Live tracking
+            Track order
           </Link>
         </div>
 
-        <div className="mt-6 grid gap-4 md:grid-cols-3">
-          <div className="rounded-[24px] border border-white/10 bg-white/10 p-4 backdrop-blur">
-            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-white/60">
-              <Clock3 className="h-4 w-4 text-orange-200" />
-              ETA
-            </div>
-            <p className="mt-3 text-3xl font-bold">{activeOrder.estimated_total_eta_minutes || '--'} min</p>
+        <div className="mt-4 grid grid-cols-3 gap-3">
+          <div className="rounded-xl bg-white/10 p-3">
+            <Clock3 className="h-4 w-4 text-thinava-primary" />
+            <p className="mt-2 text-xl font-bold">{activeOrder.estimated_total_eta_minutes || '--'}</p>
+            <p className="text-[11px] text-gray-400">min ETA</p>
           </div>
-          <div className="rounded-[24px] border border-white/10 bg-white/10 p-4 backdrop-blur">
-            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-white/60">
-              <Truck className="h-4 w-4 text-emerald-200" />
-              Order status
-            </div>
-            <p className="mt-3 text-lg font-bold">{String(activeOrder.status || 'Placed').replace(/_/g, ' ')}</p>
+          <div className="rounded-xl bg-white/10 p-3">
+            <Truck className="h-4 w-4 text-thinava-success" />
+            <p className="mt-2 text-sm font-bold capitalize">
+              {String(activeOrder.status || 'placed').replace(/_/g, ' ')}
+            </p>
+            <p className="text-[11px] text-gray-400">Status</p>
           </div>
-          <div className="rounded-[24px] border border-white/10 bg-white/10 p-4 backdrop-blur">
-            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-white/60">
-              <Navigation className="h-4 w-4 text-sky-200" />
-              Delivery flow
-            </div>
-            <p className="mt-3 text-lg font-bold">{progressStages[currentStage]}</p>
+          <div className="rounded-xl bg-white/10 p-3">
+            <Navigation className="h-4 w-4 text-blue-300" />
+            <p className="mt-2 text-sm font-bold">{progressStages[currentStage]}</p>
+            <p className="text-[11px] text-gray-400">Stage</p>
           </div>
         </div>
 
-        <div className="mt-6 grid gap-3 md:grid-cols-5">
+        <div className="mt-4 flex gap-1">
           {progressStages.map((stage, index) => (
-            <div key={stage} className="space-y-2">
-              <div className={`h-2 rounded-full ${index <= currentStage ? 'bg-white' : 'bg-white/20'}`} />
-              <p className={`text-xs font-medium ${index <= currentStage ? 'text-white' : 'text-white/45'}`}>
-                {stage}
-              </p>
+            <div key={stage} className="flex-1">
+              <div
+                className={`h-1 rounded-full ${index <= currentStage ? 'bg-thinava-primary' : 'bg-white/20'}`}
+              />
             </div>
           ))}
         </div>

@@ -18,9 +18,9 @@ export function PhoneAuthForm({
   return (
     <form onSubmit={onSubmit} className="space-y-5">
       <div>
-        <label className="mb-2 block text-sm font-medium text-slate-700">Mobile Number</label>
-        <div className="flex gap-3">
-          <div className="flex h-12 items-center rounded-xl border-2 border-gray-200 bg-gray-50 px-4 font-semibold text-slate-700">
+        <label className="mb-2 block text-sm font-medium text-thinava-text">Mobile number</label>
+        <div className="flex gap-2">
+          <div className="flex h-12 shrink-0 items-center rounded-xl border border-thinava-border bg-thinava-bg px-3.5 text-sm font-semibold text-thinava-text">
             +91
           </div>
           <Input
@@ -35,12 +35,12 @@ export function PhoneAuthForm({
             className="flex-1"
           />
         </div>
-        <p className="mt-2 text-sm text-slate-500">
+        <p className="mt-2 text-xs text-gray-500">
           We&apos;ll automatically create your account if you&apos;re new.
         </p>
       </div>
 
-      <div className="rounded-2xl border border-orange-100 bg-orange-50/80 px-4 py-3 text-sm text-orange-800">
+      <div className="rounded-xl border border-orange-100 bg-orange-50 px-3.5 py-2.5 text-xs text-thinava-primary">
         Using development OTP mode. Check the toast or console for the code.
       </div>
 

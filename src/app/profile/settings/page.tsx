@@ -80,12 +80,12 @@ export default function ProfileSettingsPage() {
           {accountHighlights.map((item) => {
             const Icon = item.icon
             return (
-              <div key={item.label} className="rounded-2xl border bg-gray-50 p-4">
-                <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-orange-100">
-                  <Icon className="h-5 w-5 text-orange-600" />
+              <div key={item.label} className="rounded-xl border border-thinava-border bg-thinava-bg p-4">
+                <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-orange-50">
+                  <Icon className="h-5 w-5 text-thinava-primary" />
                 </div>
-                <p className="text-sm text-gray-500">{item.label}</p>
-                <p className="mt-1 font-semibold text-gray-900">{item.value}</p>
+                <p className="text-xs text-gray-500">{item.label}</p>
+                <p className="mt-1 text-sm font-semibold text-thinava-text">{item.value}</p>
               </div>
             )
           })}
@@ -97,7 +97,7 @@ export default function ProfileSettingsPage() {
           <CardTitle>Account Protection</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="rounded-2xl border border-green-200 bg-green-50 p-4 text-green-900">
+          <div className="rounded-xl border border-green-200 bg-green-50 p-4 text-green-900">
             <div className="flex items-start gap-3">
               <ShieldCheck className="mt-0.5 h-5 w-5 flex-shrink-0" />
               <div>
