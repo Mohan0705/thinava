@@ -20,13 +20,13 @@ import { RestaurantCard, RestaurantCardSkeleton } from '@/components/customer/Re
 const QUICK_ACTIONS = [
   {
     title: 'Free Delivery',
-    subtitle: 'On ₹300+',
+    subtitle: 'On Rs300+',
     href: '#restaurants',
     gradient: 'from-[#FF6B35] to-[#FF8A5B]',
     icon: Tag,
   },
   {
-    title: 'Under ₹99',
+    title: 'Under Rs99',
     subtitle: 'Budget picks',
     href: '/restaurants?category=Snacks',
     gradient: 'from-[#F97316] to-[#FB923C]',
@@ -41,7 +41,7 @@ const QUICK_ACTIONS = [
   },
   {
     title: 'Best Rated',
-    subtitle: '4.0★ & above',
+    subtitle: '4.0+ and above',
     href: '/restaurants',
     gradient: 'from-[#B45309] to-[#F59E0B]',
     icon: Star,
@@ -55,10 +55,53 @@ const QUICK_ACTIONS = [
   },
 ]
 
+const PROMO_BANNERS = [
+  {
+    eyebrow: 'Thinava Select',
+    title: 'Warm meals for your evening cravings',
+    subtitle: 'Curated local favorites with quick delivery windows and fresh kitchen offers.',
+    cta: 'Browse top picks',
+    href: '#restaurants',
+    gradient: 'from-[#10203B] via-[#17315C] to-[#FF6B35]',
+    image:
+      'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=900&q=80',
+  },
+  {
+    eyebrow: 'Weekend Specials',
+    title: 'Family combos that feel worth ordering in',
+    subtitle: 'Big biryani bowls, grills, and desserts lined up for relaxed nights at home.',
+    cta: 'See weekend deals',
+    href: '/restaurants',
+    gradient: 'from-[#7C2D12] via-[#C2410C] to-[#FDBA74]',
+    image:
+      'https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=900&q=80',
+  },
+  {
+    eyebrow: 'Fast Lane',
+    title: 'Reliable delivery when you just want food now',
+    subtitle: 'Quick-prep kitchens, comfort dishes, and smoother checkout from nearby partners.',
+    cta: 'Open fast delivery',
+    href: '/restaurants',
+    gradient: 'from-[#111827] via-[#1F2937] to-[#374151]',
+    image:
+      'https://images.unsplash.com/photo-1528605248644-14dd04022da1?w=900&q=80',
+  },
+]
+
+const FILTER_CHIPS = [
+  'Rating 4.0+',
+  'Previously ordered',
+  'Pure Veg',
+  'Fast Delivery',
+  'Under Rs199',
+  'Best Rated',
+]
+
 export default function HomePage() {
   const [allRestaurants, setAllRestaurants] = useState<Restaurant[]>([])
   const [loadingRestaurants, setLoadingRestaurants] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
+  const [activeFilterChip, setActiveFilterChip] = useState(FILTER_CHIPS[0])
   const token = useAuthStore((state) => state.token)
 
   useEffect(() => {
@@ -90,25 +133,87 @@ export default function HomePage() {
     }
   }, [])
 
-  const featuredRestaurants = allRestaurants.filter((r) => r.featured)
+  const featuredRestaurants = allRestaurants.filter((restaurant) => restaurant.featured)
 
   return (
     <div className="thinava-page-mobile bg-[#FFF8F4]">
       <Header immersive />
 
-      <main className="md:-mt-0">
+      <main className="relative">
+        <section className="px-4 pt-3 md:hidden">
+          <div className="flex gap-4 overflow-x-auto pb-2 scrollbar-hide snap-x snap-mandatory">
+            {PROMO_BANNERS.map((banner, index) => (
+              <motion.article
+                key={banner.title}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: index * 0.08 }}
+                className="snap-start"
+              >
+                <Link
+                  href={banner.href}
+                  className={`group relative flex h-[196px] w-[min(86vw,360px)] shrink-0 overflow-hidden rounded-[2rem] bg-gradient-to-br ${banner.gradient} p-5 text-white shadow-[0_20px_45px_-20px_rgba(17,24,39,0.45)]`}
+                >
+                  <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.24),transparent_34%)]" />
+                  <div className="absolute -right-10 -top-12 h-36 w-36 rounded-full bg-white/10 blur-2xl" />
+                  <div className="relative z-10 flex h-full max-w-[58%] flex-col justify-between">
+                    <div>
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-white/75">
+                        {banner.eyebrow}
+                      </p>
+                      <h2 className="mt-3 text-[1.35rem] font-black leading-tight tracking-[-0.03em]">
+                        {banner.title}
+                      </h2>
+                      <p className="mt-2 text-sm leading-5 text-white/78">{banner.subtitle}</p>
+                    </div>
+                    <span className="inline-flex w-fit items-center gap-2 rounded-full bg-white/14 px-4 py-2 text-sm font-semibold backdrop-blur-sm transition group-active:scale-[0.98]">
+                      {banner.cta}
+                      <ArrowRight className="h-4 w-4" />
+                    </span>
+                  </div>
+
+                  <div className="absolute bottom-0 right-0 h-full w-[48%] overflow-hidden">
+                    <Image
+                      src={banner.image}
+                      alt={banner.title}
+                      fill
+                      sizes="220px"
+                      className="object-cover object-center opacity-95 transition-transform duration-500 group-hover:scale-105"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-l from-transparent via-transparent to-black/35" />
+                  </div>
+                </Link>
+              </motion.article>
+            ))}
+          </div>
+
+          <div className="mt-3 flex justify-center gap-1.5">
+            {PROMO_BANNERS.map((banner, index) => (
+              <span
+                key={banner.title}
+                className={`h-1.5 rounded-full transition-all ${
+                  index === 0 ? 'w-8 bg-[#FF6B35]' : 'w-1.5 bg-[#D6D3D1]'
+                }`}
+              />
+            ))}
+          </div>
+        </section>
+
         <div className="hidden md:block">
           <section className="container mx-auto px-4 py-10">
-            <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
+            <div className="overflow-hidden rounded-[2rem] border border-white/70 bg-[linear-gradient(135deg,rgba(255,255,255,0.98),rgba(255,248,244,0.96))] px-6 py-7 shadow-[0_24px_60px_-32px_rgba(17,24,39,0.28)] md:flex md:items-center md:justify-between md:gap-8">
               <div className="max-w-xl">
-                <p className="text-sm font-semibold uppercase tracking-wider text-[#FF6B35]">Tadepalligudem</p>
-                <h1 className="mt-2 text-3xl font-bold tracking-tight text-[#111827]">
-                  Delicious food, delivered with care
-                </h1>
-                <p className="mt-2 text-[#6B7280]">
-                  Discover trusted local restaurants and order your next favourite meal.
+                <p className="text-sm font-semibold uppercase tracking-[0.28em] text-[#FF6B35]">
+                  Tadepalligudem
                 </p>
-                <div className="mt-5 flex gap-2">
+                <h1 className="mt-3 text-3xl font-bold tracking-tight text-[#111827]">
+                  Premium local dining, ready when you are
+                </h1>
+                <p className="mt-3 max-w-lg text-[15px] leading-7 text-[#6B7280]">
+                  Discover trusted kitchens, comfort dishes, and fast evening orders with a
+                  polished Thinava experience.
+                </p>
+                <div className="mt-6 flex gap-2">
                   <Link href="#restaurants">
                     <Button size="lg" className="gap-2">
                       Order now <ArrowRight className="h-4 w-4" />
@@ -116,12 +221,14 @@ export default function HomePage() {
                   </Link>
                   {!token ? (
                     <Link href="/login">
-                      <Button size="lg" variant="outline">Sign in</Button>
+                      <Button size="lg" variant="outline">
+                        Login
+                      </Button>
                     </Link>
                   ) : null}
                 </div>
               </div>
-              <div className="relative h-44 w-full max-w-md overflow-hidden rounded-2xl shadow-card">
+              <div className="relative mt-6 h-48 w-full max-w-md overflow-hidden rounded-[1.75rem] shadow-card md:mt-0">
                 <Image
                   src="https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=800&q=80"
                   alt="Food spread"
@@ -136,41 +243,12 @@ export default function HomePage() {
 
         <HomeActiveOrderCard />
 
-        <section className="px-4 pt-2 md:container md:mx-auto md:pt-6">
-          <motion.div
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="relative overflow-hidden rounded-3xl shadow-[0_20px_50px_-20px_rgba(255,107,53,0.45)]"
-          >
-            <div className="relative aspect-[2.2/1] min-h-[148px] sm:aspect-[2.5/1]">
-              <Image
-                src="https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?w=900&q=80"
-                alt="Fresh meals from local kitchens"
-                fill
-                className="object-cover"
-                sizes="100vw"
-                priority
-              />
-              <div className="absolute inset-0 bg-gradient-to-r from-[#1F2937]/90 via-[#1F2937]/55 to-transparent" />
-              <div className="absolute inset-0 flex flex-col justify-end p-5">
-                <span className="mb-2 inline-flex w-fit rounded-full bg-white/15 px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-white backdrop-blur-sm">
-                  Tadepalligudem specials
-                </span>
-                <h2 className="max-w-[16rem] text-xl font-bold leading-tight text-white sm:text-2xl">
-                  Local flavours, delivered hot to your door
-                </h2>
-                <p className="mt-1 max-w-xs text-sm text-white/75">Free delivery on orders above ₹300</p>
-                <Link href="#restaurants" className="mt-3 inline-flex w-fit">
-                  <span className="inline-flex items-center gap-1.5 rounded-xl bg-[#FF6B35] px-4 py-2.5 text-sm font-bold text-white shadow-lg transition hover:brightness-105">
-                    Explore restaurants <ArrowRight className="h-4 w-4" />
-                  </span>
-                </Link>
-              </div>
-            </div>
-          </motion.div>
-        </section>
-
         <section className="mt-5 px-4 md:container md:mx-auto">
+          <SectionHeading
+            title="Order by mood"
+            subtitle="Fast shortcuts for tonight's cravings"
+            className="mb-3"
+          />
           <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide snap-x snap-mandatory">
             {QUICK_ACTIONS.map((action, index) => {
               const Icon = action.icon
@@ -184,12 +262,14 @@ export default function HomePage() {
                 >
                   <Link
                     href={action.href}
-                    className={`flex h-[88px] w-[132px] shrink-0 flex-col justify-between rounded-2xl bg-gradient-to-br ${action.gradient} p-3.5 text-white shadow-[0_10px_28px_-12px_rgba(17,24,39,0.35)] transition-transform active:scale-[0.98]`}
+                    className={`flex h-[106px] w-[150px] shrink-0 flex-col justify-between rounded-[1.6rem] bg-gradient-to-br ${action.gradient} p-4 text-white shadow-[0_16px_35px_-16px_rgba(17,24,39,0.42)] transition-transform active:scale-[0.98]`}
                   >
-                    <Icon className="h-5 w-5 opacity-90" />
+                    <span className="flex h-9 w-9 items-center justify-center rounded-2xl bg-white/12 backdrop-blur-sm">
+                      <Icon className="h-[18px] w-[18px] opacity-90" />
+                    </span>
                     <div>
                       <p className="text-sm font-bold leading-tight">{action.title}</p>
-                      <p className="text-[11px] text-white/80">{action.subtitle}</p>
+                      <p className="mt-1 text-[11px] text-white/78">{action.subtitle}</p>
                     </div>
                   </Link>
                 </motion.div>
@@ -199,35 +279,65 @@ export default function HomePage() {
         </section>
 
         <section className="mt-6 px-4 md:container md:mx-auto md:py-2">
-          <SectionHeading title="What are you craving?" subtitle="Swipe to explore cuisines" />
-          <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide snap-x snap-mandatory">
-            {categories.map((category, index) => (
-              <motion.div
-                key={category.id}
-                initial={{ opacity: 0, scale: 0.95 }}
-                whileInView={{ opacity: 1, scale: 1 }}
-                transition={{ delay: index * 0.03 }}
-                viewport={{ once: true }}
-                className="snap-start"
-              >
-                <Link
-                  href={`/restaurants?category=${encodeURIComponent(category.name)}`}
-                  className="group flex w-[92px] shrink-0 flex-col items-center gap-2.5"
+          <div className="rounded-[2rem] border border-white/75 bg-[linear-gradient(180deg,rgba(255,255,255,0.92),rgba(255,248,244,0.72))] p-4 shadow-[0_20px_45px_-28px_rgba(17,24,39,0.2)] md:p-5">
+            <SectionHeading
+              title="What are you craving?"
+              subtitle="Smooth swipes through local comforts, desserts, grills, and more"
+            />
+            <div className="flex gap-3 overflow-x-auto pb-1 scrollbar-hide snap-x snap-mandatory">
+              {categories.map((category, index) => (
+                <motion.div
+                  key={category.id}
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  whileInView={{ opacity: 1, scale: 1 }}
+                  transition={{ delay: index * 0.03 }}
+                  viewport={{ once: true }}
+                  className="snap-start"
                 >
-                  <div className="relative h-[84px] w-[84px] overflow-hidden rounded-2xl border-2 border-white bg-white p-0.5 shadow-[0_8px_24px_-10px_rgba(17,24,39,0.2)] transition duration-300 group-active:scale-95">
-                    <Image
-                      src={category.image}
-                      alt={category.name}
-                      width={84}
-                      height={84}
-                      className="h-full w-full rounded-[14px] object-cover"
-                    />
-                    <div className="absolute inset-0 rounded-[14px] bg-gradient-to-t from-black/25 to-transparent opacity-0 transition group-hover:opacity-100" />
-                  </div>
-                  <span className="text-center text-xs font-bold text-[#111827]">{category.name}</span>
-                </Link>
-              </motion.div>
-            ))}
+                  <Link
+                    href={`/restaurants?category=${encodeURIComponent(category.name)}`}
+                    className="group flex w-[92px] shrink-0 flex-col items-center gap-2.5"
+                  >
+                    <div className="relative h-[84px] w-[84px] overflow-hidden rounded-[1.4rem] border border-white/90 bg-white p-1 shadow-[0_14px_28px_-18px_rgba(17,24,39,0.28)] transition duration-300 group-active:scale-95">
+                      <Image
+                        src={category.image}
+                        alt={category.name}
+                        width={84}
+                        height={84}
+                        className="h-full w-full rounded-[1.15rem] object-cover"
+                      />
+                      <div className="absolute inset-0 rounded-[1.15rem] bg-gradient-to-t from-black/25 to-transparent opacity-0 transition group-hover:opacity-100" />
+                    </div>
+                    <span className="text-center text-xs font-bold tracking-tight text-[#111827]">
+                      {category.name}
+                    </span>
+                  </Link>
+                </motion.div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section className="mt-4 px-4 md:container md:mx-auto">
+          <div className="flex gap-2.5 overflow-x-auto pb-2 scrollbar-hide snap-x snap-mandatory">
+            {FILTER_CHIPS.map((chip) => {
+              const isActive = chip === activeFilterChip
+
+              return (
+                <button
+                  key={chip}
+                  type="button"
+                  onClick={() => setActiveFilterChip(chip)}
+                  className={`snap-start shrink-0 rounded-full border px-4 py-2.5 text-sm font-semibold transition-all ${
+                    isActive
+                      ? 'border-[#FF6B35]/30 bg-[#FFEEE6] text-[#C2410C] shadow-[0_10px_24px_-16px_rgba(255,107,53,0.55)]'
+                      : 'border-white/80 bg-white/88 text-[#4B5563] shadow-[0_8px_20px_-18px_rgba(17,24,39,0.4)]'
+                  }`}
+                >
+                  {chip}
+                </button>
+              )
+            })}
           </div>
         </section>
 
@@ -235,7 +345,7 @@ export default function HomePage() {
           <section className="mt-8 px-4 md:container md:mx-auto">
             <SectionHeading
               title="Top picks near you"
-              subtitle="Handpicked local favourites"
+              subtitle="Handpicked local favourites with strong ratings and reliable prep times"
               action={
                 <Link href="/restaurants" className="text-sm font-bold text-[#FF6B35]">
                   See all
@@ -244,8 +354,8 @@ export default function HomePage() {
             />
             <div className="flex gap-4 overflow-x-auto pb-2 scrollbar-hide snap-x snap-mandatory md:grid md:grid-cols-2 md:overflow-visible md:snap-none lg:grid-cols-3">
               {loadingRestaurants
-                ? Array.from({ length: 3 }).map((_, i) => (
-                    <RestaurantCardSkeleton key={i} layout="carousel" />
+                ? Array.from({ length: 3 }).map((_, index) => (
+                    <RestaurantCardSkeleton key={index} layout="carousel" />
                   ))
                 : featuredRestaurants.map((restaurant, index) => (
                     <RestaurantCard
@@ -265,14 +375,14 @@ export default function HomePage() {
             subtitle={
               loadingRestaurants
                 ? 'Loading partners...'
-                : `${allRestaurants.length} places in Tadepalligudem`
+                : `${allRestaurants.length} places serving around Tadepalligudem`
             }
           />
 
           {loadingRestaurants ? (
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {Array.from({ length: 6 }).map((_, i) => (
-                <RestaurantCardSkeleton key={i} />
+              {Array.from({ length: 6 }).map((_, index) => (
+                <RestaurantCardSkeleton key={index} />
               ))}
             </div>
           ) : allRestaurants.length === 0 ? (

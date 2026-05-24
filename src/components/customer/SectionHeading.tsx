@@ -26,14 +26,16 @@ export function SectionHeading({
       <div>
         <h2
           className={cn(
-            'text-lg font-bold tracking-tight md:text-xl',
+            'text-[1.15rem] font-black tracking-tight md:text-xl',
             light ? 'text-white' : 'text-[#111827]'
           )}
         >
           {title}
         </h2>
         {subtitle ? (
-          <p className={cn('mt-0.5 text-sm', light ? 'text-white/70' : 'text-[#6B7280]')}>{subtitle}</p>
+          <p className={cn('mt-1 max-w-2xl text-sm leading-6', light ? 'text-white/70' : 'text-[#6B7280]')}>
+            {subtitle}
+          </p>
         ) : null}
       </div>
       {action}

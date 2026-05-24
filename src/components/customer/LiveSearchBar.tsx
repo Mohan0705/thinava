@@ -116,8 +116,9 @@ export default function LiveSearchBar({ elevated = false }: { elevated?: boolean
   }
 
   const inputClassName = elevated
-    ? 'h-12 w-full rounded-2xl border-0 bg-white py-3 pl-12 pr-12 text-[15px] font-medium text-[#111827] shadow-[0_8px_32px_-8px_rgba(0,0,0,0.35)] placeholder:text-[#9CA3AF] transition-all focus:outline-none focus:ring-2 focus:ring-[#FF6B35]/25'
+    ? 'h-14 w-full rounded-[1.75rem] border border-white/70 bg-white/95 py-3.5 pl-12 pr-12 text-base font-medium text-[#111827] shadow-[0_18px_40px_-18px_rgba(15,23,42,0.5)] backdrop-blur-md placeholder:text-[#8B95A7] transition-all focus:border-[#FF6B35]/20 focus:outline-none focus:ring-2 focus:ring-[#FF6B35]/20'
     : 'w-full rounded-full border border-thinava-border bg-white py-3 pl-12 pr-10 text-sm font-medium text-thinava-text shadow-search placeholder:text-gray-400 transition-all focus:border-thinava-primary focus:bg-white focus:outline-none focus:ring-2 focus:ring-thinava-primary/15'
+  const placeholderText = elevated ? 'Search "biryani"' : t('searchPlaceholder')
 
   return (
     <div ref={searchRef} className="relative z-50 flex-1 max-w-xl">
@@ -134,7 +135,7 @@ export default function LiveSearchBar({ elevated = false }: { elevated?: boolean
               setShowDropdown(true)
             }}
             onFocus={() => setShowDropdown(true)}
-            placeholder={t('searchPlaceholder')}
+            placeholder={placeholderText}
             className={inputClassName}
           />
           {query && (
