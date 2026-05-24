@@ -52,11 +52,6 @@ export default function Header() {
                     Login
                   </Button>
                 </Link>
-                <Link href="/signup">
-                  <Button size="sm" className="font-semibold">
-                    Signup
-                  </Button>
-                </Link>
               </div>
             ) : null}
 

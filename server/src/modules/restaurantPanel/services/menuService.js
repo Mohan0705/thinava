@@ -18,10 +18,10 @@ const mapMenuItem = async (row) => {
     description: row.description,
     price: Number(row.price),
     offer_price: row.offer_price ? Number(row.offer_price) : null,
-    image: row.image,
-    category: row.category,
+    image: row.image || '',
+    category: row.category_name || row.category || 'Uncategorized',
     category_id: row.category_id,
-    category_name: row.category_name || row.category,
+    category_name: row.category_name || row.category || 'Uncategorized',
     is_veg: row.is_veg,
     is_bestseller: row.is_bestseller,
     is_recommended: row.is_recommended,
@@ -37,6 +37,28 @@ const mapMenuItem = async (row) => {
     updated_at: row.updated_at,
   }
 }
+
+const normalizeMenuPayload = (payload, category = null) => ({
+  name: String(payload.name || '').trim(),
+  description: payload.description ? String(payload.description).trim() : null,
+  price: Number(payload.price),
+  offer_price:
+    payload.offer_price === undefined || payload.offer_price === null || payload.offer_price === ''
+      ? null
+      : Number(payload.offer_price),
+  image: payload.image ? String(payload.image).trim() : '',
+  category_id: category?.id || payload.category_id || null,
+  category_name: category?.name || 'Uncategorized',
+  is_veg: payload.is_veg ?? true,
+  is_bestseller: payload.is_bestseller ?? false,
+  is_recommended: payload.is_recommended ?? false,
+  is_available: payload.is_available ?? true,
+  in_stock: payload.in_stock ?? true,
+  preparation_time: payload.preparation_time || 0,
+  spice_level: payload.spice_level || 'medium',
+  calories: payload.calories || 0,
+  display_order: payload.display_order || 0,
+})
 
 const resolveCategory = async (restaurantId, categoryId) => {
   if (!categoryId) return null
@@ -68,40 +90,41 @@ const listMenuItems = async (restaurantId) => {
 
 const createMenuItem = async (restaurantId, payload) => {
   const category = payload.category_id ? await resolveCategory(restaurantId, payload.category_id) : null
+  const normalizedPayload = normalizeMenuPayload(payload, category)
 
   const result = await pool.query(
     `INSERT INTO menu_items (
-      restaurant_id, name, description, price, offer_price, image, category,
+      restaurant_id, name, description, price, offer_price, image, category_id,
       is_veg, is_bestseller, is_recommended, is_available, in_stock,
-      preparation_time, spice_level, calories, category_id, display_order
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+      preparation_time, spice_level, calories, display_order
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
     RETURNING *`,
     [
       restaurantId,
-      payload.name,
-      payload.description || null,
-      payload.price,
-      payload.offer_price || null,
-      payload.image || null,
-      category ? category.name : null,
-      payload.is_veg ?? true,
-      payload.is_bestseller ?? false,
-      payload.is_recommended ?? false,
-      payload.is_available ?? true,
-      payload.in_stock ?? true,
-      payload.preparation_time || 0,
-      payload.spice_level || 'medium',
-      payload.calories || 0,
-      category ? category.id : null,
-      payload.display_order || 0,
+      normalizedPayload.name,
+      normalizedPayload.description,
+      normalizedPayload.price,
+      normalizedPayload.offer_price,
+      normalizedPayload.image,
+      normalizedPayload.category_id,
+      normalizedPayload.is_veg,
+      normalizedPayload.is_bestseller,
+      normalizedPayload.is_recommended,
+      normalizedPayload.is_available,
+      normalizedPayload.in_stock,
+      normalizedPayload.preparation_time,
+      normalizedPayload.spice_level,
+      normalizedPayload.calories,
+      normalizedPayload.display_order,
     ]
   )
 
-  return mapMenuItem({ ...result.rows[0], category_name: category?.name })
+  return mapMenuItem({ ...result.rows[0], category_name: normalizedPayload.category_name })
 }
 
 const updateMenuItem = async (restaurantId, menuItemId, payload) => {
   const category = payload.category_id ? await resolveCategory(restaurantId, payload.category_id) : undefined
+  const normalizedPayload = normalizeMenuPayload(payload, category)
 
   const result = await pool.query(
     `UPDATE menu_items SET
@@ -125,13 +148,13 @@ const updateMenuItem = async (restaurantId, menuItemId, payload) => {
     WHERE id = $17 AND restaurant_id = $18
     RETURNING *`,
     [
-      payload.name,
-      payload.description,
-      payload.price,
-      payload.offer_price,
-      payload.image,
+      normalizedPayload.name || null,
+      normalizedPayload.description,
+      Number.isFinite(normalizedPayload.price) ? normalizedPayload.price : null,
+      normalizedPayload.offer_price,
+      normalizedPayload.image,
       category?.name,
-      category?.id,
+      normalizedPayload.category_id,
       payload.is_veg,
       payload.is_bestseller,
       payload.is_recommended,

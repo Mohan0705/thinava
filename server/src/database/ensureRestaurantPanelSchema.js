@@ -155,6 +155,11 @@ const ensureRestaurantPanelSchema = async () => {
     `)
 
     await client.query(`
+      ALTER TABLE menu_items
+      ALTER COLUMN category SET DEFAULT 'Uncategorized';
+    `)
+
+    await client.query(`
       ALTER TABLE restaurant_users
       ADD COLUMN IF NOT EXISTS role VARCHAR(50) NOT NULL DEFAULT 'restaurant_owner',
       ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE,
@@ -198,6 +203,12 @@ const ensureRestaurantPanelSchema = async () => {
       UPDATE menu_items
       SET in_stock = TRUE
       WHERE in_stock IS NULL;
+    `)
+
+    await client.query(`
+      UPDATE menu_items
+      SET category = 'Uncategorized'
+      WHERE category IS NULL OR TRIM(category) = '';
     `)
 
     await client.query(`

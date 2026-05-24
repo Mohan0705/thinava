@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { Clock, Heart, LogOut, Settings } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
@@ -11,6 +12,7 @@ import { toast } from 'sonner'
 import { getUserInitials } from '@/features/auth/utils'
 
 export default function ProfilePage() {
+  const router = useRouter()
   const user = useAuthStore((state) => state.user)
   const token = useAuthStore((state) => state.token)
   const stats = useAuthStore((state) => state.stats)
@@ -27,6 +29,7 @@ export default function ProfilePage() {
     } finally {
       logout()
       toast.success('Logged out successfully')
+      router.replace('/')
     }
   }
 

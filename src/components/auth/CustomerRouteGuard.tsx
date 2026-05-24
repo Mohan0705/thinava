@@ -28,12 +28,27 @@ export function CustomerRouteGuard({
     }
   }, [hydrated, pathname, router, token])
 
-  if (!hydrated || !token || !user) {
+  if (!hydrated) {
     return (
       <div className="flex min-h-[320px] items-center justify-center">
         <div className="rounded-[30px] border border-orange-100 bg-white px-6 py-8 text-center shadow-sm">
           <div className="mx-auto h-10 w-10 animate-pulse rounded-2xl bg-orange-200" />
           <p className="mt-4 text-sm font-medium text-slate-600">Checking your Thinava session...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (!token) {
+    return null
+  }
+
+  if (!user) {
+    return (
+      <div className="flex min-h-[320px] items-center justify-center">
+        <div className="rounded-[30px] border border-orange-100 bg-white px-6 py-8 text-center shadow-sm">
+          <div className="mx-auto h-10 w-10 animate-pulse rounded-2xl bg-orange-200" />
+          <p className="mt-4 text-sm font-medium text-slate-600">Restoring your Thinava account...</p>
         </div>
       </div>
     )

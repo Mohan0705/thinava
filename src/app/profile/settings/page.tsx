@@ -17,17 +17,21 @@ export default function ProfileSettingsPage() {
   const [email, setEmail] = useState('')
   const [profileImage, setProfileImage] = useState('')
   const [saving, setSaving] = useState(false)
-  const initializedRef = useRef(false)
+  const initializedForUserIdRef = useRef<string | null>(null)
 
   useEffect(() => {
-    // Only initialize once when user first loads or when returning from save
-    if (user && !initializedRef.current) {
+    if (!user) {
+      initializedForUserIdRef.current = null
+      return
+    }
+
+    if (initializedForUserIdRef.current !== user.id) {
       setFullName(user.fullName || user.name || '')
       setEmail(user.email || '')
       setProfileImage(user.profileImage || '')
-      initializedRef.current = true
+      initializedForUserIdRef.current = user.id
     }
-  }, [user?.id]) // Depend on user.id instead of entire user object to prevent reset loops
+  }, [user])
 
   const accountHighlights = [
     { icon: User, label: 'Full name', value: user?.fullName || user?.name || 'Thinava User' },
@@ -55,7 +59,6 @@ export default function ProfileSettingsPage() {
       })
       
       setUser(updatedUser)
-      initializedRef.current = false // Reset so form can update with latest data
       toast.success('Profile updated successfully')
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Unable to update profile')

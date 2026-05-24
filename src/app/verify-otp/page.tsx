@@ -39,7 +39,7 @@ export default function VerifyOtpPage() {
     if (new Date(pendingVerification.expiresAt).getTime() <= Date.now()) {
       setPendingVerification(null)
       toast.error('Your OTP session expired. Request a new code to continue.')
-      router.replace(pendingVerification.purpose === 'signup' ? '/signup' : '/login')
+      router.replace('/login')
       return
     }
 
@@ -89,8 +89,7 @@ export default function VerifyOtpPage() {
         otp,
       })
 
-      const profile = await customerAuthApi.getProfile(session.token)
-      setAuth(profile.user, session.token, profile.stats)
+      setAuth(session.user, session.token, null)
       toast.success(session.is_new_user ? 'Welcome to Thinava' : 'Login successful')
       router.replace(getNextPath())
     } catch (error) {
@@ -99,7 +98,7 @@ export default function VerifyOtpPage() {
       if (message.includes('OTP expired') || message.includes('OTP session not found')) {
         setPendingVerification(null)
         toast.error(message)
-        router.replace(pendingVerification.purpose === 'signup' ? '/signup' : '/login')
+        router.replace('/login')
         return
       }
 
@@ -121,7 +120,7 @@ export default function VerifyOtpPage() {
         country_code: pendingVerification.countryCode,
         full_name: pendingVerification.fullName,
         email: pendingVerification.email,
-        purpose: pendingVerification.purpose,
+        purpose: 'login',
       })
       
       console.log('OTP RESPONSE:', result)

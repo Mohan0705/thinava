@@ -48,7 +48,7 @@ CREATE TABLE IF NOT EXISTS menu_items (
   description TEXT,
   price DECIMAL(10, 2) NOT NULL,
   image TEXT NOT NULL,
-  category VARCHAR(100) NOT NULL,
+  category VARCHAR(100) NOT NULL DEFAULT 'Uncategorized',
   is_veg BOOLEAN DEFAULT TRUE,
   is_bestseller BOOLEAN DEFAULT FALSE,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,

@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect } from 'react'
+import { ApiError } from '@/lib/api'
 import { customerAuthApi } from '@/features/auth/api'
 import { useAuthStore } from '@/store/authStore'
 
@@ -17,7 +18,7 @@ export function AuthBootstrap() {
       return
     }
 
-    if (user && user.addresses.length > 0 && stats) {
+    if (user && stats !== null) {
       return
     }
 
@@ -29,8 +30,8 @@ export function AuthBootstrap() {
         if (!cancelled) {
           setAuth(profile.user, token, profile.stats)
         }
-      } catch {
-        if (!cancelled) {
+      } catch (error) {
+        if (!cancelled && error instanceof ApiError && error.status >= 400 && error.status < 500) {
           logout()
         }
       }

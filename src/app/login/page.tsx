@@ -75,9 +75,9 @@ export default function LoginPage() {
 
   return (
     <AuthScreenShell
-      eyebrow="Login"
-      title="Pick up where you left off."
-      description="Continue with your mobile number to unlock saved addresses, order tracking, and faster checkout."
+      eyebrow="Continue"
+      title="Enter your mobile number to continue."
+      description="We&apos;ll send a one-time code and automatically create your Thinava account if you&apos;re new."
       footer={
         <>
           By continuing, you agree to Thinava&apos;s <Link href="/" className="font-semibold text-orange-600">Terms</Link> and <Link href="/" className="font-semibold text-orange-600">Privacy Policy</Link>.
@@ -85,14 +85,9 @@ export default function LoginPage() {
       }
     >
       <PhoneAuthForm
-        mode="login"
         phone={phone}
-        fullName=""
-        email=""
         loading={loading}
         onPhoneChange={setPhone}
-        onFullNameChange={() => undefined}
-        onEmailChange={() => undefined}
         onSubmit={handleSubmit}
       />
     </AuthScreenShell>

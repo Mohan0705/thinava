@@ -94,25 +94,15 @@ export default function HomePage() {
                 </Button>
               </Link>
               {!token ? (
-                <>
-                  <Link href="/login" className="inline-flex">
-                    <Button
-                      size="lg"
-                      variant="outline"
-                      className="border-white/70 bg-white/10 px-8 text-base font-bold text-white hover:bg-white/20"
-                    >
-                      Login
-                    </Button>
-                  </Link>
-                  <Link href="/signup" className="inline-flex">
-                    <Button
-                      size="lg"
-                      className="border-0 bg-slate-950 px-8 text-base font-bold text-white shadow-xl shadow-black/20 hover:bg-slate-900"
-                    >
-                      Signup
-                    </Button>
-                  </Link>
-                </>
+                <Link href="/login" className="inline-flex">
+                  <Button
+                    size="lg"
+                    variant="outline"
+                    className="border-white/70 bg-white/10 px-8 text-base font-bold text-white hover:bg-white/20"
+                  >
+                    Login
+                  </Button>
+                </Link>
               ) : null}
             </div>
           </motion.div>

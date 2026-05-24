@@ -90,15 +90,23 @@ export const useAuthStore = create<AuthStore>()(
         set({ hydrated })
       },
       logout: () => {
-        // SECURITY: Clear all persisted stores for this user
+        const previousUserId = get().user?.id ?? null
+
         syncAuthCookie('customer', null)
-        // Clear cart for this user
         useCartStore.setState({ items: [], userId: null })
-        // Clear old global key for migration
+
         if (typeof window !== 'undefined') {
           window.localStorage.removeItem('auth-storage')
+          window.localStorage.removeItem('token')
+          window.localStorage.removeItem('user')
+          window.sessionStorage.clear()
+
+          if (previousUserId) {
+            window.localStorage.removeItem(`cart_${previousUserId}`)
+          }
         }
-        set({ user: null, token: null, stats: null, pendingVerification: null, hydrated: false })
+
+        set({ user: null, token: null, stats: null, pendingVerification: null, hydrated: true })
       },
 
       isAuthenticated: () => {

@@ -1,42 +1,22 @@
 'use client'
 
 import { FormEvent } from 'react'
-import Link from 'next/link'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 
 export function PhoneAuthForm({
-  mode,
   phone,
-  fullName,
-  email,
   loading,
   onPhoneChange,
-  onFullNameChange,
-  onEmailChange,
   onSubmit,
 }: {
-  mode: 'login' | 'signup'
   phone: string
-  fullName: string
-  email: string
   loading: boolean
   onPhoneChange: (value: string) => void
-  onFullNameChange: (value: string) => void
-  onEmailChange: (value: string) => void
   onSubmit: (event: FormEvent) => void
 }) {
-  const isSignup = mode === 'signup'
-
   return (
     <form onSubmit={onSubmit} className="space-y-5">
-      {isSignup ? (
-        <div>
-          <label className="mb-2 block text-sm font-medium text-slate-700">Full Name</label>
-          <Input value={fullName} onChange={(event) => onFullNameChange(event.target.value)} placeholder="Enter your full name" />
-        </div>
-      ) : null}
-
       <div>
         <label className="mb-2 block text-sm font-medium text-slate-700">Mobile Number</label>
         <div className="flex gap-3">
@@ -47,7 +27,7 @@ export function PhoneAuthForm({
             type="tel"
             inputMode="numeric"
             autoComplete="tel-national"
-            enterKeyHint={isSignup ? 'next' : 'done'}
+            enterKeyHint="done"
             pattern="[0-9]*"
             value={phone}
             onChange={(event) => onPhoneChange(event.target.value)}
@@ -55,14 +35,10 @@ export function PhoneAuthForm({
             className="flex-1"
           />
         </div>
+        <p className="mt-2 text-sm text-slate-500">
+          We&apos;ll automatically create your account if you&apos;re new.
+        </p>
       </div>
-
-      {isSignup ? (
-        <div>
-          <label className="mb-2 block text-sm font-medium text-slate-700">Email</label>
-          <Input type="email" value={email} onChange={(event) => onEmailChange(event.target.value)} placeholder="Optional email address" />
-        </div>
-      ) : null}
 
       <div className="rounded-2xl border border-orange-100 bg-orange-50/80 px-4 py-3 text-sm text-orange-800">
         Using development OTP mode. Check the toast or console for the code.
@@ -71,13 +47,6 @@ export function PhoneAuthForm({
       <Button type="submit" className="w-full" size="lg" disabled={loading}>
         {loading ? 'Sending OTP...' : 'Continue with OTP'}
       </Button>
-
-      <p className="text-center text-sm text-slate-500">
-        {isSignup ? 'Already have an account?' : 'New to Thinava?'}{' '}
-        <Link href={isSignup ? '/login' : '/signup'} className="font-semibold text-orange-600 hover:text-orange-700">
-          {isSignup ? 'Login' : 'Create account'}
-        </Link>
-      </p>
     </form>
   )
 }
