@@ -22,42 +22,52 @@ export default function MobileNav() {
 
   return (
     <nav
-      className="fixed inset-x-0 bottom-0 z-50 px-4 pb-[calc(0.75rem+env(safe-area-inset-bottom))] md:hidden"
+      className="fixed inset-x-0 bottom-0 z-50 md:hidden"
       aria-label="Main navigation"
     >
-      <div className="mx-auto flex max-w-lg items-center justify-around rounded-2xl border border-thinava-border bg-white/95 px-1 py-1.5 shadow-nav backdrop-blur-md">
-        {navItems.map((item) => {
-          const Icon = item.icon
-          const isActive =
-            pathname === item.href ||
-            (item.href === '/profile' && pathname?.startsWith('/profile'))
+      <div className="mx-3 mb-[max(0.5rem,env(safe-area-inset-bottom))] overflow-hidden rounded-t-[1.35rem] border border-[#E5E7EB]/80 bg-white/98 shadow-[0_-8px_40px_-12px_rgba(17,24,39,0.18)] backdrop-blur-lg">
+        <div className="flex items-stretch justify-around px-1 py-1.5">
+          {navItems.map((item) => {
+            const Icon = item.icon
+            const isActive =
+              pathname === item.href ||
+              (item.href === '/profile' && pathname?.startsWith('/profile'))
 
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={cn(
-                'relative flex min-w-[3.5rem] flex-col items-center gap-0.5 rounded-xl px-3 py-2 transition-all duration-200 thinava-touch',
-                isActive ? 'text-thinava-primary' : 'text-gray-500'
-              )}
-            >
-              {isActive ? (
-                <span className="absolute inset-x-2 top-1 h-8 rounded-lg bg-orange-50" />
-              ) : null}
-              <span className="relative">
-                <Icon className={cn('h-5 w-5', isActive && 'stroke-[2.25]')} />
-                {item.badge && item.badge > 0 ? (
-                  <span className="absolute -right-2 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-thinava-primary px-1 text-[9px] font-bold text-white">
-                    {item.badge > 9 ? '9+' : item.badge}
-                  </span>
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={cn(
+                  'relative flex min-w-[3.25rem] flex-1 flex-col items-center gap-0.5 rounded-xl py-2 transition-all duration-200 thinava-touch',
+                  isActive ? 'text-[#FF6B35]' : 'text-[#9CA3AF]'
+                )}
+              >
+                {isActive ? (
+                  <span className="absolute inset-x-1 top-1 h-9 rounded-xl bg-orange-50" />
                 ) : null}
-              </span>
-              <span className={cn('relative text-[10px] font-semibold', isActive && 'text-thinava-primary')}>
-                {item.label}
-              </span>
-            </Link>
-          )
-        })}
+                <span className="relative">
+                  <Icon
+                    className={cn('h-[22px] w-[22px]', isActive && 'stroke-[2.25]')}
+                    strokeWidth={isActive ? 2.25 : 2}
+                  />
+                  {item.badge && item.badge > 0 ? (
+                    <span className="absolute -right-2.5 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#FF6B35] px-1 text-[9px] font-bold text-white ring-2 ring-white">
+                      {item.badge > 9 ? '9+' : item.badge}
+                    </span>
+                  ) : null}
+                </span>
+                <span
+                  className={cn(
+                    'relative text-[10px] font-semibold',
+                    isActive && 'text-[#FF6B35]'
+                  )}
+                >
+                  {item.label}
+                </span>
+              </Link>
+            )
+          })}
+        </div>
       </div>
     </nav>
   )

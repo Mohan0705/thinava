@@ -28,7 +28,7 @@ interface MenuItemResult {
   is_veg: boolean
 }
 
-export default function LiveSearchBar() {
+export default function LiveSearchBar({ elevated = false }: { elevated?: boolean }) {
   const router = useRouter()
   const { t } = useTranslation()
   const [query, setQuery] = useState('')
@@ -115,11 +115,17 @@ export default function LiveSearchBar() {
     setShowDropdown(false)
   }
 
+  const inputClassName = elevated
+    ? 'h-12 w-full rounded-2xl border-0 bg-white py-3 pl-12 pr-12 text-[15px] font-medium text-[#111827] shadow-[0_8px_32px_-8px_rgba(0,0,0,0.35)] placeholder:text-[#9CA3AF] transition-all focus:outline-none focus:ring-2 focus:ring-[#FF6B35]/25'
+    : 'w-full rounded-full border border-thinava-border bg-white py-3 pl-12 pr-10 text-sm font-medium text-thinava-text shadow-search placeholder:text-gray-400 transition-all focus:border-thinava-primary focus:bg-white focus:outline-none focus:ring-2 focus:ring-thinava-primary/15'
+
   return (
-    <div ref={searchRef} className="relative flex-1 max-w-xl z-50">
+    <div ref={searchRef} className="relative z-50 flex-1 max-w-xl">
       <form onSubmit={handleSearchSubmit} className="flex gap-2">
         <div className="relative flex-1">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 dark:text-gray-500" />
+          <Search
+            className={`absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 ${elevated ? 'text-[#FF6B35]' : 'text-gray-400'}`}
+          />
           <input
             type="text"
             value={query}
@@ -129,7 +135,7 @@ export default function LiveSearchBar() {
             }}
             onFocus={() => setShowDropdown(true)}
             placeholder={t('searchPlaceholder')}
-            className="w-full rounded-full border border-thinava-border bg-white py-3 pl-12 pr-10 text-sm font-medium text-thinava-text shadow-search placeholder:text-gray-400 transition-all focus:border-thinava-primary focus:bg-white focus:outline-none focus:ring-2 focus:ring-thinava-primary/15"
+            className={inputClassName}
           />
           {query && (
             <button

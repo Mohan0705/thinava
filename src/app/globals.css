@@ -97,7 +97,11 @@
   }
 
   .thinava-page-mobile {
-    @apply thinava-page pb-[calc(5.75rem+env(safe-area-inset-bottom))] md:pb-0;
+    @apply thinava-page pb-[calc(6.25rem+env(safe-area-inset-bottom))] md:pb-0;
+  }
+
+  .thinava-snap-row {
+    @apply flex gap-3 overflow-x-auto pb-2 scrollbar-hide snap-x snap-mandatory;
   }
 
   .thinava-gradient-bg {

@@ -164,7 +164,7 @@ export function HomeActiveOrderCard() {
     <motion.section
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
-      className="container mx-auto px-4 pt-6"
+      className="container mx-auto px-4 pt-4 md:pt-6"
     >
       <div className="overflow-hidden rounded-2xl border border-thinava-border bg-thinava-text p-5 text-white shadow-card">
         <div className="flex flex-wrap items-start justify-between gap-3">
