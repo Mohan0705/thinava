@@ -31,7 +31,11 @@ router.get('/', asyncHandler(async (req, res) => {
   
   query += ` ORDER BY
     CASE WHEN COALESCE(r.status, CASE WHEN r.is_open THEN 'OPEN' ELSE 'CLOSED' END) = 'OPEN' THEN 0 ELSE 1 END,
-    average_rating DESC,
+    CASE
+      WHEN COALESCE(r.rating_count, 0) > 0
+      THEN ROUND((COALESCE(r.rating_sum, 0) / NULLIF(r.rating_count, 0))::numeric, 1)
+      ELSE COALESCE(r.rating, 0)
+    END DESC,
     r.name ASC`
   
   const result = await pool.query(query, params)

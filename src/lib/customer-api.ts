@@ -42,7 +42,7 @@ const mapRestaurant = (restaurant: Record<string, any>): Restaurant => ({
   logo: sanitizeImage(restaurant.logo, DEFAULT_RESTAURANT_IMAGE),
   rating: Number(restaurant.average_rating || restaurant.averageRating || restaurant.rating || 0),
   ratingCount: Number(restaurant.rating_count || restaurant.ratingCount || restaurant.total_reviews || 0),
-  deliveryTime: restaurant.delivery_time || restaurant.deliveryTime || '25-35 mins',
+  deliveryTime: String(restaurant.delivery_time || restaurant.deliveryTime || '25-35 mins'),
   priceForOne: Number(restaurant.price_for_one || restaurant.priceForOne || 0),
   cuisines: restaurant.cuisines || [],
   offer: restaurant.offer || undefined,

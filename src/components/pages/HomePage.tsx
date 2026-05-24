@@ -1,10 +1,10 @@
 'use client'
 
 import { motion } from 'framer-motion'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
-import { ArrowRight, Sparkles } from 'lucide-react'
+import { ArrowRight, SlidersHorizontal, Sparkles } from 'lucide-react'
 import Header from '@/components/layout/Header'
 import Footer from '@/components/layout/Footer'
 import MobileNav from '@/components/layout/MobileNav'
@@ -50,20 +50,47 @@ const PROMO_BANNERS = [
   },
 ]
 
+const RATING_FILTERS = [3.5, 4.0, 4.5]
+
 const FILTER_CHIPS = [
-  'Rating 4.0+',
-  'Previously ordered',
+  'Previously Ordered',
   'Pure Veg',
+  'Non Veg',
   'Fast Delivery',
+  'Under Rs99',
   'Under Rs199',
   'Best Rated',
-]
+] as const
+
+type FilterChip = (typeof FILTER_CHIPS)[number]
+
+const isLikelyVegRestaurant = (restaurant: Restaurant) => {
+  const content = [restaurant.name, restaurant.description || '', ...restaurant.cuisines]
+    .join(' ')
+    .toLowerCase()
+
+  return /\b(pure veg|veg|vegetarian)\b/.test(content) && !/\b(non veg|non-veg|chicken|mutton|fish|egg)\b/.test(content)
+}
+
+const isLikelyNonVegRestaurant = (restaurant: Restaurant) => {
+  const content = [restaurant.name, restaurant.description || '', ...restaurant.cuisines]
+    .join(' ')
+    .toLowerCase()
+
+  return /\b(non veg|non-veg|chicken|mutton|fish|egg|meat|biryani)\b/.test(content)
+}
+
+const parseDeliveryMinutes = (value: string) => {
+  const numbers = value.match(/\d+/g)?.map(Number) || []
+  return numbers.length > 0 ? Math.min(...numbers) : Number.POSITIVE_INFINITY
+}
 
 export default function HomePage() {
   const [allRestaurants, setAllRestaurants] = useState<Restaurant[]>([])
   const [loadingRestaurants, setLoadingRestaurants] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
-  const [activeFilterChip, setActiveFilterChip] = useState(FILTER_CHIPS[0])
+  const [activeRatingFilter, setActiveRatingFilter] = useState<number | null>(null)
+  const [activeFilterChips, setActiveFilterChips] = useState<FilterChip[]>([])
   const token = useAuthStore((state) => state.token)
 
   useEffect(() => {
@@ -96,6 +123,69 @@ export default function HomePage() {
   }, [])
 
   const featuredRestaurants = allRestaurants.filter((restaurant) => restaurant.featured)
+  const visibleRestaurants = useMemo(() => {
+    let nextRestaurants = [...allRestaurants]
+
+    if (activeRatingFilter !== null) {
+      nextRestaurants = nextRestaurants.filter((restaurant) => Number(restaurant.rating || 0) >= activeRatingFilter)
+    }
+
+    if (activeFilterChips.includes('Pure Veg')) {
+      nextRestaurants = nextRestaurants.filter(isLikelyVegRestaurant)
+    }
+
+    if (activeFilterChips.includes('Non Veg')) {
+      nextRestaurants = nextRestaurants.filter(isLikelyNonVegRestaurant)
+    }
+
+    if (activeFilterChips.includes('Fast Delivery')) {
+      nextRestaurants = nextRestaurants.filter((restaurant) => parseDeliveryMinutes(restaurant.deliveryTime) <= 30)
+    }
+
+    if (activeFilterChips.includes('Under Rs99')) {
+      nextRestaurants = nextRestaurants.filter((restaurant) => restaurant.priceForOne > 0 && restaurant.priceForOne <= 99)
+    } else if (activeFilterChips.includes('Under Rs199')) {
+      nextRestaurants = nextRestaurants.filter((restaurant) => restaurant.priceForOne > 0 && restaurant.priceForOne <= 199)
+    }
+
+    if (activeFilterChips.includes('Best Rated')) {
+      nextRestaurants.sort((left, right) => Number(right.rating || 0) - Number(left.rating || 0))
+    }
+
+    return nextRestaurants
+  }, [activeFilterChips, activeRatingFilter, allRestaurants])
+
+  const toggleFilterChip = (chip: FilterChip) => {
+    setActiveFilterChips((current) => {
+      if (chip === 'Under Rs99') {
+        return current.includes(chip)
+          ? current.filter((item) => item !== chip)
+          : [...current.filter((item) => item !== 'Under Rs199'), chip]
+      }
+
+      if (chip === 'Under Rs199') {
+        return current.includes(chip)
+          ? current.filter((item) => item !== chip)
+          : [...current.filter((item) => item !== 'Under Rs99'), chip]
+      }
+
+      if (chip === 'Pure Veg') {
+        return current.includes(chip)
+          ? current.filter((item) => item !== chip)
+          : [...current.filter((item) => item !== 'Non Veg'), chip]
+      }
+
+      if (chip === 'Non Veg') {
+        return current.includes(chip)
+          ? current.filter((item) => item !== chip)
+          : [...current.filter((item) => item !== 'Pure Veg'), chip]
+      }
+
+      return current.includes(chip)
+        ? current.filter((item) => item !== chip)
+        : [...current, chip]
+    })
+  }
 
   return (
     <div className="thinava-page-mobile bg-[#FFF8F4]">
@@ -247,18 +337,46 @@ export default function HomePage() {
 
         <section className="mt-4 px-4 md:container md:mx-auto">
           <div className="flex gap-2.5 overflow-x-auto pb-2 scrollbar-hide snap-x snap-mandatory">
+            <button
+              type="button"
+              className="snap-start inline-flex shrink-0 items-center gap-2 rounded-full border border-[#E8DED8] bg-white px-4 py-2.5 text-sm font-black text-[#111827] shadow-[0_10px_24px_-18px_rgba(17,24,39,0.38)] transition-all active:scale-[0.97]"
+              aria-label="Open filters"
+            >
+              <SlidersHorizontal className="h-4 w-4 text-[#FF6B35]" />
+              Filters
+            </button>
+
+            {RATING_FILTERS.map((rating) => {
+              const isActive = activeRatingFilter === rating
+
+              return (
+                <button
+                  key={rating}
+                  type="button"
+                  onClick={() => setActiveRatingFilter((current) => (current === rating ? null : rating))}
+                  className={`snap-start shrink-0 rounded-full border px-4 py-2.5 text-sm font-bold transition-all active:scale-[0.97] ${
+                    isActive
+                      ? 'border-[#FF6B35] bg-[#FF6B35] text-white shadow-[0_12px_26px_-16px_rgba(255,107,53,0.72)]'
+                      : 'border-[#E8DED8] bg-white text-[#111827] shadow-[0_10px_24px_-20px_rgba(17,24,39,0.36)] hover:border-[#FFD0BC]'
+                  }`}
+                >
+                  Rating {rating.toFixed(1)}+
+                </button>
+              )
+            })}
+
             {FILTER_CHIPS.map((chip) => {
-              const isActive = chip === activeFilterChip
+              const isActive = activeFilterChips.includes(chip)
 
               return (
                 <button
                   key={chip}
                   type="button"
-                  onClick={() => setActiveFilterChip(chip)}
-                  className={`snap-start shrink-0 rounded-full border px-4 py-2.5 text-sm font-semibold transition-all ${
+                  onClick={() => toggleFilterChip(chip)}
+                  className={`snap-start shrink-0 rounded-full border px-4 py-2.5 text-sm font-bold transition-all active:scale-[0.97] ${
                     isActive
-                      ? 'border-[#FF6B35]/30 bg-[#FFEEE6] text-[#C2410C] shadow-[0_10px_24px_-16px_rgba(255,107,53,0.55)]'
-                      : 'border-white/80 bg-white/88 text-[#4B5563] shadow-[0_8px_20px_-18px_rgba(17,24,39,0.4)]'
+                      ? 'border-[#FF6B35] bg-[#FF6B35] text-white shadow-[0_12px_26px_-16px_rgba(255,107,53,0.72)]'
+                      : 'border-[#E8DED8] bg-white text-[#111827] shadow-[0_10px_24px_-20px_rgba(17,24,39,0.36)] hover:border-[#FFD0BC]'
                   }`}
                 >
                   {chip}
@@ -302,7 +420,7 @@ export default function HomePage() {
             subtitle={
               loadingRestaurants
                 ? 'Loading partners...'
-                : `${allRestaurants.length} places serving around Tadepalligudem`
+                : `${visibleRestaurants.length} places serving around Tadepalligudem`
             }
           />
 
@@ -312,17 +430,21 @@ export default function HomePage() {
                 <RestaurantCardSkeleton key={index} />
               ))}
             </div>
-          ) : allRestaurants.length === 0 ? (
+          ) : visibleRestaurants.length === 0 ? (
             <div className="rounded-2xl border border-[#E5E7EB] bg-white p-10 text-center shadow-card">
               <Sparkles className="mx-auto h-10 w-10 text-[#FF6B35]/60" />
-              <p className="mt-4 font-bold text-[#111827]">No restaurants available</p>
+              <p className="mt-4 font-bold text-[#111827]">
+                {allRestaurants.length === 0 ? 'No restaurants available' : 'No restaurants match these filters'}
+              </p>
               <p className="mt-1 text-sm text-[#6B7280]">
-                {loadError || 'Check back soon for new partners in your area.'}
+                {loadError || (allRestaurants.length === 0
+                  ? 'Check back soon for new partners in your area.'
+                  : 'Try removing a filter to see more local kitchens.')}
               </p>
             </div>
           ) : (
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {allRestaurants.map((restaurant, index) => (
+              {visibleRestaurants.map((restaurant, index) => (
                 <RestaurantCard key={restaurant.id} restaurant={restaurant} index={index} />
               ))}
             </div>
