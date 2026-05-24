@@ -53,6 +53,32 @@
   * {
     @apply border-border;
   }
+
+  input.mobile-safe-input {
+    -webkit-appearance: none;
+    appearance: none;
+    caret-color: #f97316;
+  }
+
+  input.mobile-safe-input::placeholder {
+    opacity: 1;
+    transition: opacity 0.2s ease;
+  }
+
+  input.mobile-safe-input:focus::placeholder,
+  input.mobile-safe-input:not(:placeholder-shown)::placeholder {
+    opacity: 0;
+  }
+
+  input.mobile-safe-input:-webkit-autofill,
+  input.mobile-safe-input:-webkit-autofill:hover,
+  input.mobile-safe-input:-webkit-autofill:focus {
+    -webkit-text-fill-color: #0f172a;
+    -webkit-box-shadow: 0 0 0 1000px #ffffff inset;
+    box-shadow: 0 0 0 1000px #ffffff inset;
+    transition: background-color 9999s ease-in-out 0s;
+  }
+
   body {
     @apply bg-background text-foreground;
   }

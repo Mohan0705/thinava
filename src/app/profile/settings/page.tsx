@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { Mail, Phone, ShieldCheck, User } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
@@ -13,16 +13,21 @@ export default function ProfileSettingsPage() {
   const token = useAuthStore((state) => state.token)
   const user = useAuthStore((state) => state.user)
   const setUser = useAuthStore((state) => state.setUser)
-  const [fullName, setFullName] = useState(user?.fullName || user?.name || '')
-  const [email, setEmail] = useState(user?.email || '')
-  const [profileImage, setProfileImage] = useState(user?.profileImage || '')
+  const [fullName, setFullName] = useState('')
+  const [email, setEmail] = useState('')
+  const [profileImage, setProfileImage] = useState('')
   const [saving, setSaving] = useState(false)
+  const initializedRef = useRef(false)
 
   useEffect(() => {
-    setFullName(user?.fullName || user?.name || '')
-    setEmail(user?.email || '')
-    setProfileImage(user?.profileImage || '')
-  }, [user])
+    // Only initialize once when user first loads or when returning from save
+    if (user && !initializedRef.current) {
+      setFullName(user.fullName || user.name || '')
+      setEmail(user.email || '')
+      setProfileImage(user.profileImage || '')
+      initializedRef.current = true
+    }
+  }, [user?.id]) // Depend on user.id instead of entire user object to prevent reset loops
 
   const accountHighlights = [
     { icon: User, label: 'Full name', value: user?.fullName || user?.name || 'Thinava User' },
@@ -32,18 +37,26 @@ export default function ProfileSettingsPage() {
 
   const handleSave = async () => {
     if (!token) {
+      toast.error('Not authenticated')
+      return
+    }
+
+    if (!fullName.trim()) {
+      toast.error('Full name is required')
       return
     }
 
     setSaving(true)
     try {
       const updatedUser = await customerAuthApi.updateProfile(token, {
-        full_name: fullName,
-        email: email || null,
-        profile_image: profileImage || null,
+        full_name: fullName.trim(),
+        email: email?.trim() || null,
+        profile_image: profileImage?.trim() || null,
       })
+      
       setUser(updatedUser)
-      toast.success('Profile updated')
+      initializedRef.current = false // Reset so form can update with latest data
+      toast.success('Profile updated successfully')
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Unable to update profile')
     } finally {

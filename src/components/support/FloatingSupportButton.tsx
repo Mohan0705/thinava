@@ -8,7 +8,7 @@ export default function FloatingSupportButton() {
   const [open, setOpen] = useState(false)
 
   return (
-    <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-3">
+    <div className="fixed bottom-[calc(env(safe-area-inset-bottom)+6rem)] right-4 z-50 flex flex-col items-end gap-3 md:bottom-6 md:right-6">
       {open && (
         <div className="flex flex-col gap-2 animate-in slide-in-from-bottom-2 fade-in duration-200">
           <a

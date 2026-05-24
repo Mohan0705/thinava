@@ -44,7 +44,11 @@ export function PhoneAuthForm({
             +91
           </div>
           <Input
+            type="tel"
             inputMode="numeric"
+            autoComplete="tel-national"
+            enterKeyHint={isSignup ? 'next' : 'done'}
+            pattern="[0-9]*"
             value={phone}
             onChange={(event) => onPhoneChange(event.target.value)}
             placeholder="98765 43210"

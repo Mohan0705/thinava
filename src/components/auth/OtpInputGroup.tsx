@@ -29,8 +29,20 @@ export function OtpInputGroup({
     }
   }
 
+  const handlePaste = (event: React.ClipboardEvent<HTMLInputElement>) => {
+    event.preventDefault()
+    const pastedValue = event.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6)
+
+    if (!pastedValue) {
+      return
+    }
+
+    onChange(pastedValue)
+    inputRefs.current[Math.min(pastedValue.length, 6) - 1]?.focus()
+  }
+
   return (
-    <div className="grid grid-cols-6 gap-2">
+    <div className="grid grid-cols-6 gap-2 sm:gap-3">
       {digits.map((digit, index) => (
         <Input
           key={`otp-digit-${index}`}
@@ -40,9 +52,17 @@ export function OtpInputGroup({
           value={digit}
           onChange={(event) => updateDigit(index, event.target.value)}
           onKeyDown={(event) => handleKeyDown(index, event)}
+          onPaste={handlePaste}
+          onFocus={(event) => event.target.select()}
+          type="tel"
           inputMode="numeric"
+          autoComplete={index === 0 ? 'one-time-code' : 'off'}
+          enterKeyHint={index === 5 ? 'done' : 'next'}
           maxLength={1}
-          className="h-14 px-0 text-center text-xl font-semibold"
+          pattern="[0-9]*"
+          aria-label={`OTP digit ${index + 1}`}
+          placeholder=""
+          className="h-14 min-w-0 px-0 text-center text-[20px] font-semibold leading-none caret-orange-500 [text-align-last:center]"
         />
       ))}
     </div>
