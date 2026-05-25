@@ -13,19 +13,20 @@ import { Card, CardContent } from '@/components/ui/Card'
 import { Input } from '@/components/ui/Input'
 import { RestaurantCard, RestaurantCardSkeleton } from '@/components/customer/RestaurantCard'
 import { SectionHeading } from '@/components/customer/SectionHeading'
-import { fetchRestaurants } from '@/lib/customer-api'
+import { fetchRestaurants, mapRestaurant } from '@/lib/customer-api'
 import { getRealtimeSocket, releaseRealtimeSocket } from '@/lib/realtime'
 import { isValidJwt } from '@/lib/auth/session'
 import { useAuthStore } from '@/store/authStore'
 import { useFilterStore } from '@/store/filterStore'
 import { API_BASE_URL } from '@/lib/api'
+import { sortRestaurantsForDisplay } from '@/lib/restaurant-availability'
 import type { Restaurant } from '@/types'
 
 const normalize = (value: string) => value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
 
 interface ApiResponse {
   success?: boolean
-  restaurants?: Restaurant[]
+  restaurants?: Array<Record<string, any>>
   error?: string
   message?: string
   count?: number
@@ -90,7 +91,9 @@ export function RestaurantsClientPage({
           if (mounted) {
             // Safe parsing with defaults - prevent undefined errors
             const fetchedRestaurants = Array.isArray(data.restaurants) ? data.restaurants : []
-            const validRestaurants = fetchedRestaurants.filter((r): r is Restaurant => !!r && typeof r === 'object')
+            const validRestaurants = fetchedRestaurants
+              .filter((r): r is Record<string, any> => !!r && typeof r === 'object')
+              .map(mapRestaurant)
             
             setRestaurants(validRestaurants)
             
@@ -118,7 +121,9 @@ export function RestaurantsClientPage({
 
           if (mounted) {
             const fetchedRestaurants = Array.isArray(data.restaurants) ? data.restaurants : []
-            const validRestaurants = fetchedRestaurants.filter((r): r is Restaurant => !!r && typeof r === 'object')
+            const validRestaurants = fetchedRestaurants
+              .filter((r): r is Record<string, any> => !!r && typeof r === 'object')
+              .map(mapRestaurant)
             
             setRestaurants(validRestaurants)
             
@@ -174,11 +179,30 @@ export function RestaurantsClientPage({
       return
     }
 
-    const handleRestaurantStatusUpdated = (data: { restaurantId: string; status: string }) => {
+    const handleRestaurantStatusUpdated = (data: {
+      restaurantId: string
+      status: string
+      displayStatus?: string
+      isOpenNow?: boolean
+      nextOpeningTime?: string | null
+      closesAt?: string | null
+      isOvernightSchedule?: boolean
+      isManuallyClosed?: boolean
+    }) => {
       setRestaurants((prevRestaurants) =>
         prevRestaurants.map((r) =>
           r.id === data.restaurantId
-            ? { ...r, status: data.status, isOpen: data.status === 'OPEN' }
+            ? {
+                ...r,
+                status: data.status,
+                displayStatus: data.displayStatus || data.status,
+                isOpen: Boolean(data.isOpenNow),
+                isOpenNow: Boolean(data.isOpenNow),
+                nextOpeningTime: data.nextOpeningTime ?? r.nextOpeningTime,
+                closesAt: data.closesAt ?? r.closesAt,
+                isOvernightSchedule: data.isOvernightSchedule ?? r.isOvernightSchedule,
+                isManuallyClosed: data.isManuallyClosed ?? r.isManuallyClosed,
+              }
             : r
         )
       )
@@ -229,6 +253,7 @@ export function RestaurantsClientPage({
       return restaurantText.includes(textQuery)
     })
   }, [query, restaurants])
+  const sortedRestaurants = useMemo(() => sortRestaurantsForDisplay(filteredRestaurants), [filteredRestaurants])
 
   return (
     <div className="thinava-page-mobile">
@@ -270,7 +295,7 @@ export function RestaurantsClientPage({
 
       <section className="container mx-auto px-4 py-8">
         <SectionHeading
-          title={`${filteredRestaurants.length} restaurants`}
+          title={`${sortedRestaurants.length} restaurants`}
           subtitle={initialCategory ? `Filtered by ${initialCategory}` : 'All partners in your area'}
           action={
             initialCategory ? (
@@ -285,7 +310,7 @@ export function RestaurantsClientPage({
               <RestaurantCardSkeleton key={index} />
             ))}
           </div>
-        ) : filteredRestaurants.length === 0 ? (
+        ) : sortedRestaurants.length === 0 ? (
           <Card>
             <CardContent className="p-10 text-center">
               <h3 className="text-lg font-bold text-thinava-text">
@@ -308,7 +333,7 @@ export function RestaurantsClientPage({
           </Card>
         ) : (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {filteredRestaurants.map((restaurant, index) => (
+            {sortedRestaurants.map((restaurant, index) => (
               <RestaurantCard key={restaurant.id} restaurant={restaurant} index={index} />
             ))}
           </div>

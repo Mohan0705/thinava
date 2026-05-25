@@ -22,6 +22,11 @@ import MobileNav from '@/components/layout/MobileNav'
 import { MenuItem, Restaurant } from '@/types'
 import { cn } from '@/lib/utils'
 import { getOptimizedCloudinaryImageUrl } from '@/lib/cloudinary-image'
+import {
+  getRestaurantClosedLabel,
+  getRestaurantReopenText,
+  isRestaurantAcceptingOrders,
+} from '@/lib/restaurant-availability'
 
 function MenuQuantityControl({
   quantity,
@@ -111,10 +116,31 @@ export default function RestaurantPage() {
     const socket = getRealtimeSocket('customer', token)
     if (!socket) return
 
-    const handleRestaurantStatusUpdated = (data: { restaurantId: string; status: string }) => {
+    const handleRestaurantStatusUpdated = (data: {
+      restaurantId: string
+      status: string
+      displayStatus?: string
+      isOpenNow?: boolean
+      nextOpeningTime?: string | null
+      closesAt?: string | null
+      isOvernightSchedule?: boolean
+      isManuallyClosed?: boolean
+    }) => {
       if (data.restaurantId === restaurantId) {
         setRestaurant((prev) =>
-          prev ? { ...prev, status: data.status, isOpen: data.status === 'OPEN' } : null
+          prev
+            ? {
+                ...prev,
+                status: data.status,
+                displayStatus: data.displayStatus || data.status,
+                isOpen: Boolean(data.isOpenNow),
+                isOpenNow: Boolean(data.isOpenNow),
+                nextOpeningTime: data.nextOpeningTime ?? prev.nextOpeningTime,
+                closesAt: data.closesAt ?? prev.closesAt,
+                isOvernightSchedule: data.isOvernightSchedule ?? prev.isOvernightSchedule,
+                isManuallyClosed: data.isManuallyClosed ?? prev.isManuallyClosed,
+              }
+            : null
         )
       }
     }
@@ -188,10 +214,9 @@ export default function RestaurantPage() {
     )
   }
 
-  const isRestaurantAvailable = restaurant.isOpen && (!restaurant.status || restaurant.status === 'OPEN')
-  const restaurantStatusLabel = restaurant.status === 'TEMPORARILY_UNAVAILABLE'
-    ? 'Currently Unavailable'
-    : 'Currently Closed'
+  const isRestaurantAvailable = isRestaurantAcceptingOrders(restaurant)
+  const restaurantStatusLabel = getRestaurantClosedLabel(restaurant)
+  const reopenText = getRestaurantReopenText(restaurant)
   const heroImage = getOptimizedCloudinaryImageUrl(
     restaurant.bannerImage?.trim() || restaurant.image?.trim() || '',
     { width: 1600, crop: 'fill', quality: 'auto:good' }
@@ -203,7 +228,14 @@ export default function RestaurantPage() {
 
       <div className="relative h-44 md:h-52">
         {heroImage ? (
-          <Image src={heroImage} alt={restaurant.name} fill className="object-cover" priority sizes="100vw" />
+          <Image
+            src={heroImage}
+            alt={restaurant.name}
+            fill
+            className={cn('object-cover', !isRestaurantAvailable && 'grayscale opacity-80')}
+            priority
+            sizes="100vw"
+          />
         ) : (
           <div className="flex h-full w-full items-center justify-center bg-orange-50 text-orange-500">
             <ImageIcon className="h-12 w-12" />
@@ -275,7 +307,7 @@ export default function RestaurantPage() {
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-slate-400 opacity-75" />
               <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-slate-700" />
             </span>
-            {restaurantStatusLabel}. This restaurant is not accepting orders right now.
+            {restaurantStatusLabel}. {reopenText}. You can still browse the menu.
           </div>
         )}
 

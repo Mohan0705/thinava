@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Save, Store } from 'lucide-react'
+import { PauseCircle, Power, Save, Store } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/Button'
 import { Card, CardContent } from '@/components/ui/Card'
@@ -15,9 +15,6 @@ import { StatusBadge } from '@/components/restaurant-panel/StatusBadge'
 import { restaurantPanelApi } from '@/lib/restaurant-panel-api'
 import { useRestaurantOwnerAuthStore } from '@/store/restaurantOwnerAuthStore'
 import { RestaurantPanelSettings } from '@/types/restaurant-panel'
-
-const selectClassName =
-  'flex h-12 w-full rounded-xl border-2 border-gray-200 bg-white px-4 py-3 text-base focus-visible:outline-none focus-visible:border-orange-500 focus-visible:ring-2 focus-visible:ring-orange-500/20 transition-all duration-200'
 
 function SettingsContent() {
   const token = useRestaurantOwnerAuthStore((state) => state.token)
@@ -83,7 +80,36 @@ function SettingsContent() {
     )
   }
 
-  const handleSubmit = async () => {
+  const buildPayload = (manualOverride?: boolean) => {
+    if (!settings) return null
+
+    return {
+      name: settings.name.trim(),
+      image: settings.image || '',
+      logo: settings.logo || '',
+      banner_image: settings.banner_image || '',
+      description: settings.description || '',
+      opening_time: settings.opening_time || '',
+      closing_time: settings.closing_time || '',
+      timezone: settings.timezone || 'Asia/Kolkata',
+      is_manually_closed: manualOverride ?? Boolean(settings.is_manually_closed),
+      minimum_order: Number(settings.minimum_order || 0),
+      delivery_radius_km: Number(settings.delivery_radius_km || 0),
+      formatted_address: settings.formatted_address || '',
+      place_id: settings.place_id || '',
+      latitude: settings.latitude ?? null,
+      longitude: settings.longitude ?? null,
+      offer: settings.offer || '',
+      cuisines: cuisinesInput
+        .split(',')
+        .map((item) => item.trim())
+        .filter(Boolean),
+      delivery_time: String(settings.delivery_time || ''),
+      price_for_one: Number(settings.price_for_one || 0),
+    }
+  }
+
+  const saveSettings = async (manualOverride?: boolean, successMessage = 'Restaurant settings updated') => {
     if (!token || !settings) {
       return
     }
@@ -91,39 +117,26 @@ function SettingsContent() {
     setSubmitting(true)
 
     try {
-      const payload = {
-        name: settings.name.trim(),
-        image: settings.image || '',
-        logo: settings.logo || '',
-        banner_image: settings.banner_image || '',
-        description: settings.description || '',
-        opening_time: settings.opening_time || '',
-        closing_time: settings.closing_time || '',
-        minimum_order: Number(settings.minimum_order || 0),
-        delivery_radius_km: Number(settings.delivery_radius_km || 0),
-        formatted_address: settings.formatted_address || '',
-        place_id: settings.place_id || '',
-        latitude: settings.latitude ?? null,
-        longitude: settings.longitude ?? null,
-        offer: settings.offer || '',
-        cuisines: cuisinesInput
-          .split(',')
-          .map((item) => item.trim())
-          .filter(Boolean),
-        delivery_time: String(settings.delivery_time || ''),
-        price_for_one: Number(settings.price_for_one || 0),
-        status: settings.status,
-      }
-
+      const payload = buildPayload(manualOverride)
+      if (!payload) return
       const response = await restaurantPanelApi.updateSettings(token, payload)
       setSettings(response.settings)
       setCuisinesInput(response.settings.cuisines.join(', '))
-      toast.success('Restaurant settings updated')
+      toast.success(successMessage)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Unable to update settings')
     } finally {
       setSubmitting(false)
     }
+  }
+
+  const handleSubmit = async () => saveSettings()
+
+  const handleManualOverride = async (closed: boolean) => {
+    await saveSettings(
+      closed,
+      closed ? 'Restaurant manually closed' : 'Restaurant reopened. Timings now control availability.'
+    )
   }
 
   if (loading || !settings) {
@@ -231,6 +244,15 @@ function SettingsContent() {
                   />
                 </div>
 
+                <div className="space-y-2 md:col-span-2">
+                  <label className="text-sm font-semibold text-slate-700">Timezone</label>
+                  <Input
+                    value={settings.timezone || 'Asia/Kolkata'}
+                    onChange={(event) => updateSettings('timezone', event.target.value)}
+                    placeholder="Asia/Kolkata"
+                  />
+                </div>
+
                 <div className="space-y-2">
                   <label className="text-sm font-semibold text-slate-700">Minimum order</label>
                   <Input
@@ -334,17 +356,46 @@ function SettingsContent() {
               <p className="mt-2 text-sm text-slate-500">Set live operating mode, cuisines, and promotional offer text.</p>
 
               <div className="mt-5 space-y-5">
-                <div className="space-y-2">
-                  <label className="text-sm font-semibold text-slate-700">Restaurant status</label>
-                  <select
-                    className={selectClassName}
-                    value={settings.status}
-                    onChange={(event) => updateSettings('status', event.target.value as RestaurantPanelSettings['status'])}
-                  >
-                    <option value="OPEN">OPEN</option>
-                    <option value="CLOSED">CLOSED</option>
-                    <option value="TEMPORARILY_UNAVAILABLE">TEMPORARILY_UNAVAILABLE</option>
-                  </select>
+                <div className="space-y-3">
+                  <label className="text-sm font-semibold text-slate-700">Manual availability override</label>
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-bold text-slate-900">
+                          {settings.is_manually_closed ? 'Manually closed' : 'Timing controlled'}
+                        </div>
+                        <p className="mt-1 text-xs font-medium text-slate-500">
+                          {settings.is_manually_closed
+                            ? 'Customers can browse, but checkout is blocked until you reopen.'
+                            : 'Opening and closing time decide whether customers can order.'}
+                        </p>
+                      </div>
+                      <StatusBadge status={settings.status} />
+                    </div>
+
+                    <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                      <Button
+                        type="button"
+                        variant={settings.is_manually_closed ? 'outline' : 'default'}
+                        onClick={() => handleManualOverride(true)}
+                        disabled={submitting || settings.is_manually_closed}
+                        className="justify-center"
+                      >
+                        <PauseCircle className="mr-2 h-4 w-4" />
+                        Manually Close
+                      </Button>
+                      <Button
+                        type="button"
+                        variant={!settings.is_manually_closed ? 'outline' : 'default'}
+                        onClick={() => handleManualOverride(false)}
+                        disabled={submitting || !settings.is_manually_closed}
+                        className="justify-center"
+                      >
+                        <Power className="mr-2 h-4 w-4" />
+                        Reopen
+                      </Button>
+                    </div>
+                  </div>
                 </div>
 
                 <div className="space-y-2">
@@ -377,7 +428,9 @@ function SettingsContent() {
               <p className="mt-2 text-sm text-slate-300">{settings.description || 'Add a description so customers understand your specialty.'}</p>
               <div className="mt-5 space-y-2 text-sm text-slate-300">
                 <div>Status: {settings.status}</div>
-                <div>Hours: {settings.opening_time || '--'} to {settings.closing_time || '--'}</div>
+                <div>Hours: {settings.opening_time || '--'} to {settings.closing_time || '--'} ({settings.timezone || 'Asia/Kolkata'})</div>
+                {settings.nextOpeningTime ? <div>Next opening: {settings.nextOpeningTime}</div> : null}
+                {settings.closesAt ? <div>Closes at: {settings.closesAt}</div> : null}
                 <div>Delivery radius: {settings.delivery_radius_km} km</div>
                 <div>Address: {settings.formatted_address || 'Add exact pickup address'}</div>
                 <div>Minimum order: {settings.minimum_order}</div>

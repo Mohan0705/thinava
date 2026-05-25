@@ -7,6 +7,11 @@ import { Clock, ImageIcon, Percent, Star, Zap } from 'lucide-react'
 import type { Restaurant } from '@/types'
 import { cn } from '@/lib/utils'
 import { getOptimizedCloudinaryImageUrl } from '@/lib/cloudinary-image'
+import {
+  getRestaurantClosedLabel,
+  getRestaurantReopenText,
+  isRestaurantAcceptingOrders,
+} from '@/lib/restaurant-availability'
 
 export function RestaurantCardSkeleton({ layout = 'grid' }: { layout?: 'grid' | 'carousel' }) {
   return (
@@ -37,12 +42,12 @@ export function RestaurantCard({
   className?: string
   layout?: 'grid' | 'carousel'
 }) {
-  const isTemp = restaurant.status === 'TEMPORARILY_UNAVAILABLE'
-  const isClosed = restaurant.status === 'CLOSED' || !restaurant.isOpen
-  const isUnavailable = isTemp || isClosed
+  const isAvailable = isRestaurantAcceptingOrders(restaurant)
+  const isUnavailable = !isAvailable
   const ratingText = Number(restaurant.rating || 0).toFixed(1)
   const reviewCount = restaurant.ratingCount ?? 0
-  const unavailableLabel = isClosed ? 'Currently Closed' : 'Currently Unavailable'
+  const unavailableLabel = getRestaurantClosedLabel(restaurant)
+  const reopenText = getRestaurantReopenText(restaurant)
   const imageUrl = getOptimizedCloudinaryImageUrl(restaurant.image, {
     width: layout === 'carousel' ? 640 : 900,
     crop: 'fill',
@@ -65,7 +70,7 @@ export function RestaurantCard({
             className={cn(
               'object-cover transition-transform duration-500',
               !isUnavailable && 'group-hover:scale-105',
-              isUnavailable && 'scale-[1.02] grayscale-[35%]'
+              isUnavailable && 'scale-[1.02] grayscale opacity-75'
             )}
           />
         ) : (
@@ -73,7 +78,10 @@ export function RestaurantCard({
             <ImageIcon className="h-9 w-9" />
           </div>
         )}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/48 via-black/8 to-transparent" />
+        <div className={cn(
+          'absolute inset-0 bg-gradient-to-t from-black/48 via-black/8 to-transparent',
+          isUnavailable && 'bg-slate-950/24'
+        )} />
 
         <div className="absolute left-3 top-3 flex flex-wrap gap-1.5">
           {restaurant.offer && !isUnavailable ? (
@@ -99,10 +107,11 @@ export function RestaurantCard({
         </div>
 
         {isUnavailable ? (
-          <div className="absolute inset-0 flex items-center justify-center bg-slate-950/48 backdrop-blur-[1.5px]">
-            <span className="rounded-full border border-white/25 bg-white/92 px-4 py-2 text-xs font-black uppercase tracking-[0.18em] text-slate-900 shadow-[0_18px_40px_-20px_rgba(15,23,42,0.55)]">
-              {unavailableLabel}
-            </span>
+          <div className="absolute inset-0 flex items-end bg-slate-950/50 p-4 backdrop-blur-[1px]">
+            <div className="text-white drop-shadow">
+              <div className="text-base font-black leading-tight">{unavailableLabel}</div>
+              <div className="mt-0.5 text-sm font-semibold text-white/92">{reopenText}</div>
+            </div>
           </div>
         ) : null}
       </div>
@@ -148,15 +157,13 @@ export function RestaurantCard({
       viewport={{ once: true }}
       className={cn(layout === 'carousel' && 'w-[min(82vw,300px)] shrink-0 snap-start', className)}
     >
-      {isUnavailable ? (
-        <div className="group cursor-not-allowed" aria-disabled="true">
-          {card}
-        </div>
-      ) : (
-        <Link href={`/restaurant/${restaurant.id}`} className="group block thinava-touch">
-          {card}
-        </Link>
-      )}
+      <Link
+        href={`/restaurant/${restaurant.id}`}
+        className={cn('group block thinava-touch', isUnavailable && 'opacity-90')}
+        aria-label={`${restaurant.name}${isUnavailable ? `, ${unavailableLabel}` : ''}`}
+      >
+        {card}
+      </Link>
     </motion.article>
   )
 }

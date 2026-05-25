@@ -46,6 +46,10 @@ const ensureRestaurantPanelSchema = async () => {
         offer VARCHAR(100),
         featured BOOLEAN DEFAULT FALSE,
         is_open BOOLEAN DEFAULT TRUE,
+        opening_time VARCHAR(20),
+        closing_time VARCHAR(20),
+        timezone VARCHAR(64) DEFAULT 'Asia/Kolkata',
+        is_manually_closed BOOLEAN DEFAULT FALSE,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
@@ -144,6 +148,8 @@ const ensureRestaurantPanelSchema = async () => {
       ADD COLUMN IF NOT EXISTS description TEXT,
       ADD COLUMN IF NOT EXISTS opening_time VARCHAR(20),
       ADD COLUMN IF NOT EXISTS closing_time VARCHAR(20),
+      ADD COLUMN IF NOT EXISTS timezone VARCHAR(64) DEFAULT 'Asia/Kolkata',
+      ADD COLUMN IF NOT EXISTS is_manually_closed BOOLEAN DEFAULT FALSE,
       ADD COLUMN IF NOT EXISTS minimum_order DECIMAL(10, 2) DEFAULT 0,
       ADD COLUMN IF NOT EXISTS delivery_radius_km INTEGER DEFAULT 5,
       ADD COLUMN IF NOT EXISTS status VARCHAR(40) DEFAULT 'OPEN';
@@ -202,6 +208,19 @@ const ensureRestaurantPanelSchema = async () => {
         ELSE '${RESTAURANT_STATUSES.CLOSED}'
       END
       WHERE status IS NULL;
+    `)
+
+    await client.query(`
+      UPDATE restaurants
+      SET timezone = 'Asia/Kolkata'
+      WHERE timezone IS NULL OR TRIM(timezone) = '';
+    `)
+
+    await client.query(`
+      UPDATE restaurants
+      SET is_manually_closed = TRUE
+      WHERE UPPER(COALESCE(status, '')) IN ('${RESTAURANT_STATUSES.CLOSED}', '${RESTAURANT_STATUSES.TEMPORARILY_UNAVAILABLE}')
+        AND COALESCE(is_manually_closed, FALSE) = FALSE;
     `)
 
     await client.query(`
@@ -265,6 +284,7 @@ const ensureRestaurantPanelSchema = async () => {
       CREATE INDEX IF NOT EXISTS idx_users_phone ON users(phone);
       CREATE INDEX IF NOT EXISTS idx_addresses_user_id ON addresses(user_id);
       CREATE INDEX IF NOT EXISTS idx_restaurants_featured ON restaurants(featured);
+      CREATE INDEX IF NOT EXISTS idx_restaurants_manual_closed ON restaurants(is_manually_closed);
       CREATE INDEX IF NOT EXISTS idx_menu_items_restaurant_id ON menu_items(restaurant_id);
       CREATE INDEX IF NOT EXISTS idx_menu_items_category ON menu_items(category);
       CREATE INDEX IF NOT EXISTS idx_orders_user_id ON orders(user_id);

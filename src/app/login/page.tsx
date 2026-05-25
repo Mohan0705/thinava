@@ -80,7 +80,7 @@ export default function LoginPage() {
       description="We&apos;ll send a one-time code and automatically create your Thinava account if you&apos;re new."
       footer={
         <>
-          By continuing, you agree to Thinava&apos;s <Link href="/" className="font-semibold text-orange-600">Terms</Link> and <Link href="/" className="font-semibold text-orange-600">Privacy Policy</Link>.
+          By continuing, you agree to Thinava&apos;s <Link href="/terms" className="font-semibold text-orange-600">Terms</Link> and <Link href="/privacy" className="font-semibold text-orange-600">Privacy Policy</Link>.
         </>
       }
     >

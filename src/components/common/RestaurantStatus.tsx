@@ -4,7 +4,7 @@ import { motion } from 'framer-motion'
 import { AlertCircle, CheckCircle, Clock, ImageIcon } from 'lucide-react'
 import { getOptimizedCloudinaryImageUrl } from '@/lib/cloudinary-image'
 
-type RestaurantStatus = 'OPEN' | 'TEMPORARILY_UNAVAILABLE' | 'CLOSED'
+type RestaurantStatus = 'OPEN' | 'TEMPORARILY_UNAVAILABLE' | 'CLOSED' | 'MANUALLY_CLOSED'
 
 interface RestaurantStatusBadgeProps {
   status: RestaurantStatus
@@ -35,6 +35,14 @@ export function RestaurantStatusBadge({ status, animated = true }: RestaurantSta
       text: 'text-red-700',
       icon: AlertCircle,
       label: 'Closed',
+      dotColor: 'bg-red-500'
+    },
+    MANUALLY_CLOSED: {
+      bg: 'bg-red-100',
+      border: 'border-red-200',
+      text: 'text-red-700',
+      icon: AlertCircle,
+      label: 'Manually Closed',
       dotColor: 'bg-red-500'
     }
   }
@@ -179,7 +187,7 @@ export function RestaurantStatusControl({
   onStatusChange: (status: RestaurantStatus) => Promise<void>
   isLoading: boolean
 }) {
-  const statusOptions: RestaurantStatus[] = ['OPEN', 'TEMPORARILY_UNAVAILABLE', 'CLOSED']
+  const statusOptions: RestaurantStatus[] = ['OPEN', 'MANUALLY_CLOSED', 'CLOSED']
 
   return (
     <div className="bg-white rounded-xl p-6 shadow-lg">

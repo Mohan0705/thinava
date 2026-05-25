@@ -3,6 +3,7 @@ const router = express.Router()
 const pool = require('../database/connection')
 const { asyncHandler } = require('../utils/asyncHandler')
 const { logger } = require('../lib/logger')
+const { applyRestaurantAvailability } = require('../utils/restaurantAvailability')
 
 // Get full menu for a restaurant (customer-facing)
 router.get('/restaurant/:restaurantId', asyncHandler(async (req, res) => {
@@ -10,6 +11,13 @@ router.get('/restaurant/:restaurantId', asyncHandler(async (req, res) => {
 
   const categoriesResult = await pool.query(
     `SELECT * FROM restaurant_categories WHERE restaurant_id = $1 ORDER BY display_order ASC`,
+    [restaurantId]
+  )
+
+  const restaurantResult = await pool.query(
+    `SELECT id, opening_time, closing_time, timezone, is_manually_closed
+     FROM restaurants
+     WHERE id = $1`,
     [restaurantId]
   )
 
@@ -57,6 +65,7 @@ router.get('/restaurant/:restaurantId', asyncHandler(async (req, res) => {
 
   res.json({
     success: true,
+    restaurant: restaurantResult.rows[0] ? applyRestaurantAvailability(restaurantResult.rows[0]) : null,
     categories: categoriesResult.rows,
     menuItems: items,
   })

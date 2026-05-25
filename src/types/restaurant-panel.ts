@@ -7,7 +7,7 @@ export type RestaurantOrderStatus =
   | 'DELIVERED'
   | 'CANCELLED'
 
-export type RestaurantStatus = 'OPEN' | 'CLOSED' | 'TEMPORARILY_UNAVAILABLE'
+export type RestaurantStatus = 'OPEN' | 'CLOSED' | 'MANUALLY_CLOSED' | 'TEMPORARILY_UNAVAILABLE'
 
 export interface RestaurantOwner {
   id: string
@@ -110,7 +110,15 @@ export interface RestaurantPanelSettings {
   opening_time?: string
   closing_time?: string
   status: RestaurantStatus
+  stored_status?: RestaurantStatus
   is_open: boolean
+  isOpenNow?: boolean
+  displayStatus?: RestaurantStatus
+  nextOpeningTime?: string | null
+  closesAt?: string | null
+  isOvernightSchedule?: boolean
+  timezone?: string
+  is_manually_closed?: boolean
   rating: number
 }
 
@@ -156,4 +164,3 @@ export interface RestaurantAnalytics {
   peakHours: RestaurantPeakHour[]
   reviews: RestaurantReview[]
 }
-

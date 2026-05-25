@@ -3,6 +3,7 @@
 import { motion } from 'framer-motion'
 import Link from 'next/link'
 import Image from 'next/image'
+import { useEffect, useState } from 'react'
 import { Plus, Minus, Trash2, ShoppingBag, ArrowRight, ImageIcon } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Card, CardContent } from '@/components/ui/Card'
@@ -13,6 +14,9 @@ import Footer from '@/components/layout/Footer'
 import MobileNav from '@/components/layout/MobileNav'
 import { cn } from '@/lib/utils'
 import { getOptimizedCloudinaryImageUrl } from '@/lib/cloudinary-image'
+import { fetchRestaurant } from '@/lib/customer-api'
+import { getRestaurantClosedLabel, getRestaurantReopenText, isRestaurantAcceptingOrders } from '@/lib/restaurant-availability'
+import type { Restaurant } from '@/types'
 
 function QuantityControl({
   quantity,
@@ -48,11 +52,38 @@ function QuantityControl({
 
 export default function CartPage() {
   const { items, updateQuantity, removeItem, getSubtotal } = useCartStore()
+  const [restaurant, setRestaurant] = useState<Restaurant | null>(null)
 
   const subtotal = getSubtotal()
   const deliveryFee = calculateDeliveryFee(subtotal)
   const tax = calculateTax(subtotal)
   const total = subtotal + deliveryFee + tax
+  const restaurantId = items[0]?.menuItem.restaurantId
+  const restaurantUnavailable = Boolean(restaurant && !isRestaurantAcceptingOrders(restaurant))
+
+  useEffect(() => {
+    let mounted = true
+
+    const validateRestaurant = async () => {
+      if (!restaurantId) {
+        setRestaurant(null)
+        return
+      }
+
+      try {
+        const liveRestaurant = await fetchRestaurant(restaurantId)
+        if (mounted) setRestaurant(liveRestaurant)
+      } catch {
+        if (mounted) setRestaurant(null)
+      }
+    }
+
+    validateRestaurant()
+
+    return () => {
+      mounted = false
+    }
+  }, [restaurantId])
 
   if (items.length === 0) {
     return (
@@ -176,12 +207,24 @@ export default function CartPage() {
                   </div>
                 </div>
 
-                <Link href="/checkout" className="mt-5 block">
-                  <Button className="w-full gap-2" size="lg">
-                    Proceed to checkout
-                    <ArrowRight className="h-4 w-4" />
+                {restaurantUnavailable && restaurant ? (
+                  <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm font-semibold text-slate-700">
+                    {getRestaurantClosedLabel(restaurant)}. {getRestaurantReopenText(restaurant)}.
+                  </div>
+                ) : null}
+
+                {restaurantUnavailable ? (
+                  <Button className="mt-5 w-full gap-2" size="lg" disabled>
+                    This restaurant is currently closed
                   </Button>
-                </Link>
+                ) : (
+                  <Link href="/checkout" className="mt-5 block">
+                    <Button className="w-full gap-2" size="lg">
+                      Proceed to checkout
+                      <ArrowRight className="h-4 w-4" />
+                    </Button>
+                  </Link>
+                )}
 
                 {subtotal < 300 && (
                   <p className="mt-3 text-center text-xs text-thinava-primary">

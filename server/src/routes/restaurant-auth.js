@@ -28,6 +28,8 @@ const {
   deleteSupabaseRestaurantAuthUser,
   syncSupabaseRestaurantMetadata,
 } = require('../modules/restaurantPanel/services/supabaseRestaurantAuthService')
+const { applyRestaurantAvailability } = require('../utils/restaurantAvailability')
+const SocketEventsHandler = require('../realtime/socketEventsHandler')
 
 const BCRYPT_ROUNDS = 10
 
@@ -257,8 +259,8 @@ router.post('/register', asyncHandler(async (req, res) => {
     // Create restaurant
     const restaurantResult = await client.query(
       `INSERT INTO restaurants 
-       (name, image, logo, delivery_time, price_for_one, cuisines, is_open, status, category, veg_non_veg, opening_time, closing_time, delivery_radius_km, latitude, longitude, address, city, state, pincode)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
+       (name, image, logo, delivery_time, price_for_one, cuisines, is_open, status, category, veg_non_veg, opening_time, closing_time, timezone, is_manually_closed, delivery_radius_km, latitude, longitude, address, city, state, pincode)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'Asia/Kolkata', FALSE, $13, $14, $15, $16, $17, $18, $19)
        RETURNING id`,
       [
         restaurantName,
@@ -434,7 +436,7 @@ router.get('/profile', authenticateRestaurant, asyncHandler(async (req, res) => 
     return res.status(404).json({ success: false, error: 'Restaurant not found' })
   }
 
-  return res.json({ success: true, restaurant: result.rows[0] })
+  return res.json({ success: true, restaurant: applyRestaurantAvailability(result.rows[0]) })
 }))
 
 // ============================================================
@@ -444,7 +446,7 @@ router.post('/status/update', authenticateRestaurant, asyncHandler(async (req, r
   const { restaurantId } = req.restaurant
   const { status, reason } = req.body
 
-  const validStatuses = ['OPEN', 'TEMPORARILY_UNAVAILABLE', 'CLOSED']
+    const validStatuses = ['OPEN', 'TEMPORARILY_UNAVAILABLE', 'CLOSED', 'MANUALLY_CLOSED']
   
   if (!validStatuses.includes(status)) {
     return res.status(400).json({ 
@@ -457,42 +459,47 @@ router.post('/status/update', authenticateRestaurant, asyncHandler(async (req, r
   try {
     await client.query('BEGIN')
 
-    // Update restaurant status
+    const normalizedStatus = String(status).toUpperCase()
+    const isManuallyClosed = ['CLOSED', 'TEMPORARILY_UNAVAILABLE', 'MANUALLY_CLOSED'].includes(normalizedStatus)
+
+    // Update only the manual override flag. Time-based open/close is computed centrally.
     await client.query(
-      'UPDATE restaurants SET status = $1, updated_at = NOW() WHERE id = $2',
-      [status, restaurantId]
+      `UPDATE restaurants
+       SET status = $1, is_open = $2, is_manually_closed = $3, updated_at = NOW()
+       WHERE id = $4`,
+      [isManuallyClosed ? 'CLOSED' : 'OPEN', !isManuallyClosed, isManuallyClosed, restaurantId]
     )
 
     // Log status change
     await client.query(
       `INSERT INTO restaurant_status_logs (restaurant_id, status, changed_by, reason)
        VALUES ($1, $2, $3, $4)`,
-      [restaurantId, status, req.restaurant.restaurantUserId, reason || null]
+      [restaurantId, isManuallyClosed ? 'MANUALLY_CLOSED' : 'OPEN', req.restaurant.restaurantUserId, reason || null]
     )
 
     await client.query('COMMIT')
 
-    // Emit socket event
-    const io = req.app.get('io')
-    if (io) {
-      io.to(`restaurant:${restaurantId}`).emit('restaurantStatusUpdated', {
-        restaurantId,
-        status,
-        timestamp: new Date()
-      })
-      
-      // Also broadcast to admin channel
-      io.to('admin:global').emit('restaurantStatusUpdated', {
-        restaurantId,
-        status,
-        timestamp: new Date()
-      })
-    }
+    const updated = await pool.query(
+      `SELECT id, opening_time, closing_time, timezone, is_manually_closed FROM restaurants WHERE id = $1`,
+      [restaurantId]
+    )
+    const availability = applyRestaurantAvailability(updated.rows[0] || {})
+    const handler = new SocketEventsHandler()
+    await handler.emitRestaurantStatusUpdated(restaurantId, {
+      status: availability.displayStatus,
+      isOpenNow: availability.isOpenNow,
+      displayStatus: availability.displayStatus,
+      nextOpeningTime: availability.nextOpeningTime,
+      closesAt: availability.closesAt,
+      isOvernightSchedule: availability.isOvernightSchedule,
+      isManuallyClosed,
+    })
 
     return res.json({
       success: true,
       message: 'Status updated successfully',
-      status
+      status: availability.displayStatus,
+      availability
     })
 
   } catch (error) {
@@ -510,7 +517,7 @@ router.get('/status/:restaurantId', asyncHandler(async (req, res) => {
   const { restaurantId } = req.params
 
   const result = await pool.query(
-    'SELECT id, name, status FROM restaurants WHERE id = $1',
+    'SELECT id, name, status, opening_time, closing_time, timezone, is_manually_closed FROM restaurants WHERE id = $1',
     [restaurantId]
   )
 
@@ -520,7 +527,7 @@ router.get('/status/:restaurantId', asyncHandler(async (req, res) => {
 
   return res.json({ 
     success: true, 
-    restaurant: result.rows[0] 
+    restaurant: applyRestaurantAvailability(result.rows[0])
   })
 }))
 

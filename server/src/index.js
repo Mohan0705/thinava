@@ -109,6 +109,10 @@ const addOrderLifecycleColumns = require('./database/migrations/add-order-lifecy
 const { repairRestaurantAuthUsers } = require('./modules/restaurantPanel/services/authRepairService')
 const { getPasswordResetEmailStatus } = require('./modules/restaurantPanel/services/passwordResetEmailService')
 const { createSocketServer, closeSocketServer } = require('./realtime/socketServer')
+const {
+  startRestaurantAvailabilityBroadcaster,
+  stopRestaurantAvailabilityBroadcaster,
+} = require('./realtime/restaurantAvailabilityBroadcaster')
 const { checkHealth, getPoolStatus } = require('./database/connection')
 
 const app = express()
@@ -239,6 +243,7 @@ const io = createSocketServer(server, { corsOrigin: env.FRONTEND_URL })
 app.set('io', io)
 
 registerShutdownTask(async () => {
+  stopRestaurantAvailabilityBroadcaster()
   await closeSocketServer()
   logger.info('Socket server closed', { tag: 'system' })
 })
@@ -444,6 +449,7 @@ testConnection()
   .then(() => addNotesToOrderItems())
   .then(() => addOrderLifecycleColumns())
   .then(() => {
+    startRestaurantAvailabilityBroadcaster()
     server.listen(PORT, () => {
       console.log(`
 ╔══════════════════════════════════════════════╗

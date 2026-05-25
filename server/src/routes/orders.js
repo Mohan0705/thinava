@@ -5,6 +5,7 @@ const { asyncHandler } = require('../utils/asyncHandler')
 const { authenticateCustomer } = require('../modules/auth/middleware/auth')
 const { authenticateAdmin } = require('../modules/admin/middleware/auth')
 const { emitOrderCreated, emitOrderStatusUpdated } = require('../realtime/orderEvents')
+const { applyRestaurantAvailability } = require('../utils/restaurantAvailability')
 
 const normalizeOrderStatus = (status) => {
   const normalized = String(status || 'PLACED').trim().toUpperCase()
@@ -170,6 +171,27 @@ router.post('/', authenticateCustomer, asyncHandler(async (req, res) => {
       return res.status(400).json({
         error: 'delivery_address is required when address_id is not provided',
       })
+    }
+
+    const restaurantResult = await client.query(
+      `SELECT id, name, opening_time, closing_time, timezone, is_manually_closed
+       FROM restaurants
+       WHERE id = $1`,
+      [restaurant_id]
+    )
+
+    if (restaurantResult.rows.length === 0) {
+      const error = new Error('Restaurant not found')
+      error.status = 404
+      throw error
+    }
+
+    const restaurantAvailability = applyRestaurantAvailability(restaurantResult.rows[0])
+    if (!restaurantAvailability.isOpenNow) {
+      const error = new Error('This restaurant is currently closed.')
+      error.status = 409
+      error.code = 'RESTAURANT_CLOSED'
+      throw error
     }
 
     // Use authenticated user ID - this is the source of truth

@@ -43,6 +43,13 @@ export interface Restaurant {
   offer?: string
   featured: boolean
   isOpen: boolean
+  isOpenNow?: boolean
+  displayStatus?: 'OPEN' | 'CLOSED' | 'MANUALLY_CLOSED' | string
+  nextOpeningTime?: string | null
+  closesAt?: string | null
+  isOvernightSchedule?: boolean
+  timezone?: string
+  isManuallyClosed?: boolean
   bannerImage?: string
   description?: string
   status?: string

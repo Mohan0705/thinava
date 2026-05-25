@@ -10,7 +10,9 @@ const MIGRATION_SCRIPT = `
 ALTER TABLE restaurants
 ADD COLUMN IF NOT EXISTS phone VARCHAR(20),
 ADD COLUMN IF NOT EXISTS category VARCHAR(100) DEFAULT 'multi-cuisine',
-ADD COLUMN IF NOT EXISTS veg_non_veg VARCHAR(50) DEFAULT 'both';
+ADD COLUMN IF NOT EXISTS veg_non_veg VARCHAR(50) DEFAULT 'both',
+ADD COLUMN IF NOT EXISTS timezone VARCHAR(64) DEFAULT 'Asia/Kolkata',
+ADD COLUMN IF NOT EXISTS is_manually_closed BOOLEAN DEFAULT FALSE;
 
 -- Create index for phone
 CREATE INDEX IF NOT EXISTS idx_restaurants_phone ON restaurants(phone);

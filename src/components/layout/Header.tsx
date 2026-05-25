@@ -71,7 +71,7 @@ export default function Header({ immersive = false }: HeaderProps) {
   )
 
   const headerActions = (
-    <div className="flex shrink-0 items-center gap-2">
+    <div className="relative z-[60] flex min-w-[5.75rem] shrink-0 items-center justify-end gap-2 overflow-visible pr-1">
       {!immersive && !token ? (
         <Link href="/login" className="hidden lg:inline-flex">
           <Button
@@ -95,7 +95,7 @@ export default function Header({ immersive = false }: HeaderProps) {
         >
           <ShoppingCart className="h-5 w-5" />
           {itemCount > 0 ? (
-            <span className="absolute -right-1 -top-1 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-[#FF6B35] px-1 text-[10px] font-bold text-white">
+            <span className="absolute -right-1.5 -top-1.5 z-10 flex h-[19px] min-w-[19px] items-center justify-center rounded-full bg-[#FF6B35] px-1 text-[10px] font-bold text-white ring-2 ring-white">
               {itemCount > 9 ? '9+' : itemCount}
             </span>
           ) : null}
@@ -124,9 +124,9 @@ export default function Header({ immersive = false }: HeaderProps) {
   )
 
   const standardHeader = (
-    <header className="sticky top-0 z-40 border-b border-white/70 bg-[#FFF8F4]/92 backdrop-blur-xl">
-      <div className="container mx-auto px-4 py-3">
-        <div className="flex items-center gap-4">
+    <header className="sticky top-0 z-40 overflow-visible border-b border-white/70 bg-[#FFF8F4]/92 backdrop-blur-xl">
+      <div className="container mx-auto overflow-visible px-4 py-3 sm:px-6 lg:px-8">
+        <div className="flex items-center gap-3 overflow-visible sm:gap-4">
           {showBackButton ? <BackButton /> : null}
           <div className="max-w-[260px] min-w-0">{renderLocationBlock(false)}</div>
           <div className="hidden min-w-0 flex-1 md:block">
@@ -151,7 +151,7 @@ export default function Header({ immersive = false }: HeaderProps) {
             <div className="absolute -left-14 top-2 h-28 w-28 rounded-full bg-[#FF6B35]/18 blur-3xl" />
             <div className="absolute right-0 top-0 h-24 w-24 rounded-full bg-[#F59E0B]/18 blur-3xl" />
 
-            <div className="relative flex items-start justify-between gap-3">
+            <div className="relative flex items-start justify-between gap-3 overflow-visible">
               {showBackButton ? <BackButton dark /> : null}
               {renderLocationBlock(true)}
               {headerActions}

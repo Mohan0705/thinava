@@ -8,6 +8,8 @@ const settingsValidator = [
   body('description').optional({ nullable: true }).isString(),
   body('opening_time').optional({ nullable: true }).isString(),
   body('closing_time').optional({ nullable: true }).isString(),
+  body('timezone').optional({ nullable: true }).isString(),
+  body('is_manually_closed').optional().isBoolean(),
   body('minimum_order').optional().isFloat({ min: 0 }),
   body('delivery_radius_km').optional().isInt({ min: 1, max: 100 }),
   body('formatted_address').optional({ nullable: true }).isString(),
@@ -18,7 +20,7 @@ const settingsValidator = [
   body('cuisines').optional().isArray(),
   body('delivery_time').optional().custom((value) => typeof value === 'string' || typeof value === 'number'),
   body('price_for_one').optional().isFloat({ min: 0 }),
-  body('status').isIn(['OPEN', 'CLOSED', 'TEMPORARILY_UNAVAILABLE']).withMessage('Invalid restaurant status'),
+  body('status').optional().isIn(['OPEN', 'CLOSED', 'MANUALLY_CLOSED', 'TEMPORARILY_UNAVAILABLE']).withMessage('Invalid restaurant status'),
 ]
 
 module.exports = {

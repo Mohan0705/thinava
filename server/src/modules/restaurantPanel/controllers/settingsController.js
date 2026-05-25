@@ -17,12 +17,17 @@ const updateSettings = async (req, res, next) => {
       req.restaurantOwner.id
     )
 
-    // Emit socket event on status changes
-    if (settings.status) {
-      const SocketEventsHandler = require('../../../realtime/socketEventsHandler')
-      const handler = new SocketEventsHandler()
-      await handler.emitRestaurantStatusUpdated(req.restaurantOwner.restaurantId, settings.status)
-    }
+    const SocketEventsHandler = require('../../../realtime/socketEventsHandler')
+    const handler = new SocketEventsHandler()
+    await handler.emitRestaurantStatusUpdated(req.restaurantOwner.restaurantId, {
+      status: settings.displayStatus,
+      isOpenNow: settings.isOpenNow,
+      displayStatus: settings.displayStatus,
+      nextOpeningTime: settings.nextOpeningTime,
+      closesAt: settings.closesAt,
+      isOvernightSchedule: settings.isOvernightSchedule,
+      isManuallyClosed: settings.is_manually_closed,
+    })
 
     res.json({ success: true, settings })
   } catch (error) {

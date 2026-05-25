@@ -1,53 +1,66 @@
-import Link from 'next/link'
-import { MessageCircle, PhoneCall } from 'lucide-react'
-import Header from '@/components/layout/Header'
-import Footer from '@/components/layout/Footer'
-import MobileNav from '@/components/layout/MobileNav'
-import { SUPPORT_PHONE_DISPLAY, SUPPORT_TEL, SUPPORT_WHATSAPP_LINK } from '@/lib/support'
+import type { Metadata } from 'next'
+import { StaticInfoPage } from '@/components/pages/StaticInfoPage'
+import { SUPPORT_EMAIL_LINK, SUPPORT_TEL, SUPPORT_WHATSAPP_LINK } from '@/lib/support'
+
+export const metadata: Metadata = {
+  title: 'Help Center',
+  description: 'Get help with Thinava delivery timing, cancellations, refunds, restaurant support, customer support, and order tracking.',
+  openGraph: {
+    title: 'Thinava Help Center',
+    description: 'Support topics for Thinava customers, restaurants, and delivery partners.',
+  },
+}
 
 export default function HelpPage() {
   return (
-    <div className="min-h-screen bg-[#fffaf5] pb-20 md:pb-0">
-      <Header />
-      <main className="container mx-auto px-4 py-16">
-        <div className="mx-auto max-w-3xl rounded-[32px] border border-orange-100 bg-white p-8 shadow-[0_30px_80px_-40px_rgba(249,115,22,0.25)]">
-          <div className="inline-flex items-center gap-2 rounded-full bg-orange-100 px-4 py-2 text-xs font-semibold uppercase tracking-[0.24em] text-orange-700">
-            <PhoneCall className="h-4 w-4" />
-            Thinava support
-          </div>
-          <h1 className="mt-5 text-4xl font-bold text-slate-950">Need help right now?</h1>
-          <p className="mt-4 text-base text-slate-600">
-            For order issues, rider support, restaurant questions, or account help, call the Thinava support line directly.
-          </p>
-
-          <div className="mt-8 flex flex-wrap gap-3">
-            <a
-              href={SUPPORT_TEL}
-              className="inline-flex items-center rounded-full bg-slate-950 px-6 py-3 text-sm font-semibold text-white hover:bg-slate-800 transition-colors"
-            >
-              <PhoneCall className="mr-2 h-4 w-4" />
-              Call {SUPPORT_PHONE_DISPLAY}
-            </a>
-            <a
-              href={SUPPORT_WHATSAPP_LINK}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center rounded-full bg-green-500 px-6 py-3 text-sm font-semibold text-white hover:bg-green-600 transition-colors"
-            >
-              <MessageCircle className="mr-2 h-4 w-4" />
-              WhatsApp
-            </a>
-            <Link
-              href="/profile/help"
-              className="inline-flex items-center rounded-full border border-orange-200 px-6 py-3 text-sm font-semibold text-orange-700"
-            >
-              Open help topics
-            </Link>
-          </div>
-        </div>
-      </main>
-      <Footer />
-      <MobileNav />
-    </div>
+    <StaticInfoPage
+      eyebrow="Help Center"
+      title="How can we help?"
+      description="Find answers for delivery timing, cancellations, refunds, restaurant support, customer support, and order tracking."
+      sections={[
+        {
+          title: 'Customer Support',
+          items: [
+            'Use the floating WhatsApp button for urgent order help.',
+            'Call support when an active delivery needs immediate attention.',
+            'Email support for account, refund, or partner questions.',
+          ],
+        },
+        {
+          title: 'Restaurant Support',
+          items: [
+            'Use restaurant dashboard controls to pause or reopen ordering.',
+            'Keep menu availability, images, prices, and operating hours updated.',
+            'Contact support for onboarding or operational issues.',
+          ],
+        },
+      ]}
+      faqItems={[
+        {
+          question: 'How long does delivery usually take?',
+          answer: 'Delivery time depends on restaurant preparation, rider availability, distance, traffic, and weather. Most local orders show an estimated time before checkout.',
+        },
+        {
+          question: 'Can I cancel an order?',
+          answer: 'Cancellation depends on whether the restaurant has accepted or started preparing the order. Contact support quickly if you need help.',
+        },
+        {
+          question: 'How do refunds work?',
+          answer: 'Refund eligibility depends on order status, payment method, and the verified issue. Approved refunds may take time to reach your original payment method.',
+        },
+        {
+          question: 'How do I track my order?',
+          answer: 'Open the Orders page after placing an order. Active orders show the latest restaurant and delivery status when available.',
+        },
+      ]}
+      cta={{
+        title: 'Still need help?',
+        description: 'Reach Thinava support by phone, WhatsApp, or email.',
+        primaryLabel: 'WhatsApp Support',
+        primaryHref: SUPPORT_WHATSAPP_LINK,
+        secondaryLabel: 'Email Support',
+        secondaryHref: SUPPORT_EMAIL_LINK || SUPPORT_TEL,
+      }}
+    />
   )
 }

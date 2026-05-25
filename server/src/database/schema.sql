@@ -40,6 +40,10 @@ CREATE TABLE IF NOT EXISTS restaurants (
   offer VARCHAR(100),
   featured BOOLEAN DEFAULT FALSE,
   is_open BOOLEAN DEFAULT TRUE,
+  opening_time VARCHAR(20),
+  closing_time VARCHAR(20),
+  timezone VARCHAR(64) DEFAULT 'Asia/Kolkata',
+  is_manually_closed BOOLEAN DEFAULT FALSE,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -132,9 +136,22 @@ ADD COLUMN IF NOT EXISTS banner_image TEXT,
 ADD COLUMN IF NOT EXISTS description TEXT,
 ADD COLUMN IF NOT EXISTS opening_time VARCHAR(20),
 ADD COLUMN IF NOT EXISTS closing_time VARCHAR(20),
+ADD COLUMN IF NOT EXISTS timezone VARCHAR(64) DEFAULT 'Asia/Kolkata',
+ADD COLUMN IF NOT EXISTS is_manually_closed BOOLEAN DEFAULT FALSE,
 ADD COLUMN IF NOT EXISTS minimum_order DECIMAL(10, 2) DEFAULT 0,
 ADD COLUMN IF NOT EXISTS delivery_radius_km INTEGER DEFAULT 5,
 ADD COLUMN IF NOT EXISTS status VARCHAR(40) DEFAULT 'OPEN';
+
+UPDATE restaurants
+SET timezone = 'Asia/Kolkata'
+WHERE timezone IS NULL OR TRIM(timezone) = '';
+
+UPDATE restaurants
+SET is_manually_closed = TRUE
+WHERE UPPER(COALESCE(status, '')) IN ('CLOSED', 'TEMPORARILY_UNAVAILABLE')
+  AND COALESCE(is_manually_closed, FALSE) = FALSE;
+
+CREATE INDEX IF NOT EXISTS idx_restaurants_manual_closed ON restaurants(is_manually_closed);
 
 -- Restaurant panel: menu stock/category support
 ALTER TABLE menu_items

@@ -1,5 +1,6 @@
 const pool = require('../database/connection')
 const { getIO, emitToRoom, ROOMS } = require('./socketServer')
+const { toBoolean } = require('../utils/restaurantAvailability')
 const {
   emitOrderStatusUpdated,
   emitDeliveryStatusUpdated,
@@ -106,17 +107,35 @@ const orderScopedLegacyEvents = async (orderId, eventName, extraPayload = {}) =>
 }
 
 class SocketEventsHandler {
-  async emitRestaurantStatusUpdated(restaurantId, status, timestamp = new Date()) {
+  async emitRestaurantStatusUpdated(restaurantId, statusOrAvailability, timestamp = new Date()) {
     const io = getIO()
     if (!io) return
 
+    const availability = typeof statusOrAvailability === 'object' && statusOrAvailability !== null
+      ? statusOrAvailability
+      : { status: statusOrAvailability, displayStatus: statusOrAvailability }
+    const status = availability.status || availability.displayStatus
+    const payload = {
+      restaurantId,
+      status,
+      displayStatus: availability.displayStatus || status,
+      isOpenNow: toBoolean(availability.isOpenNow),
+      is_open: toBoolean(availability.isOpenNow),
+      nextOpeningTime: availability.nextOpeningTime || null,
+      closesAt: availability.closesAt || null,
+      isOvernightSchedule: toBoolean(availability.isOvernightSchedule),
+      isManuallyClosed: toBoolean(availability.isManuallyClosed),
+      timestamp,
+      type: 'restaurant_status_change',
+    }
+
     emitToRoom(ROOMS.ADMIN_GLOBAL, 'restaurantStatusUpdated', {
-      restaurantId, status, timestamp, type: 'restaurant_status_change',
+      ...payload,
     })
 
-    io.emit('restaurantStatusUpdated', { restaurantId, status, timestamp })
+    io.emit('restaurantStatusUpdated', payload)
 
-    await logSocketEvent('restaurantStatusUpdated', restaurantId, 'restaurant', { status })
+    await logSocketEvent('restaurantStatusUpdated', restaurantId, 'restaurant', payload)
   }
 
   async emitRestaurantApproved(restaurantId, details = {}) {

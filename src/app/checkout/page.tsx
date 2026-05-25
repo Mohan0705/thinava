@@ -20,6 +20,7 @@ import Footer from '@/components/layout/Footer'
 import MobileNav from '@/components/layout/MobileNav'
 import { getOptimizedCloudinaryImageUrl } from '@/lib/cloudinary-image'
 import { toast } from 'sonner'
+import { getRestaurantReopenText, isRestaurantAcceptingOrders } from '@/lib/restaurant-availability'
 
 // Dynamic database coupons will be loaded from the backend API
 
@@ -50,9 +51,7 @@ export default function CheckoutPage() {
 
   const restaurantId = items[0]?.menuItem.restaurantId
   const [restaurant, setRestaurant] = useState<Restaurant | null>(null)
-  const restaurantUnavailable = Boolean(
-    restaurant && (!restaurant.isOpen || (restaurant.status && restaurant.status !== 'OPEN'))
-  )
+  const restaurantUnavailable = Boolean(restaurant && !isRestaurantAcceptingOrders(restaurant))
 
   useEffect(() => {
     let isMounted = true
@@ -237,7 +236,7 @@ export default function CheckoutPage() {
     }
 
     if (restaurantUnavailable) {
-      toast.error('This restaurant is not accepting orders right now.')
+      toast.error(`This restaurant is currently closed. ${getRestaurantReopenText(restaurant)}.`)
       return
     }
 
@@ -534,7 +533,7 @@ export default function CheckoutPage() {
                       <div>
                         <h3 className="font-semibold">{restaurant.name}</h3>
                         <p className="text-sm text-gray-600">
-                          {restaurantUnavailable ? 'Currently unavailable' : restaurant.deliveryTime}
+                          {restaurantUnavailable ? getRestaurantReopenText(restaurant) : restaurant.deliveryTime}
                         </p>
                       </div>
                     </div>

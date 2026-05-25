@@ -96,7 +96,7 @@ router.post('/restaurants/:id/approve', asyncHandler(async (req, res) => {
 
     // Update restaurant status
     await client.query(
-      `UPDATE restaurants SET status = 'OPEN' WHERE id = $1`,
+      `UPDATE restaurants SET status = 'OPEN', is_open = TRUE, is_manually_closed = FALSE WHERE id = $1`,
       [restaurantId]
     )
 
@@ -419,8 +419,8 @@ router.post('/restaurants/register-manual', asyncHandler(async (req, res) => {
     // Create restaurant with all fields
     const restResult = await client.query(
       `INSERT INTO restaurants 
-       (name, image, logo, delivery_time, price_for_one, cuisines, is_open, status, phone, category, veg_non_veg, opening_time, closing_time, delivery_radius_km, latitude, longitude, address, city, state, pincode)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
+       (name, image, logo, delivery_time, price_for_one, cuisines, is_open, status, phone, category, veg_non_veg, opening_time, closing_time, timezone, is_manually_closed, delivery_radius_km, latitude, longitude, address, city, state, pincode)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 'Asia/Kolkata', FALSE, $14, $15, $16, $17, $18, $19, $20)
        RETURNING id`,
       [
         restaurantName,
@@ -662,8 +662,32 @@ router.put('/restaurants/:id/status', asyncHandler(async (req, res) => {
   const { status, approval_status } = req.body
 
   if (status) {
-    await pool.query(`UPDATE restaurants SET status = $1, is_open = $2 WHERE id = $3`, [status, status === 'OPEN', id])
-    req.app.get('io')?.emit('restaurantStatusChanged', { restaurantId: id, status })
+    const normalizedStatus = String(status).toUpperCase()
+    const isManuallyClosed = ['CLOSED', 'TEMPORARILY_UNAVAILABLE', 'MANUALLY_CLOSED'].includes(normalizedStatus)
+    await pool.query(
+      `UPDATE restaurants
+       SET status = $1, is_open = $2, is_manually_closed = $3, updated_at = CURRENT_TIMESTAMP
+       WHERE id = $4`,
+      [isManuallyClosed ? 'CLOSED' : 'OPEN', !isManuallyClosed, isManuallyClosed, id]
+    )
+
+    const SocketEventsHandler = require('../realtime/socketEventsHandler')
+    const { applyRestaurantAvailability } = require('../utils/restaurantAvailability')
+    const updated = await pool.query(
+      `SELECT id, opening_time, closing_time, timezone, is_manually_closed FROM restaurants WHERE id = $1`,
+      [id]
+    )
+    const availability = applyRestaurantAvailability(updated.rows[0] || {})
+    const handler = new SocketEventsHandler()
+    await handler.emitRestaurantStatusUpdated(id, {
+      status: availability.displayStatus,
+      isOpenNow: availability.isOpenNow,
+      displayStatus: availability.displayStatus,
+      nextOpeningTime: availability.nextOpeningTime,
+      closesAt: availability.closesAt,
+      isOvernightSchedule: availability.isOvernightSchedule,
+      isManuallyClosed,
+    })
   }
   if (approval_status) {
     await pool.query(`UPDATE restaurant_approvals SET status = $1 WHERE restaurant_id = $2`, [approval_status, id])

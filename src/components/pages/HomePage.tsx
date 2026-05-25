@@ -17,6 +17,10 @@ import { HomeActiveOrderCard } from '@/components/customer/HomeActiveOrderCard'
 import { HeroBanner } from '@/components/customer/HeroBanner'
 import { SectionHeading } from '@/components/customer/SectionHeading'
 import { RestaurantCard, RestaurantCardSkeleton } from '@/components/customer/RestaurantCard'
+import { getRealtimeSocket, releaseRealtimeSocket } from '@/lib/realtime'
+import { isValidJwt } from '@/lib/auth/session'
+import { useAuthStore } from '@/store/authStore'
+import { sortRestaurantsForDisplay } from '@/lib/restaurant-availability'
 
 const RATING_FILTERS = [3.5, 4.0, 4.5]
 
@@ -58,6 +62,7 @@ export default function HomePage() {
   const [loadingRestaurants, setLoadingRestaurants] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
   const { activeRatingFilter, activeFilterChips, setRatingFilter, toggleFilterChip } = useFilterStore()
+  const token = useAuthStore((state) => state.token)
 
   useEffect(() => {
     let isMounted = true
@@ -87,6 +92,53 @@ export default function HomePage() {
       isMounted = false
     }
   }, [])
+
+  useEffect(() => {
+    if (!token || !isValidJwt(token)) {
+      return
+    }
+
+    const socket = getRealtimeSocket('customer', token)
+    if (!socket) {
+      return
+    }
+
+    const handleRestaurantStatusUpdated = (data: {
+      restaurantId: string
+      status: string
+      displayStatus?: string
+      isOpenNow?: boolean
+      nextOpeningTime?: string | null
+      closesAt?: string | null
+      isOvernightSchedule?: boolean
+      isManuallyClosed?: boolean
+    }) => {
+      setAllRestaurants((current) =>
+        current.map((restaurant) =>
+          restaurant.id === data.restaurantId
+            ? {
+                ...restaurant,
+                status: data.status,
+                displayStatus: data.displayStatus || data.status,
+                isOpen: Boolean(data.isOpenNow),
+                isOpenNow: Boolean(data.isOpenNow),
+                nextOpeningTime: data.nextOpeningTime ?? restaurant.nextOpeningTime,
+                closesAt: data.closesAt ?? restaurant.closesAt,
+                isOvernightSchedule: data.isOvernightSchedule ?? restaurant.isOvernightSchedule,
+                isManuallyClosed: data.isManuallyClosed ?? restaurant.isManuallyClosed,
+              }
+            : restaurant
+        )
+      )
+    }
+
+    socket.on('restaurantStatusUpdated', handleRestaurantStatusUpdated)
+
+    return () => {
+      socket.off('restaurantStatusUpdated', handleRestaurantStatusUpdated)
+      releaseRealtimeSocket('customer', token)
+    }
+  }, [token])
 
   const featuredRestaurants = allRestaurants.filter((restaurant) => restaurant.featured)
   const visibleRestaurants = useMemo(() => {
@@ -118,7 +170,7 @@ export default function HomePage() {
       nextRestaurants.sort((left, right) => Number(right.rating || 0) - Number(left.rating || 0))
     }
 
-    return nextRestaurants
+    return sortRestaurantsForDisplay(nextRestaurants)
   }, [activeFilterChips, activeRatingFilter, allRestaurants])
 
   const handleRatingFilterToggle = (rating: number) => {

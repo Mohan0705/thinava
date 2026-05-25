@@ -45,6 +45,8 @@ export interface SettingsPayload {
   description?: string
   opening_time?: string
   closing_time?: string
+  timezone?: string
+  is_manually_closed?: boolean
   minimum_order: number
   delivery_radius_km: number
   formatted_address?: string
@@ -55,7 +57,7 @@ export interface SettingsPayload {
   cuisines: string[]
   delivery_time: string
   price_for_one: number
-  status: RestaurantPanelSettings['status']
+  status?: RestaurantPanelSettings['status']
 }
 
 export const restaurantPanelApi = {

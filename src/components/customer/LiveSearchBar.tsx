@@ -16,6 +16,11 @@ interface RestaurantResult {
   cuisines: string[]
   rating: number
   delivery_time: string
+  is_open?: boolean
+  isOpenNow?: boolean
+  displayStatus?: string
+  status?: string
+  nextOpeningTime?: string | null
 }
 
 interface MenuItemResult {
@@ -165,6 +170,8 @@ export default function LiveSearchBar({ elevated = false }: { elevated?: boolean
                       {restaurants.map((restaurant) => (
                         (() => {
                           const imageUrl = getOptimizedCloudinaryImageUrl(restaurant.image, { width: 120, height: 120, crop: 'fill' })
+                          const isOpen = Boolean(restaurant.isOpenNow ?? restaurant.is_open ?? true) &&
+                            (restaurant.displayStatus || restaurant.status || 'OPEN') === 'OPEN'
                           return (
                         <button
                           key={restaurant.id}
@@ -182,7 +189,7 @@ export default function LiveSearchBar({ elevated = false }: { elevated?: boolean
                                 alt={restaurant.name}
                                 fill
                                 sizes="48px"
-                                className="object-cover"
+                                className={`object-cover ${isOpen ? '' : 'grayscale opacity-75'}`}
                               />
                             ) : (
                               <div className="flex h-full w-full items-center justify-center bg-orange-50 text-xs font-bold text-orange-500">
@@ -192,7 +199,9 @@ export default function LiveSearchBar({ elevated = false }: { elevated?: boolean
                           </div>
                           <div className="min-w-0 flex-1">
                             <h4 className="truncate text-sm font-bold text-slate-800">{restaurant.name}</h4>
-                            <p className="truncate text-xs text-slate-400">{restaurant.cuisines.join(', ')}</p>
+                            <p className="truncate text-xs text-slate-400">
+                              {isOpen ? restaurant.cuisines.join(', ') : `Closed${restaurant.nextOpeningTime ? ` - opens at ${restaurant.nextOpeningTime}` : ''}`}
+                            </p>
                           </div>
                           <div className="text-right">
                             <div className="flex items-center gap-1 text-xs font-bold text-slate-800">

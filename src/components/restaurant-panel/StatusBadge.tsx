@@ -4,6 +4,7 @@ import { RestaurantOrderStatus, RestaurantStatus } from '@/types/restaurant-pane
 const statusStyles: Record<string, string> = {
   OPEN: 'bg-emerald-500 text-white',
   CLOSED: 'bg-slate-500 text-white',
+  MANUALLY_CLOSED: 'bg-red-500 text-white',
   TEMPORARILY_UNAVAILABLE: 'bg-amber-500 text-white',
   PLACED: 'bg-blue-500 text-white',
   ACCEPTED: 'bg-cyan-500 text-white',

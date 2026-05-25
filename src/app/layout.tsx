@@ -21,9 +21,25 @@ export const viewport: Viewport = {
 }
 
 export const metadata: Metadata = {
-  title: 'Thinava - Food Delivery in Tadepalligudem',
+  metadataBase: new URL('https://thinava.vercel.app'),
+  title: {
+    default: 'Thinava - Food Delivery in Tadepalligudem',
+    template: '%s | Thinava',
+  },
   description: 'Order delicious food from the best restaurants in Tadepalligudem. Fast delivery, great taste!',
   manifest: '/manifest.json',
+  openGraph: {
+    title: 'Thinava - Food Delivery in Tadepalligudem',
+    description: 'Local-first food delivery from trusted restaurants in Tadepalligudem.',
+    siteName: 'Thinava',
+    type: 'website',
+    url: '/',
+  },
+  twitter: {
+    card: 'summary',
+    title: 'Thinava - Food Delivery in Tadepalligudem',
+    description: 'Local-first food delivery from trusted restaurants in Tadepalligudem.',
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',

@@ -33,28 +33,39 @@ type MenuApiResponse = {
   menuItems: Array<Record<string, any>>
 }
 
-const mapRestaurant = (restaurant: Record<string, any>): Restaurant => ({
-  id: restaurant.id,
-  name: restaurant.name,
-  image: sanitizeImage(restaurant.image),
-  logo: sanitizeImage(restaurant.logo),
-  rating: Number(restaurant.average_rating || restaurant.averageRating || restaurant.rating || 0),
-  ratingCount: Number(restaurant.rating_count || restaurant.ratingCount || restaurant.total_reviews || 0),
-  deliveryTime: String(restaurant.delivery_time || restaurant.deliveryTime || '25-35 mins'),
-  priceForOne: Number(restaurant.price_for_one || restaurant.priceForOne || 0),
-  cuisines: restaurant.cuisines || [],
-  offer: restaurant.offer || undefined,
-  featured: Boolean(restaurant.featured),
-  isOpen: Boolean(restaurant.is_open ?? restaurant.isOpen ?? true),
-  bannerImage: sanitizeOptionalImage(restaurant.banner_image || restaurant.bannerImage),
-  description: restaurant.description || undefined,
-  status: restaurant.status || undefined,
-  formattedAddress: restaurant.formatted_address || restaurant.formattedAddress || undefined,
-  latitude:
-    restaurant.latitude === null || restaurant.latitude === undefined ? null : Number(restaurant.latitude),
-  longitude:
-    restaurant.longitude === null || restaurant.longitude === undefined ? null : Number(restaurant.longitude),
-})
+export const mapRestaurant = (restaurant: Record<string, any>): Restaurant => {
+  const isOpenNow = Boolean(restaurant.isOpenNow ?? restaurant.is_open ?? restaurant.isOpen ?? true)
+
+  return {
+    id: restaurant.id,
+    name: restaurant.name,
+    image: sanitizeImage(restaurant.image),
+    logo: sanitizeImage(restaurant.logo),
+    rating: Number(restaurant.average_rating || restaurant.averageRating || restaurant.rating || 0),
+    ratingCount: Number(restaurant.rating_count || restaurant.ratingCount || restaurant.total_reviews || 0),
+    deliveryTime: String(restaurant.delivery_time || restaurant.deliveryTime || '25-35 mins'),
+    priceForOne: Number(restaurant.price_for_one || restaurant.priceForOne || 0),
+    cuisines: restaurant.cuisines || [],
+    offer: restaurant.offer || undefined,
+    featured: Boolean(restaurant.featured),
+    isOpen: isOpenNow,
+    isOpenNow,
+    displayStatus: restaurant.displayStatus || restaurant.display_status || restaurant.status || (isOpenNow ? 'OPEN' : 'CLOSED'),
+    nextOpeningTime: restaurant.nextOpeningTime ?? restaurant.next_opening_time ?? null,
+    closesAt: restaurant.closesAt ?? restaurant.closes_at ?? null,
+    isOvernightSchedule: Boolean(restaurant.isOvernightSchedule ?? restaurant.is_overnight_schedule ?? false),
+    timezone: restaurant.timezone || undefined,
+    isManuallyClosed: Boolean(restaurant.isManuallyClosed ?? restaurant.is_manually_closed ?? false),
+    bannerImage: sanitizeOptionalImage(restaurant.banner_image || restaurant.bannerImage),
+    description: restaurant.description || undefined,
+    status: restaurant.status || restaurant.displayStatus || undefined,
+    formattedAddress: restaurant.formatted_address || restaurant.formattedAddress || undefined,
+    latitude:
+      restaurant.latitude === null || restaurant.latitude === undefined ? null : Number(restaurant.latitude),
+    longitude:
+      restaurant.longitude === null || restaurant.longitude === undefined ? null : Number(restaurant.longitude),
+  }
+}
 
 const mapMenuItem = (menuItem: Record<string, any>): MenuItem => ({
   id: menuItem.id,

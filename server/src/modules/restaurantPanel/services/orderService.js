@@ -8,6 +8,7 @@ const {
   emitOrderStatusUpdated,
 } = require('../../../realtime/orderEvents')
 const { autoAssignOrder } = require('../../delivery/services/orderService')
+const { applyRestaurantAvailability } = require('../../../utils/restaurantAvailability')
 
 // PRIVACY-FIRST: Restaurant only sees food prep info
 // NO customer address, NO location, NO route, NO totals, NO commissions
@@ -101,6 +102,10 @@ const getRestaurantDashboardSummary = async (restaurantId) => {
     pool.query(
       `SELECT
          r.status,
+         r.opening_time,
+         r.closing_time,
+         r.timezone,
+         r.is_manually_closed,
          r.offer,
          r.average_rating,
          r.rating_count,
@@ -115,12 +120,13 @@ const getRestaurantDashboardSummary = async (restaurantId) => {
 
   const stats = statsResult.rows[0]
   const details = statusResult.rows[0]
+  const availability = details ? applyRestaurantAvailability(details) : null
 
   return {
     total_orders_today: Number(stats.total_orders_today || 0),
     pending_orders: Number(stats.pending_orders || 0),
     active_menu_items: Number(details?.active_menu_items || 0),
-    restaurant_status: details?.status || 'OPEN',
+    restaurant_status: availability?.displayStatus || 'OPEN',
     active_offer: details?.offer || '',
     average_rating: Number(details?.average_rating || 0),
     total_reviews: Number(details?.rating_count || 0),
