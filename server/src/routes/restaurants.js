@@ -3,24 +3,41 @@ const router = express.Router()
 const pool = require('../database/connection')
 const { asyncHandler } = require('../utils/asyncHandler')
 const { authenticateAdmin } = require('../modules/admin/middleware/auth')
+const { assertCloudinaryImageUrl, deleteReplacedImages } = require('../lib/cloudinaryService')
 
 // Get all restaurants
 router.get('/', asyncHandler(async (req, res) => {
   const { featured, cuisine } = req.query
   
-  let query = 'SELECT * FROM restaurants WHERE is_open = true'
+  let query = `
+    SELECT r.*,
+           CASE
+             WHEN COALESCE(r.rating_count, 0) > 0
+             THEN ROUND((COALESCE(r.rating_sum, 0) / NULLIF(r.rating_count, 0))::numeric, 1)
+             ELSE COALESCE(r.rating, 0)
+           END AS average_rating,
+           COALESCE(r.rating_count, 0) AS rating_count
+    FROM restaurants r
+    WHERE TRUE`
   const params = []
   
   if (featured === 'true') {
-    query += ' AND featured = true'
+    query += ' AND r.featured = true'
   }
   
   if (cuisine) {
-    query += ' AND $1 = ANY(cuisines)'
+    query += ' AND $1 = ANY(r.cuisines)'
     params.push(cuisine)
   }
   
-  query += ' ORDER BY rating DESC'
+  query += ` ORDER BY
+    CASE WHEN COALESCE(r.status, CASE WHEN r.is_open THEN 'OPEN' ELSE 'CLOSED' END) = 'OPEN' THEN 0 ELSE 1 END,
+    CASE
+      WHEN COALESCE(r.rating_count, 0) > 0
+      THEN ROUND((COALESCE(r.rating_sum, 0) / NULLIF(r.rating_count, 0))::numeric, 1)
+      ELSE COALESCE(r.rating, 0)
+    END DESC,
+    r.name ASC`
   
   const result = await pool.query(query, params)
   res.json({ success: true, restaurants: result.rows })
@@ -29,7 +46,15 @@ router.get('/', asyncHandler(async (req, res) => {
 // Get restaurant by ID
 router.get('/:id', asyncHandler(async (req, res) => {
   const result = await pool.query(
-    'SELECT * FROM restaurants WHERE id = $1',
+    `SELECT r.*,
+            CASE
+              WHEN COALESCE(r.rating_count, 0) > 0
+              THEN ROUND((COALESCE(r.rating_sum, 0) / NULLIF(r.rating_count, 0))::numeric, 1)
+              ELSE COALESCE(r.rating, 0)
+            END AS average_rating,
+            COALESCE(r.rating_count, 0) AS rating_count
+     FROM restaurants r
+     WHERE r.id = $1`,
     [req.params.id]
   )
   
@@ -46,6 +71,9 @@ router.post('/', authenticateAdmin, asyncHandler(async (req, res) => {
     name, image, logo, rating, delivery_time, price_for_one,
     cuisines, offer, featured, formatted_address, latitude, longitude
   } = req.body
+
+  assertCloudinaryImageUrl(image, 'Restaurant image')
+  assertCloudinaryImageUrl(logo, 'Restaurant logo')
   
   const result = await pool.query(
     `INSERT INTO restaurants (name, image, logo, rating, delivery_time, price_for_one, cuisines, offer, featured, formatted_address, latitude, longitude)
@@ -62,6 +90,11 @@ router.put('/:id', authenticateAdmin, asyncHandler(async (req, res) => {
     name, image, logo, rating, delivery_time, price_for_one,
     cuisines, offer, featured, is_open, formatted_address, latitude, longitude
   } = req.body
+
+  assertCloudinaryImageUrl(image, 'Restaurant image')
+  assertCloudinaryImageUrl(logo, 'Restaurant logo')
+  const oldResult = await pool.query('SELECT image, logo, banner_image FROM restaurants WHERE id = $1', [req.params.id])
+  const oldRow = oldResult.rows[0] || {}
   
   const result = await pool.query(
     `UPDATE restaurants 
@@ -77,12 +110,26 @@ router.put('/:id', authenticateAdmin, asyncHandler(async (req, res) => {
     throw error
   }
   
+  await deleteReplacedImages([
+    { previousUrl: oldRow.image, nextUrl: result.rows[0].image },
+    { previousUrl: oldRow.logo, nextUrl: result.rows[0].logo },
+    { previousUrl: oldRow.banner_image, nextUrl: result.rows[0].banner_image },
+  ])
+
   res.json({ success: true, restaurant: result.rows[0] })
 }))
 
 // Delete restaurant (admin only)
 router.delete('/:id', authenticateAdmin, asyncHandler(async (req, res) => {
-  await pool.query('DELETE FROM restaurants WHERE id = $1', [req.params.id])
+  const result = await pool.query(
+    'DELETE FROM restaurants WHERE id = $1 RETURNING image, logo, banner_image',
+    [req.params.id]
+  )
+  await deleteReplacedImages([
+    { previousUrl: result.rows[0]?.image, nextUrl: null },
+    { previousUrl: result.rows[0]?.logo, nextUrl: null },
+    { previousUrl: result.rows[0]?.banner_image, nextUrl: null },
+  ])
   res.json({ success: true, message: 'Restaurant deleted successfully' })
 }))
 

@@ -62,7 +62,7 @@ export function OtpInputGroup({
           pattern="[0-9]*"
           aria-label={`OTP digit ${index + 1}`}
           placeholder=""
-          className="h-14 min-w-0 px-0 text-center text-[20px] font-semibold leading-none caret-orange-500 [text-align-last:center]"
+          className="h-14 min-w-0 px-0 text-center text-xl font-semibold leading-none caret-thinava-primary [text-align-last:center] tracking-widest"
         />
       ))}
     </div>

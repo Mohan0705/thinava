@@ -1,13 +1,14 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { toast } from 'sonner'
-import { Mail, Lock, Phone, Building2, MapPin, Users, FileText, Loader2, AlertTriangle, Clock, ChevronRight, TrendingUp, UtensilsCrossed } from 'lucide-react'
+import { Mail, Lock, Phone, Building2, MapPin, Users, FileText, Loader2, AlertTriangle, Clock, ChevronRight, TrendingUp, UtensilsCrossed, Eye, EyeOff } from 'lucide-react'
 import Link from 'next/link'
 import { restaurantPanelApi } from '@/lib/restaurant-panel-api'
 import { API_BASE_URL } from '@/lib/api'
 import { useRestaurantOwnerAuthStore } from '@/store/restaurantOwnerAuthStore'
+import { ForgotPasswordModal } from '@/components/restaurant/ForgotPasswordModal'
 
 // Animated tab switch component
 const TabSwitch = ({ isLogin, setIsLogin, loading }: any) => {
@@ -141,6 +142,7 @@ const ApprovalWaitingScreen = ({ status, message, email }: any) => {
 
 export default function RestaurantAuthPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const token = useRestaurantOwnerAuthStore((state) => state.token)
   const setSession = useRestaurantOwnerAuthStore((state) => state.setSession)
   const [isLogin, setIsLogin] = useState(true)
@@ -149,6 +151,10 @@ export default function RestaurantAuthPage() {
   const [authMessage, setAuthMessage] = useState('')
   const [authEmail, setAuthEmail] = useState('')
   const [formStep, setFormStep] = useState(1) // For signup multi-step
+  const [showForgotPasswordModal, setShowForgotPasswordModal] = useState(false)
+  const [showSignupPassword, setShowSignupPassword] = useState(false)
+  const [showSignupConfirmPassword, setShowSignupConfirmPassword] = useState(false)
+  const [signupErrors, setSignupErrors] = useState<Record<string, string>>({})
 
   // Check if already logged in
   useEffect(() => {
@@ -156,6 +162,13 @@ export default function RestaurantAuthPage() {
       router.replace('/restaurant/dashboard')
     }
   }, [router, token])
+
+  // Check for forgot password param
+  useEffect(() => {
+    if (searchParams?.get('showForgot') === 'true') {
+      setShowForgotPasswordModal(true)
+    }
+  }, [searchParams])
 
   // Login form
   const [loginForm, setLoginForm] = useState({
@@ -186,17 +199,105 @@ export default function RestaurantAuthPage() {
     fssaiLicense: ''
   })
 
+  const clearSignupError = (field: string) => {
+    setSignupErrors((current) => {
+      if (!current[field]) return current
+      const next = { ...current }
+      delete next[field]
+      return next
+    })
+  }
+
+  const validateSignup = () => {
+    const errors: Record<string, string> = {}
+    const ownerEmail = signupForm.ownerEmail.trim().toLowerCase()
+    const ownerPhone = signupForm.ownerPhone.replace(/\D/g, '')
+
+    if (!signupForm.restaurantName.trim()) {
+      errors.restaurantName = 'Restaurant name is required'
+    }
+
+    if (!signupForm.ownerName.trim()) {
+      errors.ownerName = 'Owner name is required'
+    }
+
+    if (!ownerEmail) {
+      errors.ownerEmail = 'Email is required'
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(ownerEmail)) {
+      errors.ownerEmail = 'Invalid email format'
+    }
+
+    if (!ownerPhone) {
+      errors.ownerPhone = 'Phone is required'
+    } else if (ownerPhone.length !== 10) {
+      errors.ownerPhone = 'Enter a valid 10-digit phone number'
+    }
+
+    if (!signupForm.password) {
+      errors.password = 'Password is required'
+    } else if (signupForm.password.length < 8) {
+      errors.password = 'Password must be at least 8 characters'
+    }
+
+    if (!signupForm.confirmPassword) {
+      errors.confirmPassword = 'Confirm password is required'
+    } else if (signupForm.password !== signupForm.confirmPassword) {
+      errors.confirmPassword = 'Passwords do not match'
+    }
+
+    if (!signupForm.address.trim()) {
+      errors.address = 'Address is required'
+    }
+
+    if (!signupForm.city.trim()) {
+      errors.city = 'City is required'
+    }
+
+    if (!signupForm.state.trim()) {
+      errors.state = 'State is required'
+    }
+
+    if (!signupForm.pincode.trim()) {
+      errors.pincode = 'Pincode is required'
+    }
+
+    setSignupErrors(errors)
+
+    const firstError = Object.values(errors)[0]
+    if (firstError) {
+      toast.error(firstError)
+    }
+
+    return Object.keys(errors).length === 0
+  }
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsLoading(true)
+    const normalizedLoginEmail = loginForm.email.trim().toLowerCase()
 
     try {
+      console.log('[RestaurantAuth] login attempt', { email: normalizedLoginEmail })
+      console.log('🔐 Attempting login...', { email: loginForm.email })
+      
       // Use the working auth service instead of direct axios
       const response = await restaurantPanelApi.login({ 
-        email: loginForm.email, 
+        email: normalizedLoginEmail, 
         password: loginForm.password 
       })
       
+      console.log('✅ Login response received:', {
+        success: response.success,
+        hasOwner: !!response.owner,
+        hasToken: !!response.token
+      })
+      
+      console.log('[RestaurantAuth] login response received', {
+        success: response.success,
+        hasOwner: !!response.owner,
+        hasToken: !!response.token
+      })
+
       // Use the proper auth store
       setSession(response.owner, response.token)
       toast.success(`Welcome back, ${response.owner.full_name}`)
@@ -206,12 +307,14 @@ export default function RestaurantAuthPage() {
       if (error.status === 403 && error.approvalStatus === 'PENDING_APPROVAL') {
         setAuthStatus('PENDING_APPROVAL')
         setAuthMessage('Our onboarding team is reviewing your restaurant details. You\'ll receive approval shortly.')
-        setAuthEmail(loginForm.email)
+        setAuthEmail(normalizedLoginEmail)
         return
       }
       
       // Extract real error message instead of generic "Login failed"
       const message = error instanceof Error ? error.message : 'Unable to sign in'
+      console.error('[RestaurantAuth] login failure', { message, status: error.status, code: error.code })
+      console.error('❌ Login error:', { message, status: error.status })
       toast.error(message)
     } finally {
       setIsLoading(false)
@@ -220,26 +323,76 @@ export default function RestaurantAuthPage() {
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault()
+
+    if (!validateSignup()) {
+      return
+    }
+
     setIsLoading(true)
 
     try {
-      const response = await fetch(`${API_BASE_URL}/restaurant-auth/register`, {
+      const normalizedEmail = signupForm.ownerEmail.trim().toLowerCase()
+      const normalizedPhone = signupForm.ownerPhone.replace(/\D/g, '')
+      const signupPayload = {
+        ...signupForm,
+        restaurantName: signupForm.restaurantName.trim(),
+        ownerName: signupForm.ownerName.trim(),
+        ownerPhone: normalizedPhone,
+        ownerEmail: normalizedEmail,
+        email: normalizedEmail,
+        phone: normalizedPhone,
+        address: signupForm.address.trim(),
+        city: signupForm.city.trim(),
+        state: signupForm.state.trim(),
+        pincode: signupForm.pincode.trim(),
+      }
+
+      console.log("Restaurant signup payload", {
+        ...signupPayload,
+        password: '[hidden]',
+        confirmPassword: '[hidden]',
+      })
+
+      console.log('[RestaurantAuth] signup submit', {
+        restaurantName: signupPayload.restaurantName,
+        ownerEmail: signupPayload.ownerEmail,
+        ownerPhone: signupPayload.ownerPhone,
+        passwordLength: signupPayload.password.length,
+      })
+
+      const response = await fetch(`${API_BASE_URL}/restaurant/auth/signup`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(signupForm),
+        body: JSON.stringify(signupPayload),
       })
       const data = await response.json()
+
+      console.log('[RestaurantAuth] signup response', {
+        httpStatus: response.status,
+        success: data.success,
+        authProvider: data.auth?.provider,
+        supabaseUserId: data.auth?.userId,
+        emailConfirmationRequired: data.auth?.emailConfirmationRequired,
+        error: data.error,
+        code: data.code,
+      })
 
       if (data.success) {
         toast.success('Registration submitted!')
         setAuthStatus('PENDING_APPROVAL')
         setAuthMessage('Our onboarding team is reviewing your restaurant details. You\'ll receive approval shortly.')
-        setAuthEmail(signupForm.ownerEmail)
+        setAuthEmail(signupPayload.ownerEmail)
       } else {
+        console.error('[RestaurantAuth] signup failure', {
+          httpStatus: response.status,
+          error: data.error,
+          code: data.code,
+        })
         toast.error(data.error || 'Registration failed. Please check your details.')
       }
     } catch (error: any) {
       const message = error.response?.data?.error || error.message || 'Registration failed'
+      console.error('[RestaurantAuth] signup request failed', { message })
       toast.error(message)
     } finally {
       setIsLoading(false)
@@ -380,6 +533,14 @@ export default function RestaurantAuthPage() {
                           required
                         />
                       </div>
+                      {/* Forgot Password Link */}
+                      <button
+                        type="button"
+                        onClick={() => setShowForgotPasswordModal(true)}
+                        className="text-xs text-orange-400 hover:text-orange-300 transition mt-2 font-semibold"
+                      >
+                        Forgot Password?
+                      </button>
                     </div>
 
                     <button
@@ -402,7 +563,7 @@ export default function RestaurantAuthPage() {
                   </form>
                 ) : (
                   /* SIGNUP FORM */
-                  <form onSubmit={handleSignup} className="space-y-4 max-h-[500px] overflow-y-auto pr-2">
+                  <form onSubmit={handleSignup} noValidate className="space-y-4 max-h-[500px] overflow-y-auto pr-2">
                     {/* Business Details */}
                     <h3 className="text-sm font-semibold text-orange-400 pt-2">Business Details</h3>
 
@@ -413,15 +574,21 @@ export default function RestaurantAuthPage() {
                         <input
                           type="text"
                           value={signupForm.restaurantName}
-                          onChange={(e) => setSignupForm({ ...signupForm, restaurantName: e.target.value })}
-                          className="w-full bg-slate-700/50 border border-slate-600/50 rounded-lg pl-9 pr-3 py-2 text-sm text-white placeholder-slate-500 focus:border-orange-500 focus:outline-none transition"
+                          onChange={(e) => {
+                            setSignupForm({ ...signupForm, restaurantName: e.target.value })
+                            clearSignupError('restaurantName')
+                          }}
+                          className={`w-full bg-slate-700/50 border ${signupErrors.restaurantName ? 'border-rose-500/70 focus:border-rose-400' : 'border-slate-600/50 focus:border-orange-500'} rounded-lg pl-9 pr-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none transition`}
                           placeholder="Restaurant name"
                           required
                         />
                       </div>
+                      {signupErrors.restaurantName && (
+                        <p className="mt-1 text-xs text-rose-300">{signupErrors.restaurantName}</p>
+                      )}
                     </div>
 
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div>
                         <label className="block text-xs font-semibold text-slate-300 mb-1.5">Owner Name *</label>
                         <div className="relative">
@@ -429,12 +596,18 @@ export default function RestaurantAuthPage() {
                           <input
                             type="text"
                             value={signupForm.ownerName}
-                            onChange={(e) => setSignupForm({ ...signupForm, ownerName: e.target.value })}
-                            className="w-full bg-slate-700/50 border border-slate-600/50 rounded-lg pl-9 pr-3 py-2 text-sm text-white placeholder-slate-500 focus:border-orange-500 focus:outline-none transition"
+                            onChange={(e) => {
+                              setSignupForm({ ...signupForm, ownerName: e.target.value })
+                              clearSignupError('ownerName')
+                            }}
+                            className={`w-full bg-slate-700/50 border ${signupErrors.ownerName ? 'border-rose-500/70 focus:border-rose-400' : 'border-slate-600/50 focus:border-orange-500'} rounded-lg pl-9 pr-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none transition`}
                             placeholder="Your name"
                             required
                           />
                         </div>
+                        {signupErrors.ownerName && (
+                          <p className="mt-1 text-xs text-rose-300">{signupErrors.ownerName}</p>
+                        )}
                       </div>
 
                       <div>
@@ -444,16 +617,22 @@ export default function RestaurantAuthPage() {
                           <input
                             type="tel"
                             value={signupForm.ownerPhone}
-                            onChange={(e) => setSignupForm({ ...signupForm, ownerPhone: e.target.value })}
-                            className="w-full bg-slate-700/50 border border-slate-600/50 rounded-lg pl-9 pr-3 py-2 text-sm text-white placeholder-slate-500 focus:border-orange-500 focus:outline-none transition"
+                            onChange={(e) => {
+                              setSignupForm({ ...signupForm, ownerPhone: e.target.value })
+                              clearSignupError('ownerPhone')
+                            }}
+                            className={`w-full bg-slate-700/50 border ${signupErrors.ownerPhone ? 'border-rose-500/70 focus:border-rose-400' : 'border-slate-600/50 focus:border-orange-500'} rounded-lg pl-9 pr-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none transition`}
                             placeholder="10-digit"
                             required
                           />
                         </div>
+                        {signupErrors.ownerPhone && (
+                          <p className="mt-1 text-xs text-rose-300">{signupErrors.ownerPhone}</p>
+                        )}
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div>
                         <label className="block text-xs font-semibold text-slate-300 mb-1.5">Email *</label>
                         <div className="relative">
@@ -461,12 +640,18 @@ export default function RestaurantAuthPage() {
                           <input
                             type="email"
                             value={signupForm.ownerEmail}
-                            onChange={(e) => setSignupForm({ ...signupForm, ownerEmail: e.target.value })}
-                            className="w-full bg-slate-700/50 border border-slate-600/50 rounded-lg pl-9 pr-3 py-2 text-sm text-white placeholder-slate-500 focus:border-orange-500 focus:outline-none transition"
+                            onChange={(e) => {
+                              setSignupForm({ ...signupForm, ownerEmail: e.target.value })
+                              clearSignupError('ownerEmail')
+                            }}
+                            className={`w-full bg-slate-700/50 border ${signupErrors.ownerEmail ? 'border-rose-500/70 focus:border-rose-400' : 'border-slate-600/50 focus:border-orange-500'} rounded-lg pl-9 pr-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none transition`}
                             placeholder="Email"
                             required
                           />
                         </div>
+                        {signupErrors.ownerEmail && (
+                          <p className="mt-1 text-xs text-rose-300">{signupErrors.ownerEmail}</p>
+                        )}
                       </div>
 
                       <div>
@@ -487,6 +672,74 @@ export default function RestaurantAuthPage() {
                       </div>
                     </div>
 
+                    {/* Password */}
+                    <h3 className="text-sm font-semibold text-orange-400 pt-2">Create Password</h3>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-300 mb-1.5">Password *</label>
+                        <div className="relative">
+                          <Lock className="absolute left-3 top-2.5 w-4 h-4 text-slate-500" />
+                          <input
+                            type={showSignupPassword ? 'text' : 'password'}
+                            value={signupForm.password}
+                            onChange={(e) => {
+                              setSignupForm({ ...signupForm, password: e.target.value })
+                              clearSignupError('password')
+                              clearSignupError('confirmPassword')
+                            }}
+                            className={`w-full bg-slate-700/50 border ${signupErrors.password ? 'border-rose-500/70 focus:border-rose-400' : 'border-slate-600/50 focus:border-orange-500'} rounded-lg pl-9 pr-10 py-2 text-sm text-white placeholder-slate-500 focus:outline-none transition`}
+                            placeholder="Minimum 8 characters"
+                            autoComplete="new-password"
+                            minLength={8}
+                            required
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowSignupPassword((value) => !value)}
+                            className="absolute right-2 top-1.5 rounded-md p-1.5 text-slate-400 hover:text-orange-300 focus:outline-none focus:ring-1 focus:ring-orange-500/40"
+                            aria-label={showSignupPassword ? 'Hide password' : 'Show password'}
+                          >
+                            {showSignupPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                          </button>
+                        </div>
+                        {signupErrors.password && (
+                          <p className="mt-1 text-xs text-rose-300">{signupErrors.password}</p>
+                        )}
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-300 mb-1.5">Confirm Password *</label>
+                        <div className="relative">
+                          <Lock className="absolute left-3 top-2.5 w-4 h-4 text-slate-500" />
+                          <input
+                            type={showSignupConfirmPassword ? 'text' : 'password'}
+                            value={signupForm.confirmPassword}
+                            onChange={(e) => {
+                              setSignupForm({ ...signupForm, confirmPassword: e.target.value })
+                              clearSignupError('confirmPassword')
+                            }}
+                            className={`w-full bg-slate-700/50 border ${signupErrors.confirmPassword ? 'border-rose-500/70 focus:border-rose-400' : 'border-slate-600/50 focus:border-orange-500'} rounded-lg pl-9 pr-10 py-2 text-sm text-white placeholder-slate-500 focus:outline-none transition`}
+                            placeholder="Confirm password"
+                            autoComplete="new-password"
+                            minLength={8}
+                            required
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowSignupConfirmPassword((value) => !value)}
+                            className="absolute right-2 top-1.5 rounded-md p-1.5 text-slate-400 hover:text-orange-300 focus:outline-none focus:ring-1 focus:ring-orange-500/40"
+                            aria-label={showSignupConfirmPassword ? 'Hide confirm password' : 'Show confirm password'}
+                          >
+                            {showSignupConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                          </button>
+                        </div>
+                        {signupErrors.confirmPassword && (
+                          <p className="mt-1 text-xs text-rose-300">{signupErrors.confirmPassword}</p>
+                        )}
+                      </div>
+                    </div>
+
                     {/* Location Details */}
                     <h3 className="text-sm font-semibold text-orange-400 pt-2">Location Details</h3>
 
@@ -497,45 +750,65 @@ export default function RestaurantAuthPage() {
                         <input
                           type="text"
                           value={signupForm.address}
-                          onChange={(e) => setSignupForm({ ...signupForm, address: e.target.value })}
-                          className="w-full bg-slate-700/50 border border-slate-600/50 rounded-lg pl-9 pr-3 py-2 text-sm text-white placeholder-slate-500 focus:border-orange-500 focus:outline-none transition"
+                          onChange={(e) => {
+                            setSignupForm({ ...signupForm, address: e.target.value })
+                            clearSignupError('address')
+                          }}
+                          className={`w-full bg-slate-700/50 border ${signupErrors.address ? 'border-rose-500/70 focus:border-rose-400' : 'border-slate-600/50 focus:border-orange-500'} rounded-lg pl-9 pr-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none transition`}
                           placeholder="Full address"
                           required
                         />
                       </div>
+                      {signupErrors.address && (
+                        <p className="mt-1 text-xs text-rose-300">{signupErrors.address}</p>
+                      )}
                     </div>
 
-                    <div className="grid grid-cols-3 gap-2">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                       <input
                         type="text"
                         placeholder="City"
                         value={signupForm.city}
-                        onChange={(e) => setSignupForm({ ...signupForm, city: e.target.value })}
-                        className="bg-slate-700/50 border border-slate-600/50 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 focus:border-orange-500 focus:outline-none transition"
+                        onChange={(e) => {
+                          setSignupForm({ ...signupForm, city: e.target.value })
+                          clearSignupError('city')
+                        }}
+                        className={`bg-slate-700/50 border ${signupErrors.city ? 'border-rose-500/70 focus:border-rose-400' : 'border-slate-600/50 focus:border-orange-500'} rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none transition`}
                         required
                       />
                       <input
                         type="text"
                         placeholder="State"
                         value={signupForm.state}
-                        onChange={(e) => setSignupForm({ ...signupForm, state: e.target.value })}
-                        className="bg-slate-700/50 border border-slate-600/50 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 focus:border-orange-500 focus:outline-none transition"
+                        onChange={(e) => {
+                          setSignupForm({ ...signupForm, state: e.target.value })
+                          clearSignupError('state')
+                        }}
+                        className={`bg-slate-700/50 border ${signupErrors.state ? 'border-rose-500/70 focus:border-rose-400' : 'border-slate-600/50 focus:border-orange-500'} rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none transition`}
                         required
                       />
                       <input
                         type="text"
                         placeholder="Pincode"
                         value={signupForm.pincode}
-                        onChange={(e) => setSignupForm({ ...signupForm, pincode: e.target.value })}
-                        className="bg-slate-700/50 border border-slate-600/50 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 focus:border-orange-500 focus:outline-none transition"
+                        onChange={(e) => {
+                          setSignupForm({ ...signupForm, pincode: e.target.value })
+                          clearSignupError('pincode')
+                        }}
+                        className={`bg-slate-700/50 border ${signupErrors.pincode ? 'border-rose-500/70 focus:border-rose-400' : 'border-slate-600/50 focus:border-orange-500'} rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none transition`}
                         required
                       />
                     </div>
+                    {(signupErrors.city || signupErrors.state || signupErrors.pincode) && (
+                      <p className="text-xs text-rose-300">
+                        {signupErrors.city || signupErrors.state || signupErrors.pincode}
+                      </p>
+                    )}
 
                     {/* Business Hours & Type */}
                     <h3 className="text-sm font-semibold text-orange-400 pt-2">Operations</h3>
 
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div>
                         <label className="block text-xs font-semibold text-slate-300 mb-1.5">Opening Time</label>
                         <input
@@ -556,7 +829,7 @@ export default function RestaurantAuthPage() {
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div>
                         <label className="block text-xs font-semibold text-slate-300 mb-1.5">Veg/Non-Veg</label>
                         <select
@@ -586,7 +859,7 @@ export default function RestaurantAuthPage() {
                     {/* Documents */}
                     <h3 className="text-sm font-semibold text-orange-400 pt-2">Documents (Optional)</h3>
 
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <input
                         type="text"
                         placeholder="GST Number"
@@ -603,62 +876,28 @@ export default function RestaurantAuthPage() {
                       />
                     </div>
 
-                    {/* Credentials */}
-                    <h3 className="text-sm font-semibold text-orange-400 pt-2">Create Password</h3>
-
-                    <div>
-                      <label className="block text-xs font-semibold text-slate-300 mb-1.5">Password *</label>
-                      <div className="relative">
-                        <Lock className="absolute left-3 top-3 w-4 h-4 text-slate-500" />
-                        <input
-                          type="password"
-                          value={signupForm.password}
-                          onChange={(e) => setSignupForm({ ...signupForm, password: e.target.value })}
-                          className="w-full bg-slate-700/50 border border-slate-600/50 rounded-lg pl-9 pr-3 py-2 text-sm text-white placeholder-slate-500 focus:border-orange-500 focus:outline-none transition"
-                          placeholder="••••••••"
-                          required
-                        />
-                      </div>
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-semibold text-slate-300 mb-1.5">Confirm Password *</label>
-                      <div className="relative">
-                        <Lock className="absolute left-3 top-3 w-4 h-4 text-slate-500" />
-                        <input
-                          type="password"
-                          value={signupForm.confirmPassword}
-                          onChange={(e) => setSignupForm({ ...signupForm, confirmPassword: e.target.value })}
-                          className="w-full bg-slate-700/50 border border-slate-600/50 rounded-lg pl-9 pr-3 py-2 text-sm text-white placeholder-slate-500 focus:border-orange-500 focus:outline-none transition"
-                          placeholder="••••••••"
-                          required
-                        />
-                      </div>
-                    </div>
-
                     <button
                       type="submit"
                       disabled={isLoading}
-                      className="w-full bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 disabled:from-slate-700 disabled:to-slate-700 text-white font-semibold py-3 rounded-xl transition flex items-center justify-center gap-2 shadow-lg shadow-orange-500/20 mt-6"
+                      className="w-full bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 disabled:from-slate-700 disabled:to-slate-700 text-white font-semibold py-3 rounded-xl transition flex items-center justify-center gap-2 shadow-lg shadow-orange-500/20 mt-4"
                     >
                       {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : null}
-                      {isLoading ? 'Registering...' : 'Register Restaurant'}
+                      {isLoading ? 'Registering...' : 'Create Account'}
                     </button>
-
-                    <p className="text-xs text-slate-400 text-center mt-4">
-                      Admin approval required before first login (24-48 hours)
-                    </p>
                   </form>
                 )}
               </div>
-
-              <p className="text-center text-slate-500 text-xs">
-                © 2024 THINAVA. Professional Restaurant Management.
-              </p>
             </div>
           </div>
         </div>
       </div>
+
+      {/* Forgot Password Modal */}
+      <ForgotPasswordModal 
+        isOpen={showForgotPasswordModal} 
+        onClose={() => setShowForgotPasswordModal(false)}
+        onSuccess={() => setShowForgotPasswordModal(false)}
+      />
     </div>
   )
 }

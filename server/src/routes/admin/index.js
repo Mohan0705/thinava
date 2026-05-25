@@ -2,6 +2,7 @@ const express = require('express')
 const rateLimit = require('express-rate-limit')
 const { body, validationResult } = require('express-validator')
 const adminService = require('../../modules/admin/services/adminService')
+const bannerService = require('../../modules/marketing/bannerService')
 const { authenticateAdmin, authorizeAdmin } = require('../../modules/admin/middleware/auth')
 const { ADMIN_PERMISSIONS } = require('../../modules/admin/constants')
 const { logger } = require('../../lib/logger')
@@ -243,6 +244,75 @@ router.post(
   asyncHandler(async (req, res) => {
     const coupon = await adminService.createCoupon(req.body, req.adminUser)
     res.status(201).json({ success: true, coupon })
+  })
+)
+
+router.get(
+  '/banners',
+  authorizeAdmin(ADMIN_PERMISSIONS.PROMOTIONS_VIEW),
+  asyncHandler(async (req, res) => {
+    const banners = await bannerService.listBanners()
+    res.json({ success: true, banners })
+  })
+)
+
+router.post(
+  '/banners/upload-signature',
+  authorizeAdmin(ADMIN_PERMISSIONS.PROMOTIONS_MANAGE),
+  asyncHandler(async (req, res) => {
+    const upload = bannerService.getUploadSignature(req.body)
+    res.json({ success: true, upload })
+  })
+)
+
+router.post(
+  '/banners',
+  authorizeAdmin(ADMIN_PERMISSIONS.PROMOTIONS_MANAGE),
+  asyncHandler(async (req, res) => {
+    const banner = await bannerService.createBanner(req.body, req.adminUser)
+    await adminService.recordActivity({
+      adminUserId: req.adminUser.id,
+      action: 'banner_created',
+      entityType: 'marketing_banner',
+      entityId: banner.id,
+      description: `Marketing banner created: ${banner.title}`,
+      metadata: { redirectType: banner.redirectType, priority: banner.priority },
+    })
+    res.status(201).json({ success: true, banner })
+  })
+)
+
+router.patch(
+  '/banners/:bannerId',
+  authorizeAdmin(ADMIN_PERMISSIONS.PROMOTIONS_MANAGE),
+  asyncHandler(async (req, res) => {
+    const banner = await bannerService.updateBanner(req.params.bannerId, req.body, req.adminUser)
+    await adminService.recordActivity({
+      adminUserId: req.adminUser.id,
+      action: 'banner_updated',
+      entityType: 'marketing_banner',
+      entityId: banner.id,
+      description: `Marketing banner updated: ${banner.title}`,
+      metadata: req.body,
+    })
+    res.json({ success: true, banner })
+  })
+)
+
+router.delete(
+  '/banners/:bannerId',
+  authorizeAdmin(ADMIN_PERMISSIONS.PROMOTIONS_MANAGE),
+  asyncHandler(async (req, res) => {
+    const banner = await bannerService.deleteBanner(req.params.bannerId)
+    await adminService.recordActivity({
+      adminUserId: req.adminUser.id,
+      action: 'banner_deleted',
+      entityType: 'marketing_banner',
+      entityId: banner.id,
+      description: `Marketing banner deleted: ${banner.title}`,
+      metadata: { cloudinaryPublicId: banner.cloudinaryPublicId },
+    })
+    res.json({ success: true, banner })
   })
 )
 

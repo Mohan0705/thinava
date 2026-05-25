@@ -1,7 +1,8 @@
 'use client'
 
 import { motion } from 'framer-motion'
-import { AlertCircle, CheckCircle, Clock } from 'lucide-react'
+import { AlertCircle, CheckCircle, Clock, ImageIcon } from 'lucide-react'
+import { getOptimizedCloudinaryImageUrl } from '@/lib/cloudinary-image'
 
 type RestaurantStatus = 'OPEN' | 'TEMPORARILY_UNAVAILABLE' | 'CLOSED'
 
@@ -87,6 +88,8 @@ export function RestaurantCardWithStatus({
   cuisines,
   onStatusChange
 }: RestaurantCardProps) {
+  const imageUrl = getOptimizedCloudinaryImageUrl(image, { width: 640, height: 360, crop: 'fill' })
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 10 }}
@@ -97,11 +100,18 @@ export function RestaurantCardWithStatus({
     >
       {/* Image */}
       <div className="relative h-40 overflow-hidden">
-        <img
-          src={image}
-          alt={name}
-          className="w-full h-full object-cover"
-        />
+        {imageUrl ? (
+          <img
+            src={imageUrl}
+            alt={name}
+            className="w-full h-full object-cover"
+            loading="lazy"
+          />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center bg-orange-50 text-orange-500">
+            <ImageIcon className="h-8 w-8" />
+          </div>
+        )}
 
         {/* Status Overlay */}
         {status !== 'OPEN' && (

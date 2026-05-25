@@ -1,6 +1,1 @@
-{
-  "/restaurant/[id]/page": "app/restaurant/[id]/page.js",
-  "/page": "app/page.js",
-  "/profile/page": "app/profile/page.js",
-  "/profile/settings/page": "app/profile/settings/page.js"
-}
+{}

@@ -28,10 +28,7 @@ const profileNavItems = [
 ]
 
 const isActiveItem = (pathname: string, href: string) => {
-  if (href === '/profile') {
-    return pathname === href
-  }
-
+  if (href === '/profile') return pathname === href
   return pathname === href
 }
 
@@ -39,26 +36,23 @@ export function ProfileShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-20 md:pb-0">
+    <div className="thinava-page-mobile">
       <Header />
 
-      <div className="container mx-auto px-4 py-8">
-        <div className="mb-8">
-          <p className="text-sm font-medium uppercase tracking-[0.24em] text-orange-500">
-            My Account
-          </p>
-          <h1 className="mt-2 text-3xl font-bold text-gray-900">Profile & Preferences</h1>
-          <p className="mt-2 max-w-2xl text-gray-600">
-            Manage your account details, saved places, favourites, and support options without
-            leaving the profile area.
+      <div className="container mx-auto px-4 py-6">
+        <div className="mb-6">
+          <p className="text-xs font-semibold uppercase tracking-widest text-thinava-primary">My account</p>
+          <h1 className="mt-1 text-xl font-bold text-thinava-text md:text-2xl">Profile & preferences</h1>
+          <p className="mt-1 max-w-2xl text-sm text-gray-500">
+            Manage your details, saved places, favourites, and support options.
           </p>
         </div>
 
-        <div className="grid gap-8 lg:grid-cols-[280px_minmax(0,1fr)]">
-          <aside className="lg:sticky lg:top-28 lg:self-start">
+        <div className="grid gap-6 lg:grid-cols-[260px_minmax(0,1fr)]">
+          <aside className="lg:sticky lg:top-24 lg:self-start">
             <Card>
-              <CardContent className="p-2">
-                <div className="space-y-1">
+              <CardContent className="p-1.5">
+                <nav className="space-y-0.5">
                   {profileNavItems.map((item) => {
                     const Icon = item.icon
                     const isActive = isActiveItem(pathname || '', item.href)
@@ -68,25 +62,25 @@ export function ProfileShell({ children }: { children: React.ReactNode }) {
                         key={item.href}
                         href={item.href}
                         className={cn(
-                          'flex items-center gap-3 rounded-xl px-4 py-3 transition-colors',
+                          'flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-colors',
                           isActive
-                            ? 'bg-orange-50 text-orange-600'
-                            : 'text-gray-700 hover:bg-gray-50'
+                            ? 'bg-orange-50 font-semibold text-thinava-primary'
+                            : 'text-gray-600 hover:bg-thinava-bg'
                         )}
                       >
                         <div
                           className={cn(
-                            'flex h-10 w-10 items-center justify-center rounded-full',
-                            isActive ? 'bg-orange-100' : 'bg-gray-100'
+                            'flex h-9 w-9 items-center justify-center rounded-lg',
+                            isActive ? 'bg-white text-thinava-primary shadow-sm' : 'bg-thinava-bg text-gray-500'
                           )}
                         >
-                          <Icon className="h-5 w-5" />
+                          <Icon className="h-4 w-4" />
                         </div>
-                        <span className="font-medium">{item.label}</span>
+                        {item.label}
                       </Link>
                     )
                   })}
-                </div>
+                </nav>
               </CardContent>
             </Card>
           </aside>

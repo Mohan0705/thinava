@@ -1,18 +1,14 @@
 import { MenuItem, Restaurant } from '@/types'
 import { apiRequest } from '@/lib/api'
+import { getOptimizedCloudinaryImageUrl } from '@/lib/cloudinary-image'
 
-const DEFAULT_RESTAURANT_IMAGE =
-  'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=1200&q=80'
-const DEFAULT_MENU_ITEM_IMAGE =
-  'https://images.unsplash.com/photo-1544025162-d76694265947?w=800&q=80'
-
-const sanitizeImage = (value: unknown, fallback: string) => {
+const sanitizeImage = (value: unknown) => {
   if (typeof value !== 'string') {
-    return fallback
+    return ''
   }
 
   const trimmedValue = value.trim()
-  return trimmedValue.length > 0 ? trimmedValue : fallback
+  return trimmedValue.length > 0 ? getOptimizedCloudinaryImageUrl(trimmedValue, { width: 1200, crop: 'limit' }) : ''
 }
 
 const sanitizeOptionalImage = (value: unknown) => {
@@ -21,7 +17,9 @@ const sanitizeOptionalImage = (value: unknown) => {
   }
 
   const trimmedValue = value.trim()
-  return trimmedValue.length > 0 ? trimmedValue : undefined
+  return trimmedValue.length > 0
+    ? getOptimizedCloudinaryImageUrl(trimmedValue, { width: 1600, crop: 'limit' })
+    : undefined
 }
 
 type RestaurantApiResponse = {
@@ -38,10 +36,11 @@ type MenuApiResponse = {
 const mapRestaurant = (restaurant: Record<string, any>): Restaurant => ({
   id: restaurant.id,
   name: restaurant.name,
-  image: sanitizeImage(restaurant.image, DEFAULT_RESTAURANT_IMAGE),
-  logo: sanitizeImage(restaurant.logo, DEFAULT_RESTAURANT_IMAGE),
-  rating: Number(restaurant.rating || 0),
-  deliveryTime: restaurant.delivery_time || restaurant.deliveryTime || '25-35 mins',
+  image: sanitizeImage(restaurant.image),
+  logo: sanitizeImage(restaurant.logo),
+  rating: Number(restaurant.average_rating || restaurant.averageRating || restaurant.rating || 0),
+  ratingCount: Number(restaurant.rating_count || restaurant.ratingCount || restaurant.total_reviews || 0),
+  deliveryTime: String(restaurant.delivery_time || restaurant.deliveryTime || '25-35 mins'),
   priceForOne: Number(restaurant.price_for_one || restaurant.priceForOne || 0),
   cuisines: restaurant.cuisines || [],
   offer: restaurant.offer || undefined,
@@ -63,7 +62,7 @@ const mapMenuItem = (menuItem: Record<string, any>): MenuItem => ({
   name: menuItem.name,
   description: menuItem.description || '',
   price: Number(menuItem.price || 0),
-  image: sanitizeImage(menuItem.image, DEFAULT_MENU_ITEM_IMAGE),
+  image: sanitizeImage(menuItem.image),
   category: menuItem.category_name || menuItem.category,
   isVeg: Boolean(menuItem.is_veg ?? menuItem.isVeg),
   isBestseller: Boolean(menuItem.is_bestseller ?? menuItem.isBestseller),

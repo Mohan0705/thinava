@@ -55,6 +55,19 @@ const getProfile = async (req, res, next) => {
   }
 }
 
+const updateProfile = async (req, res, next) => {
+  try {
+    const profile = await authService.updateDeliveryPartnerProfile(req.deliveryPartner.id, req.body)
+
+    res.json({
+      success: true,
+      profile,
+    })
+  } catch (error) {
+    next(error)
+  }
+}
+
 const refreshSession = async (req, res, next) => {
   try {
     const token = req.headers.authorization?.split(' ')[1]
@@ -149,6 +162,7 @@ module.exports = {
   register,
   login,
   getProfile,
+  updateProfile,
   refreshSession,
   setOnlineStatus,
   updateStatus,

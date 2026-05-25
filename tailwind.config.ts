@@ -12,9 +12,13 @@ const config = {
   theme: {
     container: {
       center: true,
-      padding: "2rem",
+      padding: "1rem",
       screens: {
-        "2xl": "1400px",
+        sm: "640px",
+        md: "768px",
+        lg: "1024px",
+        xl: "1280px",
+        "2xl": "1280px",
       },
     },
     extend: {
@@ -52,11 +56,34 @@ const config = {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
+        thinava: {
+          primary: "#FF6B35",
+          secondary: "#FF8A5B",
+          bg: "#FFF8F4",
+          card: "#FFFFFF",
+          text: "#1F2937",
+          border: "#E5E7EB",
+          success: "#22C55E",
+          rating: "#F59E0B",
+          error: "#EF4444",
+        },
+      },
+      fontFamily: {
+        sans: ["var(--font-sans)", "system-ui", "sans-serif"],
       },
       borderRadius: {
         lg: "var(--radius)",
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
+        xl: "1rem",
+        "2xl": "1.25rem",
+        "3xl": "1.5rem",
+      },
+      boxShadow: {
+        card: "0 4px 24px -4px rgba(31, 41, 55, 0.08)",
+        "card-hover": "0 12px 40px -8px rgba(255, 107, 53, 0.18)",
+        nav: "0 -4px 24px -4px rgba(31, 41, 55, 0.06), 0 8px 32px -8px rgba(31, 41, 55, 0.12)",
+        search: "0 2px 12px -2px rgba(31, 41, 55, 0.06)",
       },
       keyframes: {
         "accordion-down": {
@@ -67,10 +94,20 @@ const config = {
           from: { height: "var(--radix-accordion-content-height)" },
           to: { height: "0" },
         },
+        shimmer: {
+          "0%": { backgroundPosition: "-200% 0" },
+          "100%": { backgroundPosition: "200% 0" },
+        },
+        "fade-up": {
+          "0%": { opacity: "0", transform: "translateY(8px)" },
+          "100%": { opacity: "1", transform: "translateY(0)" },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
+        shimmer: "shimmer 1.5s ease-in-out infinite",
+        "fade-up": "fade-up 0.4s ease-out forwards",
       },
     },
   },

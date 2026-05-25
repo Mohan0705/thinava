@@ -4,11 +4,12 @@ import { motion } from 'framer-motion'
 import Link from 'next/link'
 import Image from 'next/image'
 import { useParams } from 'next/navigation'
-import { useEffect, useState } from 'react'
-import { Star, Clock, MapPin, Plus, Minus } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { Star, Clock, ImageIcon, MapPin, Plus, Minus, ShoppingCart } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Card, CardContent } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
+import { Skeleton } from '@/components/ui/Skeleton'
 import { fetchRestaurant, fetchRestaurantMenu } from '@/lib/customer-api'
 import { useCartStore } from '@/store/cartStore'
 import { getRealtimeSocket } from '@/lib/realtime'
@@ -18,11 +19,43 @@ import Header from '@/components/layout/Header'
 import Footer from '@/components/layout/Footer'
 import MobileNav from '@/components/layout/MobileNav'
 import { MenuItem, Restaurant } from '@/types'
+import { cn } from '@/lib/utils'
+import { getOptimizedCloudinaryImageUrl } from '@/lib/cloudinary-image'
 
-const FALLBACK_RESTAURANT_IMAGE =
-  'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=1200&q=80'
-const FALLBACK_MENU_ITEM_IMAGE =
-  'https://images.unsplash.com/photo-1544025162-d76694265947?w=800&q=80'
+function MenuQuantityControl({
+  quantity,
+  disabled,
+  onDecrease,
+  onIncrease,
+}: {
+  quantity: number
+  disabled?: boolean
+  onDecrease: () => void
+  onIncrease: () => void
+}) {
+  return (
+    <div className="flex items-center gap-1 rounded-full border border-thinava-border bg-thinava-bg p-0.5">
+      <button
+        type="button"
+        onClick={onDecrease}
+        className="flex h-9 w-9 items-center justify-center rounded-full bg-white text-thinava-primary thinava-touch"
+        aria-label="Decrease quantity"
+      >
+        <Minus className="h-4 w-4" />
+      </button>
+      <span className="min-w-[1.75rem] text-center text-sm font-bold text-thinava-text">{quantity}</span>
+      <button
+        type="button"
+        onClick={onIncrease}
+        disabled={disabled}
+        className="flex h-9 w-9 items-center justify-center rounded-full thinava-gradient-bg text-white disabled:opacity-50 thinava-touch"
+        aria-label="Increase quantity"
+      >
+        <Plus className="h-4 w-4" />
+      </button>
+    </div>
+  )
+}
 
 export default function RestaurantPage() {
   const params = useParams()
@@ -31,9 +64,10 @@ export default function RestaurantPage() {
   const [restaurantMenu, setRestaurantMenu] = useState<MenuItem[]>([])
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
+  const [activeCategory, setActiveCategory] = useState<string>('')
 
   const token = useAuthStore((state) => state.token)
-  const { items, addItem, updateQuantity } = useCartStore()
+  const { items, addItem, updateQuantity, getItemCount } = useCartStore()
 
   useEffect(() => {
     let isMounted = true
@@ -52,22 +86,18 @@ export default function RestaurantPage() {
           setRestaurant(liveRestaurant)
           setRestaurantMenu(liveMenu)
         }
-      } catch (error) {
+      } catch {
         if (isMounted) {
           setRestaurant(null)
           setRestaurantMenu([])
           setLoadError('Restaurant not found or still loading from the server.')
         }
       } finally {
-        if (isMounted) {
-          setLoading(false)
-        }
+        if (isMounted) setLoading(false)
       }
     }
 
-    if (restaurantId) {
-      loadRestaurantData()
-    }
+    if (restaurantId) loadRestaurantData()
 
     return () => {
       isMounted = false
@@ -101,30 +131,31 @@ export default function RestaurantPage() {
   }
 
   const groupedMenu = restaurantMenu.reduce<Record<string, MenuItem[]>>((accumulator, item) => {
-    if (!accumulator[item.category]) {
-      accumulator[item.category] = []
-    }
-
+    if (!accumulator[item.category]) accumulator[item.category] = []
     accumulator[item.category].push(item)
     return accumulator
   }, {})
 
+  const categories = useMemo(() => Object.keys(groupedMenu), [groupedMenu])
+
+  useEffect(() => {
+    if (categories.length > 0 && !activeCategory) {
+      setActiveCategory(categories[0])
+    }
+  }, [categories, activeCategory])
+
+  const cartCount = getItemCount()
+
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 pb-20 md:pb-0">
+      <div className="thinava-page-mobile">
         <Header />
-        <div className="container mx-auto px-4 py-8">
-          <Card>
-            <CardContent className="p-6">
-              <div className="h-8 w-56 animate-pulse rounded bg-gray-200" />
-              <div className="mt-4 h-4 w-72 animate-pulse rounded bg-gray-200" />
-              <div className="mt-8 space-y-3">
-                <div className="h-24 animate-pulse rounded-2xl bg-gray-100" />
-                <div className="h-24 animate-pulse rounded-2xl bg-gray-100" />
-                <div className="h-24 animate-pulse rounded-2xl bg-gray-100" />
-              </div>
-            </CardContent>
-          </Card>
+        <Skeleton className="h-48 w-full rounded-none" />
+        <div className="container mx-auto space-y-3 px-4 py-6">
+          <Skeleton className="h-8 w-48" />
+          <Skeleton className="h-28 w-full" />
+          <Skeleton className="h-28 w-full" />
+          <Skeleton className="h-28 w-full" />
         </div>
         <Footer />
         <MobileNav />
@@ -134,17 +165,17 @@ export default function RestaurantPage() {
 
   if (!restaurant) {
     return (
-      <div className="min-h-screen bg-gray-50 pb-20 md:pb-0">
+      <div className="thinava-page-mobile">
         <Header />
         <div className="container mx-auto px-4 py-16">
           <Card>
             <CardContent className="p-8 text-center">
-              <h1 className="text-2xl font-bold text-gray-900">Restaurant unavailable</h1>
-              <p className="mt-2 text-gray-600">
+              <h1 className="text-xl font-bold text-thinava-text">Restaurant unavailable</h1>
+              <p className="mt-2 text-sm text-gray-600">
                 {loadError || 'This restaurant could not be loaded right now.'}
               </p>
               <Link href="/" className="mt-6 inline-flex">
-                <Button>Back to Restaurants</Button>
+                <Button>Back to restaurants</Button>
               </Link>
             </CardContent>
           </Card>
@@ -155,151 +186,180 @@ export default function RestaurantPage() {
     )
   }
 
-  const isRestaurantAvailable = restaurant?.status === 'OPEN'
-  const heroImage = restaurant.image?.trim() || restaurant.bannerImage?.trim() || FALLBACK_RESTAURANT_IMAGE
+  const isRestaurantAvailable = restaurant.isOpen && (!restaurant.status || restaurant.status === 'OPEN')
+  const restaurantStatusLabel = restaurant.status === 'TEMPORARILY_UNAVAILABLE'
+    ? 'Currently Unavailable'
+    : 'Currently Closed'
+  const heroImage = getOptimizedCloudinaryImageUrl(
+    restaurant.bannerImage?.trim() || restaurant.image?.trim() || '',
+    { width: 1600, crop: 'fill', quality: 'auto:good' }
+  )
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-20 md:pb-0">
+    <div className="thinava-page-mobile">
       <Header />
 
-      <div className="relative h-64 md:h-80">
-        <Image
-          src={heroImage}
-          alt={restaurant.name}
-          width={1200}
-          height={400}
-          className="h-full w-full object-cover"
-        />
-        <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
-        <div className="absolute bottom-0 left-0 right-0 p-6 md:p-8">
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
-            <h1 className="mb-2 text-3xl font-bold text-white md:text-4xl">{restaurant.name}</h1>
-            <div className="flex items-center gap-4 text-white/90">
-              <div className="flex items-center gap-1">
-                <Star className="h-5 w-5 fill-yellow-400 text-yellow-400" />
-                <span className="font-semibold">{restaurant.rating}</span>
-              </div>
-              <div className="flex items-center gap-1">
-                <Clock className="h-5 w-5" />
-                <span>{restaurant.deliveryTime}</span>
-              </div>
-              <div className="flex items-center gap-1">
-                <MapPin className="h-5 w-5" />
-                <span>{formatPrice(restaurant.priceForOne)} for one</span>
-              </div>
+      <div className="relative h-44 md:h-52">
+        {heroImage ? (
+          <Image src={heroImage} alt={restaurant.name} fill className="object-cover" priority sizes="100vw" />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center bg-orange-50 text-orange-500">
+            <ImageIcon className="h-12 w-12" />
+          </div>
+        )}
+        <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
+        <div className="absolute bottom-0 left-0 right-0 p-4 md:p-6">
+          <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
+            <h1 className="text-2xl font-bold text-white md:text-3xl">{restaurant.name}</h1>
+            <div className="mt-2 flex flex-wrap items-center gap-3 text-sm text-white/90">
+              <span className="inline-flex items-center gap-1 rounded-md bg-white/15 px-2 py-0.5 backdrop-blur-sm">
+                <Star className="h-3.5 w-3.5 fill-thinava-rating text-thinava-rating" />
+                <span className="font-semibold">
+                  {Number(restaurant.rating || 0).toFixed(1)} ({restaurant.ratingCount ?? 0})
+                </span>
+              </span>
+              <span className="inline-flex items-center gap-1">
+                <Clock className="h-3.5 w-3.5" />
+                {restaurant.deliveryTime}
+              </span>
+              {restaurant.formattedAddress ? (
+                <span className="inline-flex items-center gap-1">
+                  <MapPin className="h-3.5 w-3.5" />
+                  {restaurant.formattedAddress}
+                </span>
+              ) : null}
+              {!isRestaurantAvailable ? (
+                <span className="inline-flex items-center gap-1 rounded-full bg-white px-2.5 py-1 font-bold text-slate-900">
+                <MapPin className="h-3.5 w-3.5" />
+                  {restaurantStatusLabel}
+                </span>
+              ) : null}
             </div>
           </motion.div>
         </div>
       </div>
 
-      <div className="container mx-auto px-4 py-6">
-        {/* Real-time Locked Ordering Warning Banner */}
-        {restaurant.status && restaurant.status !== 'OPEN' && (
-          <div className="mb-6 rounded-2xl bg-amber-500/10 border border-amber-500/20 p-4 text-amber-700 font-semibold flex items-center gap-3 backdrop-blur-md">
-            <span className="relative flex h-3 w-3">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-500 opacity-75" />
-              <span className="relative inline-flex rounded-full h-3 w-3 bg-amber-500" />
+      {categories.length > 1 ? (
+        <div className="sticky top-[73px] z-30 border-b border-thinava-border bg-white/95 backdrop-blur-md">
+          <div className="container mx-auto px-4">
+            <div className="flex gap-2 overflow-x-auto py-3 scrollbar-hide">
+              {categories.map((category) => (
+                <button
+                  key={category}
+                  type="button"
+                  onClick={() => {
+                    setActiveCategory(category)
+                    document.getElementById(`menu-${category}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                  }}
+                  className={cn(
+                    'shrink-0 rounded-full px-4 py-1.5 text-sm font-semibold transition-colors',
+                    activeCategory === category
+                      ? 'bg-thinava-primary text-white'
+                      : 'bg-thinava-bg text-thinava-text hover:bg-orange-100'
+                  )}
+                >
+                  {category}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      <div className="container mx-auto px-4 py-5 pb-24">
+        {!isRestaurantAvailable && (
+          <div className="mb-5 flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 text-sm font-semibold text-slate-800 shadow-[0_16px_36px_-28px_rgba(15,23,42,0.35)]">
+            <span className="relative flex h-2.5 w-2.5 shrink-0">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-slate-400 opacity-75" />
+              <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-slate-700" />
             </span>
-            <span>This restaurant is currently not accepting orders. Add-to-cart has been disabled.</span>
+            {restaurantStatusLabel}. This restaurant is not accepting orders right now.
           </div>
         )}
 
         <div className="space-y-8">
-          {Object.keys(groupedMenu).length === 0 ? (
+          {categories.length === 0 ? (
             <Card>
-              <CardContent className="p-6 text-sm text-gray-600">
+              <CardContent className="p-5 text-sm text-gray-600">
                 This restaurant does not have menu items published yet.
               </CardContent>
             </Card>
           ) : (
-            Object.entries(groupedMenu).map(([category, categoryItems], categoryIndex) => (
-              <motion.div
+            categories.map((category, categoryIndex) => (
+              <motion.section
                 key={category}
-                initial={{ opacity: 0, y: 20 }}
+                id={`menu-${category}`}
+                initial={{ opacity: 0, y: 12 }}
                 whileInView={{ opacity: 1, y: 0 }}
-                transition={{ delay: categoryIndex * 0.1 }}
+                transition={{ delay: categoryIndex * 0.05 }}
                 viewport={{ once: true }}
+                className="scroll-mt-36"
               >
-                <h2 className="mb-4 text-2xl font-bold text-gray-900">{category}</h2>
-                <div className="space-y-4">
-                  {categoryItems.map((item) => {
+                <h2 className="mb-3 text-lg font-bold text-thinava-text">{category}</h2>
+                <div className="space-y-3">
+                  {groupedMenu[category].map((item) => {
                     const quantity = getItemQuantity(item.id)
-                    const itemImage = item.image?.trim() || FALLBACK_MENU_ITEM_IMAGE
+                    const itemImage = getOptimizedCloudinaryImageUrl(item.image?.trim() || '', {
+                      width: 240,
+                      height: 240,
+                      crop: 'fill',
+                    })
 
                     return (
-                      <Card key={item.id} className="overflow-hidden">
-                        <CardContent className="p-4">
-                          <div className="flex gap-4">
-                            <div className="flex-1">
-                              <div className="mb-2 flex items-start gap-2">
-                                <h3 className="text-lg font-semibold text-gray-900">{item.name}</h3>
-                                {item.isVeg ? (
-                                  <span className="flex h-4 w-4 items-center justify-center border-2 border-green-500">
-                                    <span className="h-2 w-2 rounded-full bg-green-500" />
-                                  </span>
-                                ) : null}
-                                {item.isBestseller ? (
-                                  <Badge variant="secondary" className="text-xs">
-                                    Bestseller
-                                  </Badge>
-                                ) : null}
-                                {item.inStock === false ? (
-                                  <Badge variant="destructive" className="text-xs">
-                                    Out of Stock
-                                  </Badge>
-                                ) : null}
+                      <Card key={item.id} className="overflow-hidden transition-shadow hover:shadow-card-hover">
+                        <CardContent className="flex gap-3 p-3 sm:gap-4 sm:p-4">
+                          <div className="relative h-[88px] w-[88px] shrink-0 overflow-hidden rounded-xl sm:h-24 sm:w-24">
+                            {itemImage ? (
+                              <Image src={itemImage} alt={item.name} fill sizes="96px" className="object-cover" />
+                            ) : (
+                              <div className="flex h-full w-full items-center justify-center bg-orange-50 text-orange-500">
+                                <ImageIcon className="h-6 w-6" />
                               </div>
-                              <p className="mb-2 line-clamp-2 text-sm text-gray-600">{item.description}</p>
-                              <div className="flex items-center justify-between">
-                                <span className="text-lg font-bold text-gray-900">
-                                  {formatPrice(item.price)}
+                            )}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-start gap-1.5">
+                              <h3 className="font-semibold text-thinava-text">{item.name}</h3>
+                              {item.isVeg ? (
+                                <span
+                                  className="flex h-4 w-4 shrink-0 items-center justify-center border-2 border-thinava-success"
+                                  title="Vegetarian"
+                                >
+                                  <span className="h-2 w-2 rounded-full bg-thinava-success" />
                                 </span>
-                                <div className="flex items-center gap-2">
-                                    {quantity === 0 ? (
-                                    <Button
-                                      size="sm"
-                                      onClick={() => addItem(item)}
-                                      disabled={item.inStock === false || !isRestaurantAvailable}
-                                      className="min-w-[112px] border-0 bg-gradient-to-r from-orange-500 to-red-500 font-semibold text-white shadow-lg shadow-orange-500/25 hover:from-orange-600 hover:to-red-600 disabled:bg-gray-300 disabled:text-white"
-                                    >
-                                      <Plus className="mr-1 h-4 w-4" />
-                                      {item.inStock === false ? 'Unavailable' : !isRestaurantAvailable ? 'Closed' : 'Add'}
-                                    </Button>
-                                  ) : (
-                                    <div className="flex items-center gap-1 rounded-full bg-orange-50 dark:bg-slate-800 px-1 py-1">
-                                      <Button
-                                        size="sm"
-                                        className="h-10 w-10 rounded-full border border-orange-200 bg-white p-0 text-xl font-black leading-none text-orange-700 shadow-none hover:bg-orange-100 active:scale-90 transition-transform"
-                                        onClick={() => updateQuantity(item.id, quantity - 1)}
-                                      >
-                                        <span aria-hidden="true">-</span>
-                                        <span className="sr-only">Decrease quantity</span>
-                                      </Button>
-                                      <span className="min-w-[2.5rem] text-center text-lg font-black text-orange-700 dark:text-orange-400 bg-white dark:bg-slate-900 rounded-lg py-1 px-2">
-                                        {quantity}
-                                      </span>
-                                      <Button
-                                        size="sm"
-                                        className="h-10 w-10 rounded-full bg-gradient-to-r from-orange-500 to-red-500 p-0 text-xl font-black leading-none text-white shadow-lg shadow-orange-500/25 hover:from-orange-600 hover:to-red-600 active:scale-90 transition-transform"
-                                        disabled={item.inStock === false || !isRestaurantAvailable}
-                                        onClick={() => updateQuantity(item.id, quantity + 1)}
-                                      >
-                                        <span aria-hidden="true">+</span>
-                                        <span className="sr-only">Increase quantity</span>
-                                      </Button>
-                                    </div>
-                                  )}
-                                </div>
-                              </div>
+                              ) : null}
+                              {item.isBestseller ? (
+                                <Badge variant="secondary" className="text-[10px]">Bestseller</Badge>
+                              ) : null}
+                              {item.inStock === false ? (
+                                <Badge variant="destructive" className="text-[10px]">Out of stock</Badge>
+                              ) : null}
                             </div>
-                            <div className="relative h-24 w-24 flex-shrink-0">
-                              <Image
-                                src={itemImage}
-                                alt={item.name}
-                                width={100}
-                                height={100}
-                                className="h-full w-full rounded-xl object-cover"
-                              />
+                            <p className="mt-1 line-clamp-2 text-xs text-gray-500 sm:text-sm">{item.description}</p>
+                            <div className="mt-3 flex items-center justify-between gap-2">
+                              <span className="font-bold text-thinava-text">{formatPrice(item.price)}</span>
+                              {quantity === 0 ? (
+                                <Button
+                                  size="sm"
+                                  onClick={() => addItem(item)}
+                                  disabled={item.inStock === false || !isRestaurantAvailable}
+                                  className="min-w-[5.5rem]"
+                                >
+                                  <Plus className="mr-1 h-3.5 w-3.5" />
+                                  {item.inStock === false
+                                    ? 'Unavailable'
+                                    : !isRestaurantAvailable
+                                      ? 'Closed'
+                                      : 'Add'}
+                                </Button>
+                              ) : (
+                                <MenuQuantityControl
+                                  quantity={quantity}
+                                  disabled={item.inStock === false || !isRestaurantAvailable}
+                                  onDecrease={() => updateQuantity(item.id, quantity - 1)}
+                                  onIncrease={() => updateQuantity(item.id, quantity + 1)}
+                                />
+                              )}
                             </div>
                           </div>
                         </CardContent>
@@ -307,11 +367,25 @@ export default function RestaurantPage() {
                     )
                   })}
                 </div>
-              </motion.div>
+              </motion.section>
             ))
           )}
         </div>
       </div>
+
+      {cartCount > 0 ? (
+        <div className="fixed bottom-[calc(5.75rem+env(safe-area-inset-bottom))] left-4 right-4 z-40 md:bottom-6 md:left-auto md:right-6 md:w-80">
+          <Link href="/cart">
+            <div className="flex items-center justify-between gap-3 rounded-2xl thinava-gradient-bg px-5 py-3.5 text-white shadow-lg">
+              <div className="flex items-center gap-2">
+                <ShoppingCart className="h-5 w-5" />
+                <span className="text-sm font-semibold">{cartCount} in cart</span>
+              </div>
+              <span className="text-sm font-bold">View cart →</span>
+            </div>
+          </Link>
+        </div>
+      ) : null}
 
       <Footer />
       <MobileNav />

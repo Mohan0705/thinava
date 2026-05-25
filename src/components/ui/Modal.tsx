@@ -44,7 +44,7 @@ export function Modal({ isOpen, onClose, children, className }: ModalProps) {
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           onClick={onClose}
-          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm"
+          className="fixed inset-0 z-[9999] flex items-end justify-center bg-black/60 backdrop-blur-sm sm:items-center"
         >
           <motion.div
             initial={{ opacity: 0, scale: 0.95, y: 20 }}
@@ -52,11 +52,11 @@ export function Modal({ isOpen, onClose, children, className }: ModalProps) {
             exit={{ opacity: 0, scale: 0.95, y: 20 }}
             onClick={(e) => e.stopPropagation()}
             className={cn(
-              "w-full max-w-lg mx-4",
+              "mx-0 w-full max-w-lg sm:mx-4",
               className
             )}
           >
-            <div className="relative bg-white rounded-2xl shadow-2xl p-6 max-h-[90vh] overflow-y-auto">
+            <div className="relative max-h-[92vh] overflow-y-auto rounded-t-[1.8rem] bg-white p-6 shadow-2xl sm:rounded-[1.8rem]">
               <button
                 onClick={onClose}
                 className="absolute right-4 top-4 p-2 rounded-full hover:bg-gray-100 transition-colors"

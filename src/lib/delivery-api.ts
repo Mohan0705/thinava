@@ -50,6 +50,17 @@ export const deliveryApi = {
     )
   },
 
+  updateProfile(token: string, payload: { profile_image?: string | null }) {
+    return apiRequest<{ success: boolean; profile: DeliveryPartner }>(
+      '/delivery/auth/profile',
+      {
+        method: 'PATCH',
+        token,
+        body: JSON.stringify(payload),
+      }
+    )
+  },
+
   setOnlineStatus(token: string, isOnline: boolean) {
     return apiRequest<{ success: boolean; is_online: boolean; online_since?: string | null }>(
       '/delivery/auth/online-status',

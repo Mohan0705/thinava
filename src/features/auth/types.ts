@@ -44,11 +44,15 @@ export interface AuthSessionResponse {
 
 export interface AddressPayload {
   label: string
+  address_type?: 'Home' | 'Office' | 'Other'
   address: string
   landmark?: string
   latitude?: number | null
   longitude?: number | null
   is_default: boolean
+  receiver_name?: string
+  receiver_phone?: string
+  use_account_details?: boolean
 }
 
 export type { Address, User }

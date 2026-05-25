@@ -11,6 +11,7 @@ import {
   Truck,
   Users,
   CheckCircle,
+  Megaphone,
 } from 'lucide-react'
 
 export const adminPermissions = {
@@ -24,6 +25,7 @@ export const adminPermissions = {
   support: 'support:view',
   settings: 'settings:view',
   promotions: 'promotions:view',
+  marketing: 'promotions:view',
   map: 'map:view',
 } as const
 
@@ -38,6 +40,7 @@ export const adminNavigation = [
   { href: '/admin/payments', label: 'Payments', icon: CreditCard, permission: adminPermissions.payments },
   { href: '/admin/support', label: 'Support', icon: LifeBuoy, permission: adminPermissions.support },
   { href: '/admin/live-map', label: 'Live Map', icon: Map, permission: adminPermissions.map },
+  { href: '/admin/marketing/banners', label: 'Marketing', icon: Megaphone, permission: adminPermissions.marketing },
   { href: '/admin/promotions', label: 'Promotions', icon: Percent, permission: adminPermissions.promotions },
   { href: '/admin/settings', label: 'Settings', icon: Settings, permission: adminPermissions.settings },
 ] as const

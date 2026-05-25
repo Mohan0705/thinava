@@ -1,4 +1,5 @@
 const pool = require('../../../database/connection')
+const { assertCloudinaryImageUrl, deleteReplacedImages } = require('../../../lib/cloudinaryService')
 const { signCustomerToken, verifyCustomerTokenIgnoreExp } = require('../../../lib/auth/tokenService')
 const { sendOtp } = require('../../../lib/smsService')
 const {
@@ -36,12 +37,16 @@ const mapAddress = (row) => ({
   id: row.id,
   user_id: row.user_id,
   label: row.label,
+  address_type: row.address_type,
   address: row.address,
   full_address: row.address,
   landmark: row.landmark,
   latitude: row.latitude !== null ? Number(row.latitude) : null,
   longitude: row.longitude !== null ? Number(row.longitude) : null,
   is_default: Boolean(row.is_default),
+  receiver_name: row.receiver_name,
+  receiver_phone: row.receiver_phone,
+  use_account_details: Boolean(row.use_account_details ?? true),
   legacy_address_id: row.legacy_address_id,
   created_at: row.created_at,
   updated_at: row.updated_at,
@@ -61,9 +66,16 @@ const mapUser = (row, addresses = []) => ({
   addresses,
 })
 
+const normalizeAddressType = (value, fallback = 'Other') => {
+  const normalized = String(value || fallback).trim().toLowerCase()
+  if (normalized === 'home') return 'Home'
+  if (normalized === 'office' || normalized === 'work') return 'Office'
+  return 'Other'
+}
+
 const getUserAddresses = async (userId) => {
   const result = await pool.query(
-    `SELECT id, user_id, label, address, landmark, latitude, longitude, is_default, legacy_address_id, created_at, updated_at
+    `SELECT id, user_id, label, address_type, address, landmark, latitude, longitude, is_default, receiver_name, receiver_phone, use_account_details, legacy_address_id, created_at, updated_at
      FROM user_addresses
      WHERE user_id = $1
      ORDER BY is_default DESC, updated_at DESC, created_at DESC`,
@@ -278,10 +290,11 @@ const verifyOtp = async ({ verificationId, phone, countryCode = INDIAN_COUNTRY_C
       [formatPhone(normalizedPhone, countryCode)]
     )
 
-    const resolvedFullName =
+    const requestedFullName =
       (fullName && String(fullName).trim()) ||
-      otpSession.full_name ||
-      `Thinava User ${normalizedPhone.slice(-4)}`
+      (otpSession.full_name && String(otpSession.full_name).trim()) ||
+      ''
+    const newUserFullName = requestedFullName || `Thinava User ${normalizedPhone.slice(-4)}`
     const resolvedEmail = (email && String(email).trim()) || otpSession.email || null
 
     let user
@@ -291,8 +304,8 @@ const verifyOtp = async ({ verificationId, phone, countryCode = INDIAN_COUNTRY_C
          VALUES ($1, $2, $3, $4, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
          RETURNING id, name, full_name, phone, email, profile_image, is_verified, created_at, updated_at, last_login`,
         [
-          resolvedFullName,
-          resolvedFullName,
+          newUserFullName,
+          newUserFullName,
           formatPhone(normalizedPhone, countryCode),
           resolvedEmail,
         ]
@@ -309,7 +322,7 @@ const verifyOtp = async ({ verificationId, phone, countryCode = INDIAN_COUNTRY_C
              updated_at = CURRENT_TIMESTAMP
          WHERE id = $1
          RETURNING id, name, full_name, phone, email, profile_image, is_verified, created_at, updated_at, last_login`,
-        [userResult.rows[0].id, resolvedFullName, resolvedEmail]
+        [userResult.rows[0].id, requestedFullName, resolvedEmail]
       )
       user = updatedUserResult.rows[0]
     }
@@ -341,18 +354,22 @@ const verifyOtp = async ({ verificationId, phone, countryCode = INDIAN_COUNTRY_C
 const updateCustomerProfile = async (userId, payload) => {
   const fullName = String(payload.full_name || payload.name || '').trim()
   const email = payload.email ? String(payload.email).trim() : null
-  const profileImage = payload.profile_image ? String(payload.profile_image).trim() : null
+  const hasProfileImage = Object.prototype.hasOwnProperty.call(payload, 'profile_image')
+  const profileImage = hasProfileImage && payload.profile_image ? String(payload.profile_image).trim() : null
+  assertCloudinaryImageUrl(profileImage, 'Profile image')
+  const oldResult = await pool.query('SELECT profile_image FROM users WHERE id = $1', [userId])
+  const oldProfileImage = oldResult.rows[0]?.profile_image
 
   const result = await pool.query(
     `UPDATE users
      SET full_name = COALESCE(NULLIF($2, ''), full_name),
          name = COALESCE(NULLIF($2, ''), name),
          email = $3,
-         profile_image = $4,
+         profile_image = CASE WHEN $4::boolean THEN $5 ELSE profile_image END,
          updated_at = CURRENT_TIMESTAMP
      WHERE id = $1
      RETURNING id, name, full_name, phone, email, profile_image, is_verified, created_at, updated_at, last_login`,
-    [userId, fullName, email, profileImage]
+    [userId, fullName, email, hasProfileImage, profileImage]
   )
 
   if (result.rows.length === 0) {
@@ -362,11 +379,16 @@ const updateCustomerProfile = async (userId, payload) => {
   }
 
   const addresses = await getUserAddresses(userId)
+  await deleteReplacedImages([{ previousUrl: oldProfileImage, nextUrl: result.rows[0].profile_image }])
   return mapUser(result.rows[0], addresses)
 }
 
 const upsertAddress = async (userId, payload, addressId = null) => {
   const client = await pool.connect()
+  const addressType = normalizeAddressType(payload.address_type, payload.label)
+  const receiverName = payload.receiver_name ? String(payload.receiver_name).trim() : null
+  const receiverPhone = payload.receiver_phone ? String(payload.receiver_phone).trim() : null
+  const useAccountDetails = payload.use_account_details !== undefined ? Boolean(payload.use_account_details) : true
 
   try {
     await client.query('BEGIN')
@@ -410,36 +432,48 @@ const upsertAddress = async (userId, payload, addressId = null) => {
         await client.query(
           `UPDATE addresses
            SET label = $1,
-               full_address = $2,
-               landmark = $3,
-               latitude = $4,
-               longitude = $5,
-               is_default = $6,
+               address_type = $2,
+               full_address = $3,
+               landmark = $4,
+               latitude = $5,
+               longitude = $6,
+               is_default = $7,
+               receiver_name = $8,
+               receiver_phone = $9,
+               use_account_details = $10,
                updated_at = CURRENT_TIMESTAMP
-           WHERE id = $7`,
+           WHERE id = $11`,
           [
             payload.label,
+            addressType,
             payload.address,
             payload.landmark || null,
             payload.latitude ?? null,
             payload.longitude ?? null,
             Boolean(payload.is_default),
+            receiverName,
+            receiverPhone,
+            useAccountDetails,
             legacyAddressId,
           ]
         )
       } else {
         const newLegacyAddress = await client.query(
-          `INSERT INTO addresses (user_id, label, full_address, landmark, latitude, longitude, is_default)
-           VALUES ($1, $2, $3, $4, $5, $6, $7)
+          `INSERT INTO addresses (user_id, label, address_type, full_address, landmark, latitude, longitude, is_default, receiver_name, receiver_phone, use_account_details)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
            RETURNING id`,
           [
             userId,
             payload.label,
+            addressType,
             payload.address,
             payload.landmark || null,
             payload.latitude ?? null,
             payload.longitude ?? null,
             Boolean(payload.is_default),
+            receiverName,
+            receiverPhone,
+            useAccountDetails,
           ]
         )
         legacyAddressId = newLegacyAddress.rows[0].id
@@ -448,22 +482,30 @@ const upsertAddress = async (userId, payload, addressId = null) => {
       const updatedAddressResult = await client.query(
         `UPDATE user_addresses
          SET label = $1,
-             address = $2,
-             landmark = $3,
-             latitude = $4,
-             longitude = $5,
-             is_default = $6,
-             legacy_address_id = $7,
+             address_type = $2,
+             address = $3,
+             landmark = $4,
+             latitude = $5,
+             longitude = $6,
+             is_default = $7,
+             receiver_name = $8,
+             receiver_phone = $9,
+             use_account_details = $10,
+             legacy_address_id = $11,
              updated_at = CURRENT_TIMESTAMP
-         WHERE id = $8 AND user_id = $9
+         WHERE id = $12 AND user_id = $13
          RETURNING *`,
         [
           payload.label,
+          addressType,
           payload.address,
           payload.landmark || null,
           payload.latitude ?? null,
           payload.longitude ?? null,
           Boolean(payload.is_default),
+          receiverName,
+          receiverPhone,
+          useAccountDetails,
           legacyAddressId,
           addressId,
           userId,
@@ -472,34 +514,42 @@ const upsertAddress = async (userId, payload, addressId = null) => {
       userAddress = updatedAddressResult.rows[0]
     } else {
       const newLegacyAddress = await client.query(
-        `INSERT INTO addresses (user_id, label, full_address, landmark, latitude, longitude, is_default)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)
+        `INSERT INTO addresses (user_id, label, address_type, full_address, landmark, latitude, longitude, is_default, receiver_name, receiver_phone, use_account_details)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
          RETURNING id`,
         [
           userId,
           payload.label,
+          addressType,
           payload.address,
           payload.landmark || null,
           payload.latitude ?? null,
           payload.longitude ?? null,
           Boolean(payload.is_default),
+          receiverName,
+          receiverPhone,
+          useAccountDetails,
         ]
       )
 
       legacyAddressId = newLegacyAddress.rows[0].id
 
       const newUserAddress = await client.query(
-        `INSERT INTO user_addresses (user_id, label, address, landmark, latitude, longitude, is_default, legacy_address_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        `INSERT INTO user_addresses (user_id, label, address_type, address, landmark, latitude, longitude, is_default, receiver_name, receiver_phone, use_account_details, legacy_address_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
          RETURNING *`,
         [
           userId,
           payload.label,
+          addressType,
           payload.address,
           payload.landmark || null,
           payload.latitude ?? null,
           payload.longitude ?? null,
           Boolean(payload.is_default),
+          receiverName,
+          receiverPhone,
+          useAccountDetails,
           legacyAddressId,
         ]
       )

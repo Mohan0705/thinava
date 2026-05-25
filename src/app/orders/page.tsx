@@ -4,7 +4,7 @@ import { motion } from 'framer-motion'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
-import { AlertCircle, CheckCircle, Clock, Home, MessageCircle, Package, RefreshCw, Truck, Star, FileText, X, Phone, MapPin } from 'lucide-react'
+import { AlertCircle, CheckCircle, Clock, Home, MessageCircle, Package, Truck, Star, FileText, X, Phone, MapPin, ImageIcon } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Card, CardContent } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
@@ -22,6 +22,7 @@ import { DeliveryLiveMap } from '@/components/delivery/DeliveryLiveMap'
 import ReviewModal from '@/components/customer/ReviewModal'
 import InvoicePDF from '@/components/customer/InvoicePDF'
 import { getRealtimeSocket, releaseRealtimeSocket } from '@/lib/realtime'
+import { getOptimizedCloudinaryImageUrl } from '@/lib/cloudinary-image'
 
 type ApiOrderItem = {
   id: string
@@ -73,13 +74,17 @@ const orderStatuses = [
   { key: 'ready_for_pickup', label: 'Ready for Pickup', icon: Package },
   { key: 'picked_up', label: 'Picked Up', icon: Truck },
   { key: 'out_for_delivery', label: 'On the Way', icon: Truck },
-  { key: 'arriving', label: 'Arriving', icon: Truck },
   { key: 'delivered', label: 'Delivered', icon: Home },
 ]
 
 const terminalStatuses = new Set(['delivered', 'cancelled'])
 
-const normalizeStatus = (status: string) => status.toLowerCase()
+const normalizeStatus = (status: string) => {
+  const normalized = status.toLowerCase()
+  if (normalized === 'arriving' || normalized === 'on_the_way') return 'out_for_delivery'
+  if (normalized === 'confirmed') return 'accepted'
+  return normalized
+}
 
 const humanizeStatus = (status: string) => {
   const normalized = normalizeStatus(status)
@@ -104,8 +109,7 @@ const statusVariant = (status: string): 'default' | 'secondary' | 'destructive' 
     normalized === 'preparing' ||
     normalized === 'ready_for_pickup' ||
     normalized === 'picked_up' ||
-    normalized === 'out_for_delivery' ||
-    normalized === 'arriving'
+    normalized === 'out_for_delivery'
   ) {
     return 'default'
   }
@@ -481,10 +485,11 @@ export default function OrdersPage() {
 
     return {
       name: restaurant?.name || order.restaurant_name || 'Restaurant',
-      image:
-        restaurant?.image ||
-        order.restaurant_image ||
-        'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=400&q=80',
+      image: getOptimizedCloudinaryImageUrl(restaurant?.image || order.restaurant_image || '', {
+        width: 180,
+        height: 180,
+        crop: 'fill',
+      }),
       cuisines: restaurant?.cuisines || [],
     }
   }
@@ -520,12 +525,12 @@ export default function OrdersPage() {
 
         {!loading && currentOrder ? (
           <>
-            <Card className="mb-8 bg-[#000A22] border-slate-800 text-white shadow-2xl relative overflow-hidden">
+            <Card className="mb-6 relative overflow-hidden border-slate-800 bg-[#000A22] text-white shadow-[0_24px_60px_-36px_rgba(15,23,42,0.7)]">
               <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-orange-500 to-red-500" />
-              <CardContent className="p-6">
-                <div className="mb-6 flex items-center justify-between">
+              <CardContent className="p-4 sm:p-5">
+                <div className="mb-4 flex items-center justify-between gap-3">
                   <div>
-                    <h2 className="text-xl font-extrabold text-white">Order #{currentOrder.id.slice(0, 8).toUpperCase()}</h2>
+                    <h2 className="text-lg font-extrabold text-white sm:text-xl">Order #{currentOrder.id.slice(0, 8).toUpperCase()}</h2>
                     <p className="text-slate-400 text-sm mt-0.5">from <span className="font-bold text-orange-400">{getRestaurantDetails(currentOrder).name}</span></p>
                   </div>
                   <Badge variant={statusVariant(currentOrder.status)} className="font-bold">
@@ -538,7 +543,7 @@ export default function OrdersPage() {
                 currentOrder.restaurant_longitude &&
                 currentOrder.customer_latitude &&
                 currentOrder.customer_longitude ? (
-                  <div className="mb-6 rounded-2xl overflow-hidden border border-slate-800 shadow-inner">
+                  <div className="mb-5 overflow-hidden rounded-2xl border border-slate-800 shadow-inner">
                     <DeliveryLiveMap
                       rider={
                         currentOrder.rider_latitude && currentOrder.rider_longitude
@@ -556,7 +561,7 @@ export default function OrdersPage() {
                         latitude: currentOrder.customer_latitude,
                         longitude: currentOrder.customer_longitude,
                       }}
-                      heightClassName="h-[350px]"
+                      heightClassName="h-[220px] sm:h-[300px]"
                     />
                   </div>
                 ) : null}
@@ -566,13 +571,17 @@ export default function OrdersPage() {
                   <motion.div
                     initial={{ opacity: 0, y: 15 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className="mb-6 p-5 rounded-2xl bg-slate-900/80 border border-slate-850 backdrop-blur-xl text-white shadow-xl flex flex-col md:flex-row items-center gap-5 justify-between"
+                    className="mb-5 flex flex-col items-center justify-between gap-4 rounded-2xl border border-slate-800 bg-slate-900/80 p-4 text-white shadow-xl backdrop-blur-xl md:flex-row"
                   >
                     <div className="flex items-center gap-4 w-full md:w-auto">
                       <div className="relative h-16 w-16 rounded-full border-2 border-orange-500 overflow-hidden bg-slate-850 flex-shrink-0 flex items-center justify-center">
                         {currentOrder.rider_profile_image ? (
                           <Image
-                            src={currentOrder.rider_profile_image}
+                            src={getOptimizedCloudinaryImageUrl(currentOrder.rider_profile_image, {
+                              width: 160,
+                              height: 160,
+                              crop: 'fill',
+                            })}
                             alt={currentOrder.rider_name}
                             fill
                             className="object-cover"
@@ -607,7 +616,7 @@ export default function OrdersPage() {
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-5 w-full md:w-auto border-t border-slate-850 md:border-t-0 pt-4 md:pt-0 justify-around md:justify-end">
+                    <div className="flex w-full items-center justify-around gap-5 border-t border-slate-800 pt-4 md:w-auto md:justify-end md:border-t-0 md:pt-0">
                       <div className="text-center md:text-right">
                         <p className="text-xs text-slate-400 font-medium">Estimated Arrival</p>
                         <p className="text-lg font-black text-orange-400 flex items-center gap-1 mt-0.5 justify-center md:justify-end">
@@ -644,8 +653,8 @@ export default function OrdersPage() {
                     </div>
                   </div>
                 ) : (
-                  <div className="relative mb-8 px-2 md:px-4">
-                    <div className="absolute left-4 right-4 top-5 h-1 bg-slate-800 rounded">
+                  <div className="relative mb-6 px-1 md:px-3">
+                    <div className="absolute left-4 right-4 top-4 h-1 rounded bg-slate-800">
                       <motion.div
                         initial={{ width: 0 }}
                         animate={{ width: `${(currentStatusIndex / (orderStatuses.length - 1)) * 100}%` }}
@@ -665,19 +674,19 @@ export default function OrdersPage() {
                             initial={{ opacity: 0, y: 10 }}
                             animate={{ opacity: 1, y: 0 }}
                             transition={{ delay: index * 0.08 }}
-                            className="flex flex-col items-center"
+                            className="flex min-w-0 flex-1 flex-col items-center"
                           >
                             <div
                               className={`relative z-10 flex h-10 w-10 items-center justify-center rounded-full transition-all ${
                                 isActive
                                   ? 'bg-gradient-to-br from-orange-500 to-red-500 text-white shadow-lg shadow-orange-500/20'
                                   : 'bg-slate-800 text-slate-500'
-                              } ${isCurrent ? 'scale-115 ring-4 ring-orange-500/30' : ''}`}
+                              } ${isCurrent ? 'scale-110 ring-4 ring-orange-500/30' : ''}`}
                             >
-                              <Icon className="h-5 w-5" />
+                              <Icon className="h-4 w-4 sm:h-5 sm:w-5" />
                             </div>
                             <span
-                              className={`mt-2 text-center text-[10px] md:text-xs font-semibold ${
+                              className={`mt-2 max-w-[5.75rem] text-center text-[9px] font-semibold leading-tight md:text-xs ${
                                 isActive ? 'text-orange-400 font-bold' : 'text-slate-500'
                               }`}
                             >
@@ -690,15 +699,21 @@ export default function OrdersPage() {
                   </div>
                 )}
 
-                <div className="rounded-2xl bg-slate-900/60 border border-slate-850 p-4">
+                <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-3 sm:p-4">
                   <div className="flex flex-col sm:flex-row items-center gap-4">
                     <div className="h-16 w-16 overflow-hidden rounded-xl bg-slate-800 flex-shrink-0 relative">
-                      <Image
-                        src={getRestaurantDetails(currentOrder).image}
-                        alt={getRestaurantDetails(currentOrder).name}
-                        fill
-                        className="object-cover"
-                      />
+                      {getRestaurantDetails(currentOrder).image ? (
+                        <Image
+                          src={getRestaurantDetails(currentOrder).image}
+                          alt={getRestaurantDetails(currentOrder).name}
+                          fill
+                          className="object-cover"
+                        />
+                      ) : (
+                        <div className="flex h-full w-full items-center justify-center text-orange-400">
+                          <ImageIcon className="h-6 w-6" />
+                        </div>
+                      )}
                     </div>
                     <div className="flex-1 text-center sm:text-left">
                       <h3 className="font-bold text-lg text-white">{getRestaurantDetails(currentOrder).name}</h3>
@@ -707,14 +722,14 @@ export default function OrdersPage() {
                       </p>
                       {!isCancelled && !isDelivered && currentOrder.estimated_delivery && (
                         <p className="mt-1.5 text-xs font-bold text-orange-400">
-                          Your order is on the way • {currentOrder.estimated_total_eta_minutes
+                          Your order is on the way - {currentOrder.estimated_total_eta_minutes
                             ? `${currentOrder.estimated_total_eta_minutes} mins left`
                             : currentOrder.estimated_delivery}
                         </p>
                       )}
                     </div>
                     <Link href={`/restaurant/${currentOrder.restaurant_id}`} className="w-full sm:w-auto">
-                      <Button variant="outline" className="w-full border-slate-800 hover:bg-slate-800 text-slate-200">
+                      <Button variant="outline" className="w-full border-white bg-white text-slate-950 shadow-sm hover:bg-orange-50 hover:text-slate-950">
                         View Menu
                       </Button>
                     </Link>
@@ -723,18 +738,18 @@ export default function OrdersPage() {
               </CardContent>
             </Card>
 
-            <Card className="mb-8 bg-[#000A22] border-slate-800 text-white">
-              <CardContent className="p-6">
-                <h3 className="mb-4 font-bold text-lg text-white">Need Help?</h3>
-                <div className="space-y-3">
+            <Card className="mb-8 border-slate-800 bg-[#000A22] text-white">
+              <CardContent className="p-4 sm:p-5">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <h3 className="font-bold text-white">Need Help?</h3>
+                  <p className="hidden text-xs font-medium text-slate-400 sm:block">
+                    {SUPPORT_PHONE_DISPLAY}
+                  </p>
+                </div>
+                <div className="grid gap-2 sm:grid-cols-2">
                   <Button
-                    className="w-full justify-start bg-red-600 hover:bg-red-700 text-white font-bold shadow-md border-0"
-                  >
-                    <RefreshCw className="mr-2 h-4 w-4" />
-                    Cancel Order
-                  </Button>
-                  <Button
-                    className="w-full justify-start bg-slate-800 hover:bg-slate-700 text-white font-bold shadow-md border-0"
+                    size="sm"
+                    className="h-10 justify-center bg-white text-slate-950 font-bold shadow-sm hover:bg-orange-50"
                     onClick={() => {
                       window.location.href = SUPPORT_TEL
                     }}
@@ -743,7 +758,8 @@ export default function OrdersPage() {
                     Call Support
                   </Button>
                   <Button
-                    className="w-full justify-start bg-green-600 hover:bg-green-700 text-white font-bold shadow-md border-0"
+                    size="sm"
+                    className="h-10 justify-center bg-[#16A34A] text-white font-bold shadow-sm hover:bg-[#15803D]"
                     onClick={() => {
                       const orderId = currentOrder?.id ? currentOrder.id.slice(0, 8).toUpperCase() : ''
                       window.open(getWhatsAppLink(`Hi%20Thinava%20Support%20I%20need%20help%20with%20order%20${orderId}`), '_blank')
@@ -752,9 +768,6 @@ export default function OrdersPage() {
                     <MessageCircle className="mr-2 h-4 w-4" />
                     WhatsApp Support
                   </Button>
-                  <p className="text-xs font-medium text-slate-400">
-                    Call or WhatsApp support anytime at {SUPPORT_PHONE_DISPLAY}.
-                  </p>
                 </div>
               </CardContent>
             </Card>
@@ -854,13 +867,19 @@ export default function OrdersPage() {
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                         <div className="flex items-center gap-4">
                           <div className="h-16 w-16 overflow-hidden rounded-xl bg-slate-100 flex-shrink-0 ring-1 ring-slate-200/50">
-                            <Image
-                              src={restaurant.image}
-                              alt={restaurant.name}
-                              width={64}
-                              height={64}
-                              className="h-full w-full object-cover"
-                            />
+                            {restaurant.image ? (
+                              <Image
+                                src={restaurant.image}
+                                alt={restaurant.name}
+                                width={64}
+                                height={64}
+                                className="h-full w-full object-cover"
+                              />
+                            ) : (
+                              <div className="flex h-full w-full items-center justify-center bg-orange-50 text-orange-500">
+                                <ImageIcon className="h-5 w-5" />
+                              </div>
+                            )}
                           </div>
                           <div>
                             <h3 className="font-bold text-slate-900 dark:text-white">{restaurant.name}</h3>

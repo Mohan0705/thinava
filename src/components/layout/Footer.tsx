@@ -4,119 +4,114 @@ import { SUPPORT_EMAIL, SUPPORT_PHONE_DISPLAY, SUPPORT_TEL, SUPPORT_WHATSAPP_LIN
 
 export default function Footer() {
   return (
-    <footer className="bg-gray-900 text-white mt-20">
-      <div className="container mx-auto px-4 py-16">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-12">
-          {/* Brand */}
+    <footer className="mt-12 border-t border-thinava-border bg-thinava-text text-white">
+      <div className="container mx-auto px-4 py-12">
+        <div className="grid grid-cols-1 gap-10 md:grid-cols-4">
           <div>
-            <div className="flex items-center gap-2 mb-4">
-              <div className="w-10 h-10 bg-gradient-to-br from-orange-500 to-red-500 rounded-xl flex items-center justify-center">
-                <span className="text-white font-bold text-xl">T</span>
+            <div className="mb-4 flex items-center gap-2.5">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-thinava-primary">
+                <span className="text-base font-bold text-white">T</span>
               </div>
-              <span className="text-2xl font-bold">Thinava</span>
+              <span className="text-xl font-bold">Thinava</span>
             </div>
-            <p className="text-gray-400 text-sm">
-              Your favorite food delivery partner in Tadepalligudem. Fast, fresh, and delicious food delivered to your doorstep.
+            <p className="text-sm leading-relaxed text-gray-400">
+              Your local food delivery partner in Tadepalligudem. Fresh meals from trusted restaurants, delivered with care.
             </p>
           </div>
 
-          {/* Quick Links */}
           <div>
-            <h3 className="text-lg font-semibold mb-4">Quick Links</h3>
-            <ul className="space-y-3">
+            <h3 className="mb-4 text-sm font-semibold uppercase tracking-wider text-gray-300">Explore</h3>
+            <ul className="space-y-2.5 text-sm">
               <li>
-                <Link href="/restaurants" className="text-gray-400 hover:text-white transition-colors">
+                <Link href="/restaurants" className="text-gray-400 transition-colors hover:text-white">
                   Restaurants
                 </Link>
               </li>
               <li>
-                <Link href="/about" className="text-gray-400 hover:text-white transition-colors">
+                <Link href="/about" className="text-gray-400 transition-colors hover:text-white">
                   About Us
                 </Link>
               </li>
               <li>
-                <Link href="/careers" className="text-gray-400 hover:text-white transition-colors">
+                <Link href="/careers" className="text-gray-400 transition-colors hover:text-white">
                   Careers
                 </Link>
               </li>
               <li>
-                <Link href="/partner" className="text-gray-400 hover:text-white transition-colors">
+                <Link href="/partner" className="text-gray-400 transition-colors hover:text-white">
                   Partner with us
                 </Link>
               </li>
             </ul>
           </div>
 
-          {/* Support */}
           <div>
-            <h3 className="text-lg font-semibold mb-4">Support</h3>
-            <ul className="space-y-3">
+            <h3 className="mb-4 text-sm font-semibold uppercase tracking-wider text-gray-300">Support</h3>
+            <ul className="space-y-2.5 text-sm">
               <li>
-                <Link href="/help" className="text-gray-400 hover:text-white transition-colors">
+                <Link href="/help" className="text-gray-400 transition-colors hover:text-white">
                   Help Center
                 </Link>
               </li>
               <li>
-                <Link href="/faq" className="text-gray-400 hover:text-white transition-colors">
+                <Link href="/faq" className="text-gray-400 transition-colors hover:text-white">
                   FAQ
                 </Link>
               </li>
               <li>
-                <Link href="/terms" className="text-gray-400 hover:text-white transition-colors">
+                <Link href="/terms" className="text-gray-400 transition-colors hover:text-white">
                   Terms of Service
                 </Link>
               </li>
               <li>
-                <Link href="/privacy" className="text-gray-400 hover:text-white transition-colors">
+                <Link href="/privacy" className="text-gray-400 transition-colors hover:text-white">
                   Privacy Policy
                 </Link>
               </li>
             </ul>
           </div>
 
-          {/* Contact */}
           <div>
-            <h3 className="text-lg font-semibold mb-4">Contact Us</h3>
-            <ul className="space-y-3">
-              <li className="flex items-center gap-3 text-gray-400">
-                <Phone className="w-5 h-5" />
+            <h3 className="mb-4 text-sm font-semibold uppercase tracking-wider text-gray-300">Contact</h3>
+            <ul className="space-y-3 text-sm text-gray-400">
+              <li className="flex items-center gap-2.5">
+                <Phone className="h-4 w-4 shrink-0 text-thinava-primary" />
                 <a href={SUPPORT_TEL} className="hover:text-white transition-colors">
                   {SUPPORT_PHONE_DISPLAY}
                 </a>
               </li>
-              <li className="flex items-center gap-3 text-gray-400">
-                <MessageCircle className="w-5 h-5 text-green-400" />
+              <li className="flex items-center gap-2.5">
+                <MessageCircle className="h-4 w-4 shrink-0 text-thinava-success" />
                 <a href={SUPPORT_WHATSAPP_LINK} target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">
                   WhatsApp
                 </a>
               </li>
-              <li className="flex items-center gap-3 text-gray-400">
-                <Mail className="w-5 h-5" />
+              <li className="flex items-center gap-2.5">
+                <Mail className="h-4 w-4 shrink-0 text-thinava-primary" />
                 <span>{SUPPORT_EMAIL}</span>
               </li>
-              <li className="flex items-start gap-3 text-gray-400">
-                <MapPin className="w-5 h-5 mt-1" />
+              <li className="flex items-start gap-2.5">
+                <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-thinava-primary" />
                 <span>Tadepalligudem, Andhra Pradesh, India</span>
               </li>
             </ul>
-            
-            {/* Social Links */}
-            <div className="flex gap-4 mt-6">
-              <Link href="#" className="p-2 bg-gray-800 rounded-full hover:bg-gray-700 transition-colors">
-                <Facebook className="w-5 h-5" />
-              </Link>
-              <Link href="#" className="p-2 bg-gray-800 rounded-full hover:bg-gray-700 transition-colors">
-                <Twitter className="w-5 h-5" />
-              </Link>
-              <Link href="#" className="p-2 bg-gray-800 rounded-full hover:bg-gray-700 transition-colors">
-                <Instagram className="w-5 h-5" />
-              </Link>
+
+            <div className="mt-6 flex gap-3">
+              {[Facebook, Twitter, Instagram].map((Icon, i) => (
+                <Link
+                  key={i}
+                  href="#"
+                  className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-gray-300 transition-colors hover:bg-white/20 hover:text-white"
+                >
+                  <Icon className="h-4 w-4" />
+                </Link>
+              ))}
             </div>
           </div>
         </div>
 
-        <div className="border-t border-gray-800 mt-12 pt-8 text-center text-gray-400 text-sm">
-          <p>&copy; 2024 Thinava. All rights reserved.</p>
+        <div className="mt-10 border-t border-white/10 pt-6 text-center text-xs text-gray-500">
+          <p>&copy; {new Date().getFullYear()} Thinava. All rights reserved.</p>
         </div>
       </div>
     </footer>

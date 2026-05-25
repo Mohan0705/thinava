@@ -16,8 +16,12 @@ CREATE TABLE IF NOT EXISTS addresses (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   label VARCHAR(100) NOT NULL,
+  address_type VARCHAR(40),
   full_address TEXT NOT NULL,
   landmark VARCHAR(255),
+  receiver_name VARCHAR(255),
+  receiver_phone VARCHAR(40),
+  use_account_details BOOLEAN DEFAULT TRUE,
   is_default BOOLEAN DEFAULT FALSE,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -96,9 +100,12 @@ CREATE INDEX IF NOT EXISTS idx_order_items_order_id ON order_items(order_id);
 -- Restaurant panel: owner accounts
 CREATE TABLE IF NOT EXISTS restaurant_users (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  supabase_user_id UUID UNIQUE,
   restaurant_id UUID NOT NULL REFERENCES restaurants(id) ON DELETE CASCADE,
   email VARCHAR(255) UNIQUE NOT NULL,
   password_hash TEXT NOT NULL,
+  reset_token TEXT,
+  reset_token_expiry TIMESTAMP,
   full_name VARCHAR(255) NOT NULL,
   role VARCHAR(50) NOT NULL DEFAULT 'restaurant_owner',
   is_active BOOLEAN DEFAULT TRUE,
@@ -135,6 +142,39 @@ ADD COLUMN IF NOT EXISTS in_stock BOOLEAN DEFAULT TRUE,
 ADD COLUMN IF NOT EXISTS category_id UUID REFERENCES restaurant_categories(id) ON DELETE SET NULL;
 
 CREATE INDEX IF NOT EXISTS idx_restaurant_users_restaurant_id ON restaurant_users(restaurant_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_restaurant_users_supabase_user_id
+ON restaurant_users(supabase_user_id)
+WHERE supabase_user_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_restaurant_users_reset_token
+ON restaurant_users(reset_token)
+WHERE reset_token IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_restaurant_categories_restaurant_id ON restaurant_categories(restaurant_id);
 CREATE INDEX IF NOT EXISTS idx_menu_items_category_id ON menu_items(category_id);
 CREATE INDEX IF NOT EXISTS idx_orders_restaurant_id ON orders(restaurant_id);
+
+-- Marketing banners
+CREATE TABLE IF NOT EXISTS marketing_banners (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  title VARCHAR(160) NOT NULL,
+  subtitle TEXT,
+  image_url TEXT NOT NULL,
+  cloudinary_public_id TEXT,
+  redirect_type VARCHAR(40) NOT NULL DEFAULT 'restaurants',
+  redirect_target TEXT,
+  is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  priority INTEGER NOT NULL DEFAULT 0,
+  starts_at TIMESTAMP,
+  ends_at TIMESTAMP,
+  created_by UUID REFERENCES admin_users(id) ON DELETE SET NULL,
+  updated_by UUID REFERENCES admin_users(id) ON DELETE SET NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT marketing_banners_redirect_type_check CHECK (
+    redirect_type IN ('restaurants', 'restaurant', 'category', 'offers', 'custom')
+  )
+);
+
+CREATE INDEX IF NOT EXISTS idx_marketing_banners_active_priority
+  ON marketing_banners (is_active, priority DESC, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_marketing_banners_schedule
+  ON marketing_banners (starts_at, ends_at);

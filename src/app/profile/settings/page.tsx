@@ -5,6 +5,7 @@ import { Mail, Phone, ShieldCheck, User } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
+import { ImageUploadField } from '@/components/restaurant-panel/ImageUploadField'
 import { customerAuthApi } from '@/features/auth/api'
 import { useAuthStore } from '@/store/authStore'
 import { toast } from 'sonner'
@@ -55,7 +56,7 @@ export default function ProfileSettingsPage() {
       const updatedUser = await customerAuthApi.updateProfile(token, {
         full_name: fullName.trim(),
         email: email?.trim() || null,
-        profile_image: profileImage?.trim() || null,
+        profile_image: profileImage || null,
       })
       
       setUser(updatedUser)
@@ -80,12 +81,12 @@ export default function ProfileSettingsPage() {
           {accountHighlights.map((item) => {
             const Icon = item.icon
             return (
-              <div key={item.label} className="rounded-2xl border bg-gray-50 p-4">
-                <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-orange-100">
-                  <Icon className="h-5 w-5 text-orange-600" />
+              <div key={item.label} className="rounded-xl border border-thinava-border bg-thinava-bg p-4">
+                <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-orange-50">
+                  <Icon className="h-5 w-5 text-thinava-primary" />
                 </div>
-                <p className="text-sm text-gray-500">{item.label}</p>
-                <p className="mt-1 font-semibold text-gray-900">{item.value}</p>
+                <p className="text-xs text-gray-500">{item.label}</p>
+                <p className="mt-1 text-sm font-semibold text-thinava-text">{item.value}</p>
               </div>
             )
           })}
@@ -97,7 +98,7 @@ export default function ProfileSettingsPage() {
           <CardTitle>Account Protection</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="rounded-2xl border border-green-200 bg-green-50 p-4 text-green-900">
+          <div className="rounded-xl border border-green-200 bg-green-50 p-4 text-green-900">
             <div className="flex items-start gap-3">
               <ShieldCheck className="mt-0.5 h-5 w-5 flex-shrink-0" />
               <div>
@@ -120,9 +121,17 @@ export default function ProfileSettingsPage() {
           </p>
         </CardHeader>
         <CardContent className="space-y-4">
+          <ImageUploadField
+            label="Profile image"
+            value={profileImage}
+            onChange={setProfileImage}
+            placeholder="https://res.cloudinary.com/.../thinava/profiles/avatar.jpg"
+            folder="profiles"
+            scope="customer"
+            token={token}
+          />
           <Input value={fullName} onChange={(event) => setFullName(event.target.value)} placeholder="Full name" />
           <Input value={email} onChange={(event) => setEmail(event.target.value)} placeholder="Email address" type="email" />
-          <Input value={profileImage} onChange={(event) => setProfileImage(event.target.value)} placeholder="Profile image URL" />
           <Button onClick={handleSave} disabled={saving}>
             {saving ? 'Saving...' : 'Save Changes'}
           </Button>
