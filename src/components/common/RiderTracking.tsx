@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { MapPin, Phone, User, Truck, Clock, Navigation } from 'lucide-react'
+import { getOptimizedCloudinaryImageUrl } from '@/lib/cloudinary-image'
 
 interface RiderLocation {
   latitude: number
@@ -42,6 +43,11 @@ export function RiderTrackingCard({
   const [riderLocation, setRiderLocation] = useState<RiderLocation | null>(null)
   const [distance, setDistance] = useState<number | null>(null)
   const [eta, setEta] = useState<string>('')
+  const riderImageUrl = getOptimizedCloudinaryImageUrl(riderImage || '', {
+    width: 160,
+    height: 160,
+    crop: 'fill',
+  })
 
   useEffect(() => {
     // Calculate distance between rider and delivery location
@@ -104,8 +110,8 @@ export function RiderTrackingCard({
         {/* Rider Info */}
         <div className="flex items-center gap-4 pb-4 border-b border-gray-200">
           <div className="w-14 h-14 rounded-full bg-gray-200 overflow-hidden flex-shrink-0">
-            {riderImage ? (
-              <img src={riderImage} alt={riderName} className="w-full h-full object-cover" />
+            {riderImageUrl ? (
+              <img src={riderImageUrl} alt={riderName} className="w-full h-full object-cover" loading="lazy" />
             ) : (
               <div className="w-full h-full flex items-center justify-center bg-orange-100">
                 <User className="w-6 h-6 text-orange-600" />

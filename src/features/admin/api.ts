@@ -1,4 +1,5 @@
-import { apiRequest } from '@/lib/api'
+import { ApiError, apiRequest } from '@/lib/api'
+import { uploadImageToCloudinary, type CloudinaryUploadResponse } from '@/lib/image-upload'
 import type {
   AdminOrder,
   AdminSession,
@@ -7,6 +8,7 @@ import type {
   CustomerAdminRecord,
   DeliveryPartnerAdminRecord,
   LiveMapPayload,
+  MarketingBanner,
   PlatformSetting,
   PayoutTransaction,
   RestaurantAdminRecord,
@@ -125,6 +127,12 @@ export interface PromotionsResponse {
   coupons: CouponCode[]
   featured_restaurants: RestaurantAdminRecord[]
 }
+
+export interface BannersResponse {
+  banners: MarketingBanner[]
+}
+
+export type BannerImageUploadResponse = CloudinaryUploadResponse
 
 export interface SettingsResponse {
   settings: PlatformSetting[]
@@ -265,6 +273,69 @@ export const adminApi = {
       method: 'POST',
       token,
       body: JSON.stringify(payload),
+    })
+  },
+
+  getBanners(token: string) {
+    return apiRequest<{ success: boolean } & BannersResponse>('/admin/banners', { token })
+  },
+
+  async uploadBannerImage(token: string, file: File, onProgress?: (progress: number) => void) {
+    try {
+      return await uploadImageToCloudinary({
+        file,
+        token,
+        folder: 'banners',
+        scope: 'admin',
+        onProgress,
+      })
+    } catch (error) {
+      throw new ApiError(error instanceof Error ? error.message : 'Banner upload failed', 0)
+    }
+  },
+
+  getBannerUploadSignature(token: string, payload: {
+    fileType: string
+    fileSize: number
+    width?: number
+    height?: number
+  }) {
+    return apiRequest<{
+      success: boolean
+      upload: {
+        cloudName: string
+        apiKey: string
+        folder: string
+        timestamp: number
+        signature: string
+      }
+    }>('/admin/banners/upload-signature', {
+      method: 'POST',
+      token,
+      body: JSON.stringify(payload),
+    })
+  },
+
+  createBanner(token: string, payload: Record<string, unknown>) {
+    return apiRequest<{ success: boolean; banner: MarketingBanner }>('/admin/banners', {
+      method: 'POST',
+      token,
+      body: JSON.stringify(payload),
+    })
+  },
+
+  updateBanner(token: string, bannerId: string, payload: Record<string, unknown>) {
+    return apiRequest<{ success: boolean; banner: MarketingBanner }>(`/admin/banners/${bannerId}`, {
+      method: 'PATCH',
+      token,
+      body: JSON.stringify(payload),
+    })
+  },
+
+  deleteBanner(token: string, bannerId: string) {
+    return apiRequest<{ success: boolean; banner: MarketingBanner }>(`/admin/banners/${bannerId}`, {
+      method: 'DELETE',
+      token,
     })
   },
 

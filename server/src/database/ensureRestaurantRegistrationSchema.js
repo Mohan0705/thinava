@@ -17,10 +17,19 @@ CREATE INDEX IF NOT EXISTS idx_restaurants_phone ON restaurants(phone);
 
 -- 2. Fix restaurant_users table - add phone column for contact
 ALTER TABLE restaurant_users
-ADD COLUMN IF NOT EXISTS phone VARCHAR(20);
+ADD COLUMN IF NOT EXISTS phone VARCHAR(20),
+ADD COLUMN IF NOT EXISTS supabase_user_id UUID UNIQUE,
+ADD COLUMN IF NOT EXISTS reset_token TEXT,
+ADD COLUMN IF NOT EXISTS reset_token_expiry TIMESTAMP;
 
 -- Create index for phone
 CREATE INDEX IF NOT EXISTS idx_restaurant_users_phone ON restaurant_users(phone);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_restaurant_users_supabase_user_id
+ON restaurant_users(supabase_user_id)
+WHERE supabase_user_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_restaurant_users_reset_token
+ON restaurant_users(reset_token)
+WHERE reset_token IS NOT NULL;
 
 -- 3. Fix restaurant_details table - add address components and improve tracking
 ALTER TABLE restaurant_details

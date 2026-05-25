@@ -3,6 +3,7 @@ const router = express.Router()
 const pool = require('../database/connection')
 const { asyncHandler } = require('../utils/asyncHandler')
 const { authenticateAdmin } = require('../modules/admin/middleware/auth')
+const { assertCloudinaryImageUrl, deleteReplacedImages } = require('../lib/cloudinaryService')
 
 // Get all restaurants
 router.get('/', asyncHandler(async (req, res) => {
@@ -70,6 +71,9 @@ router.post('/', authenticateAdmin, asyncHandler(async (req, res) => {
     name, image, logo, rating, delivery_time, price_for_one,
     cuisines, offer, featured, formatted_address, latitude, longitude
   } = req.body
+
+  assertCloudinaryImageUrl(image, 'Restaurant image')
+  assertCloudinaryImageUrl(logo, 'Restaurant logo')
   
   const result = await pool.query(
     `INSERT INTO restaurants (name, image, logo, rating, delivery_time, price_for_one, cuisines, offer, featured, formatted_address, latitude, longitude)
@@ -86,6 +90,11 @@ router.put('/:id', authenticateAdmin, asyncHandler(async (req, res) => {
     name, image, logo, rating, delivery_time, price_for_one,
     cuisines, offer, featured, is_open, formatted_address, latitude, longitude
   } = req.body
+
+  assertCloudinaryImageUrl(image, 'Restaurant image')
+  assertCloudinaryImageUrl(logo, 'Restaurant logo')
+  const oldResult = await pool.query('SELECT image, logo, banner_image FROM restaurants WHERE id = $1', [req.params.id])
+  const oldRow = oldResult.rows[0] || {}
   
   const result = await pool.query(
     `UPDATE restaurants 
@@ -101,12 +110,26 @@ router.put('/:id', authenticateAdmin, asyncHandler(async (req, res) => {
     throw error
   }
   
+  await deleteReplacedImages([
+    { previousUrl: oldRow.image, nextUrl: result.rows[0].image },
+    { previousUrl: oldRow.logo, nextUrl: result.rows[0].logo },
+    { previousUrl: oldRow.banner_image, nextUrl: result.rows[0].banner_image },
+  ])
+
   res.json({ success: true, restaurant: result.rows[0] })
 }))
 
 // Delete restaurant (admin only)
 router.delete('/:id', authenticateAdmin, asyncHandler(async (req, res) => {
-  await pool.query('DELETE FROM restaurants WHERE id = $1', [req.params.id])
+  const result = await pool.query(
+    'DELETE FROM restaurants WHERE id = $1 RETURNING image, logo, banner_image',
+    [req.params.id]
+  )
+  await deleteReplacedImages([
+    { previousUrl: result.rows[0]?.image, nextUrl: null },
+    { previousUrl: result.rows[0]?.logo, nextUrl: null },
+    { previousUrl: result.rows[0]?.banner_image, nextUrl: null },
+  ])
   res.json({ success: true, message: 'Restaurant deleted successfully' })
 }))
 

@@ -101,9 +101,12 @@ const ensureRestaurantPanelSchema = async () => {
     await client.query(`
       CREATE TABLE IF NOT EXISTS restaurant_users (
         id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+        supabase_user_id UUID UNIQUE,
         restaurant_id UUID NOT NULL REFERENCES restaurants(id) ON DELETE CASCADE,
         email VARCHAR(255) UNIQUE NOT NULL,
         password_hash TEXT NOT NULL,
+        reset_token TEXT,
+        reset_token_expiry TIMESTAMP,
         full_name VARCHAR(255) NOT NULL,
         role VARCHAR(50) NOT NULL DEFAULT 'restaurant_owner',
         is_active BOOLEAN DEFAULT TRUE,
@@ -161,6 +164,9 @@ const ensureRestaurantPanelSchema = async () => {
 
     await client.query(`
       ALTER TABLE restaurant_users
+      ADD COLUMN IF NOT EXISTS supabase_user_id UUID UNIQUE,
+      ADD COLUMN IF NOT EXISTS reset_token TEXT,
+      ADD COLUMN IF NOT EXISTS reset_token_expiry TIMESTAMP,
       ADD COLUMN IF NOT EXISTS role VARCHAR(50) NOT NULL DEFAULT 'restaurant_owner',
       ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE,
       ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMP,
@@ -260,6 +266,12 @@ const ensureRestaurantPanelSchema = async () => {
       CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
       CREATE INDEX IF NOT EXISTS idx_order_items_order_id ON order_items(order_id);
       CREATE INDEX IF NOT EXISTS idx_restaurant_users_restaurant_id ON restaurant_users(restaurant_id);
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_restaurant_users_supabase_user_id
+      ON restaurant_users(supabase_user_id)
+      WHERE supabase_user_id IS NOT NULL;
+      CREATE INDEX IF NOT EXISTS idx_restaurant_users_reset_token
+      ON restaurant_users(reset_token)
+      WHERE reset_token IS NOT NULL;
       CREATE UNIQUE INDEX IF NOT EXISTS idx_restaurant_users_restaurant_unique
       ON restaurant_users(restaurant_id);
       CREATE INDEX IF NOT EXISTS idx_restaurant_categories_restaurant_id ON restaurant_categories(restaurant_id);

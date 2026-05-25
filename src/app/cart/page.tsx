@@ -3,7 +3,7 @@
 import { motion } from 'framer-motion'
 import Link from 'next/link'
 import Image from 'next/image'
-import { Plus, Minus, Trash2, ShoppingBag, ArrowRight } from 'lucide-react'
+import { Plus, Minus, Trash2, ShoppingBag, ArrowRight, ImageIcon } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Card, CardContent } from '@/components/ui/Card'
 import { useCartStore } from '@/store/cartStore'
@@ -12,6 +12,7 @@ import Header from '@/components/layout/Header'
 import Footer from '@/components/layout/Footer'
 import MobileNav from '@/components/layout/MobileNav'
 import { cn } from '@/lib/utils'
+import { getOptimizedCloudinaryImageUrl } from '@/lib/cloudinary-image'
 
 function QuantityControl({
   quantity,
@@ -89,6 +90,13 @@ export default function CartPage() {
         <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
           <div className="space-y-3 lg:col-span-2">
             {items.map((item, index) => (
+              (() => {
+                const imageUrl = getOptimizedCloudinaryImageUrl(item.menuItem.image, {
+                  width: 180,
+                  height: 180,
+                  crop: 'fill',
+                })
+                return (
               <motion.div
                 key={item.menuItem.id}
                 initial={{ opacity: 0, y: 8 }}
@@ -98,13 +106,19 @@ export default function CartPage() {
                 <Card>
                   <CardContent className="flex gap-4 p-4">
                     <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-xl">
-                      <Image
-                        src={item.menuItem.image}
-                        alt={item.menuItem.name}
-                        fill
-                        sizes="80px"
-                        className="object-cover"
-                      />
+                      {imageUrl ? (
+                        <Image
+                          src={imageUrl}
+                          alt={item.menuItem.name}
+                          fill
+                          sizes="80px"
+                          className="object-cover"
+                        />
+                      ) : (
+                        <div className="flex h-full w-full items-center justify-center bg-orange-50 text-orange-500">
+                          <ImageIcon className="h-5 w-5" />
+                        </div>
+                      )}
                     </div>
                     <div className="min-w-0 flex-1">
                       <h3 className="font-semibold text-thinava-text line-clamp-1">{item.menuItem.name}</h3>
@@ -131,6 +145,8 @@ export default function CartPage() {
                   </CardContent>
                 </Card>
               </motion.div>
+                )
+              })()
             ))}
           </div>
 

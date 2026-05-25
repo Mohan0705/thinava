@@ -175,21 +175,24 @@ function SettingsContent() {
                   label="Restaurant card image"
                   value={settings.image}
                   onChange={(value) => updateSettings('image', value)}
-                  placeholder="https://example.com/restaurant-cover.jpg"
+                  folder="restaurants"
+                  placeholder="https://res.cloudinary.com/.../thinava/restaurants/cover.jpg"
                 />
 
                 <ImageUploadField
                   label="Logo"
                   value={settings.logo}
                   onChange={(value) => updateSettings('logo', value)}
-                  placeholder="https://example.com/logo.png"
+                  folder="restaurants"
+                  placeholder="https://res.cloudinary.com/.../thinava/restaurants/logo.png"
                 />
 
                 <ImageUploadField
                   label="Banner image"
                   value={settings.banner_image || ''}
                   onChange={(value) => updateSettings('banner_image', value)}
-                  placeholder="https://example.com/banner.jpg"
+                  folder="restaurants"
+                  placeholder="https://res.cloudinary.com/.../thinava/restaurants/banner.jpg"
                 />
 
                 <div className="space-y-2">

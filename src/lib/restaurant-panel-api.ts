@@ -72,6 +72,34 @@ export const restaurantPanelApi = {
     })
   },
 
+  // Password Reset Endpoints
+  requestPasswordReset(email: string) {
+    return apiRequest<{ success: boolean; message: string }>(
+      '/restaurant/auth/password-reset/request',
+      {
+        method: 'POST',
+        body: JSON.stringify({ email: email.trim().toLowerCase() }),
+      }
+    )
+  },
+
+  verifyResetToken(token: string) {
+    return apiRequest<{ success: boolean; message: string; email: string; fullName: string }>(
+      `/restaurant/auth/password-reset/verify?token=${encodeURIComponent(token)}`,
+      { method: 'GET' }
+    )
+  },
+
+  confirmPasswordReset(token: string, newPassword: string, confirmPassword: string) {
+    return apiRequest<{ success: boolean; message: string; email: string }>(
+      '/restaurant/auth/password-reset/confirm',
+      {
+        method: 'POST',
+        body: JSON.stringify({ token, newPassword, confirmPassword }),
+      }
+    )
+  },
+
   getSummary(token: string) {
     return apiRequest<{ success: boolean; summary: RestaurantDashboardSummary }>(
       '/restaurant/orders/summary',

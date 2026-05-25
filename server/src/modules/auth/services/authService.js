@@ -1,4 +1,5 @@
 const pool = require('../../../database/connection')
+const { assertCloudinaryImageUrl, deleteReplacedImages } = require('../../../lib/cloudinaryService')
 const { signCustomerToken, verifyCustomerTokenIgnoreExp } = require('../../../lib/auth/tokenService')
 const { sendOtp } = require('../../../lib/smsService')
 const {
@@ -355,6 +356,9 @@ const updateCustomerProfile = async (userId, payload) => {
   const email = payload.email ? String(payload.email).trim() : null
   const hasProfileImage = Object.prototype.hasOwnProperty.call(payload, 'profile_image')
   const profileImage = hasProfileImage && payload.profile_image ? String(payload.profile_image).trim() : null
+  assertCloudinaryImageUrl(profileImage, 'Profile image')
+  const oldResult = await pool.query('SELECT profile_image FROM users WHERE id = $1', [userId])
+  const oldProfileImage = oldResult.rows[0]?.profile_image
 
   const result = await pool.query(
     `UPDATE users
@@ -375,6 +379,7 @@ const updateCustomerProfile = async (userId, payload) => {
   }
 
   const addresses = await getUserAddresses(userId)
+  await deleteReplacedImages([{ previousUrl: oldProfileImage, nextUrl: result.rows[0].profile_image }])
   return mapUser(result.rows[0], addresses)
 }
 

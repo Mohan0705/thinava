@@ -1,5 +1,6 @@
 const pool = require('../../../database/connection')
 const { getCategoryById } = require('./categoryService')
+const { assertCloudinaryImageUrl, deleteReplacedImages } = require('../../../lib/cloudinaryService')
 
 const mapMenuItem = async (row) => {
   const variantsResult = await pool.query(
@@ -91,6 +92,7 @@ const listMenuItems = async (restaurantId) => {
 const createMenuItem = async (restaurantId, payload) => {
   const category = payload.category_id ? await resolveCategory(restaurantId, payload.category_id) : null
   const normalizedPayload = normalizeMenuPayload(payload, category)
+  assertCloudinaryImageUrl(normalizedPayload.image, 'Menu item image')
 
   const result = await pool.query(
     `INSERT INTO menu_items (
@@ -125,6 +127,12 @@ const createMenuItem = async (restaurantId, payload) => {
 const updateMenuItem = async (restaurantId, menuItemId, payload) => {
   const category = payload.category_id ? await resolveCategory(restaurantId, payload.category_id) : undefined
   const normalizedPayload = normalizeMenuPayload(payload, category)
+  assertCloudinaryImageUrl(normalizedPayload.image, 'Menu item image')
+  const oldResult = await pool.query(
+    'SELECT image FROM menu_items WHERE id = $1 AND restaurant_id = $2',
+    [menuItemId, restaurantId]
+  )
+  const oldImage = oldResult.rows[0]?.image
 
   const result = await pool.query(
     `UPDATE menu_items SET
@@ -176,6 +184,7 @@ const updateMenuItem = async (restaurantId, menuItemId, payload) => {
   }
 
   const categoryName = category ? category.name : result.rows[0].category_name
+  await deleteReplacedImages([{ previousUrl: oldImage, nextUrl: result.rows[0].image }])
   return mapMenuItem({ ...result.rows[0], category_name: categoryName })
 }
 
@@ -197,7 +206,7 @@ const updateMenuItemStock = async (restaurantId, menuItemId, inStock) => {
 
 const deleteMenuItem = async (restaurantId, menuItemId) => {
   const result = await pool.query(
-    'DELETE FROM menu_items WHERE id = $1 AND restaurant_id = $2 RETURNING id',
+    'DELETE FROM menu_items WHERE id = $1 AND restaurant_id = $2 RETURNING id, image',
     [menuItemId, restaurantId]
   )
 
@@ -206,6 +215,8 @@ const deleteMenuItem = async (restaurantId, menuItemId) => {
     error.status = 404
     throw error
   }
+
+  await deleteReplacedImages([{ previousUrl: result.rows[0].image, nextUrl: null }])
 }
 
 // Variant management

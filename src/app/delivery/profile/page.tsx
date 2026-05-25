@@ -3,11 +3,14 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import Image from 'next/image'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/Button'
 import { Card, CardContent } from '@/components/ui/Card'
+import { ImageUploadField } from '@/components/restaurant-panel/ImageUploadField'
 import { useDeliveryAuthStore } from '@/store/deliveryAuthStore'
 import { deliveryApi } from '@/lib/delivery-api'
+import { getOptimizedCloudinaryImageUrl } from '@/lib/cloudinary-image'
 import { DeliveryPartner } from '@/types/delivery'
 import {
   ArrowLeft,
@@ -20,18 +23,19 @@ import {
   Mail,
   Award,
   Loader,
-  Edit2,
 } from 'lucide-react'
 import { motion } from 'framer-motion'
 
 export default function DeliveryProfilePage() {
   const router = useRouter()
   const token = useDeliveryAuthStore((state) => state.token)
-  const partner = useDeliveryAuthStore((state) => state.partner)
+  const setPartner = useDeliveryAuthStore((state) => state.setPartner)
   const logout = useDeliveryAuthStore((state) => state.logout)
 
   const [loading, setLoading] = useState(true)
   const [profile, setProfile] = useState<DeliveryPartner | null>(null)
+  const [profileImage, setProfileImage] = useState('')
+  const [savingImage, setSavingImage] = useState(false)
 
   useEffect(() => {
     if (!token) {
@@ -46,11 +50,34 @@ export default function DeliveryProfilePage() {
     try {
       const result = await deliveryApi.getProfile(token!)
       setProfile(result.profile)
+      setProfileImage(result.profile.profile_image || '')
     } catch (error) {
       toast.error('Failed to load profile')
       router.push('/delivery/dashboard')
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleSaveProfileImage = async () => {
+    if (!token) {
+      toast.error('Please sign in before updating your profile image.')
+      return
+    }
+
+    setSavingImage(true)
+    try {
+      const result = await deliveryApi.updateProfile(token, {
+        profile_image: profileImage || null,
+      })
+      setProfile(result.profile)
+      setProfileImage(result.profile.profile_image || '')
+      setPartner(result.profile)
+      toast.success('Profile image saved')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Unable to save profile image')
+    } finally {
+      setSavingImage(false)
     }
   }
 
@@ -100,6 +127,10 @@ export default function DeliveryProfilePage() {
     },
   ]
 
+  const profileImageUrl = profile.profile_image
+    ? getOptimizedCloudinaryImageUrl(profile.profile_image, { width: 160, height: 160, crop: 'fill' })
+    : ''
+
   return (
     <div className="min-h-screen bg-gray-50 pb-20">
       {/* Header */}
@@ -125,8 +156,17 @@ export default function DeliveryProfilePage() {
         >
           <Card className="border-0 bg-gradient-to-br from-orange-500 to-orange-600 shadow-lg">
             <CardContent className="p-8 text-white">
-              <div className="flex items-start justify-between">
-                <div className="flex-1">
+              <div className="flex items-start gap-4">
+                <div className="relative h-20 w-20 flex-shrink-0 overflow-hidden rounded-full bg-white/20 ring-2 ring-white/40">
+                  {profileImageUrl ? (
+                    <Image src={profileImageUrl} alt={profile.full_name} fill sizes="80px" className="object-cover" />
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center">
+                      <User className="h-10 w-10 text-white/80" />
+                    </div>
+                  )}
+                </div>
+                <div className="min-w-0 flex-1">
                   <h2 className="text-3xl font-bold">{profile.full_name}</h2>
                   <div className="mt-3 flex items-center gap-4">
                     {profile.is_online && (
@@ -212,6 +252,25 @@ export default function DeliveryProfilePage() {
               </div>
 
               <div className="space-y-2">
+                <div className="mb-4">
+                  <ImageUploadField
+                    label="Profile image"
+                    value={profileImage}
+                    onChange={setProfileImage}
+                    placeholder="https://res.cloudinary.com/.../thinava/profiles/rider.jpg"
+                    folder="profiles"
+                    scope="delivery"
+                    token={token}
+                  />
+                  <Button
+                    type="button"
+                    onClick={handleSaveProfileImage}
+                    disabled={savingImage || profileImage === (profile.profile_image || '')}
+                    className="mt-3"
+                  >
+                    {savingImage ? 'Saving...' : 'Save Image'}
+                  </Button>
+                </div>
                 <div className="flex items-center justify-between rounded-lg bg-gray-50 p-3">
                   <span className="text-sm text-gray-600">Driving License</span>
                   {profile.driving_license ? (

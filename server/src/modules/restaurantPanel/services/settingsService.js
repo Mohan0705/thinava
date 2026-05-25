@@ -1,5 +1,6 @@
 const pool = require('../../../database/connection')
 const { RESTAURANT_STATUSES } = require('../constants')
+const { assertCloudinaryImageUrl, deleteReplacedImages } = require('../../../lib/cloudinaryService')
 
 const mapRestaurantSettings = (row) => ({
   id: row.id,
@@ -41,9 +42,16 @@ const updateRestaurantSettings = async (restaurantId, payload, ownerUserId = nul
   const status = payload.status || RESTAURANT_STATUSES.OPEN
   const isOpen = status === RESTAURANT_STATUSES.OPEN
 
-  // Fetch old status
-  const oldResult = await pool.query('SELECT status FROM restaurants WHERE id = $1', [restaurantId])
-  const oldStatus = oldResult.rows[0]?.status
+  assertCloudinaryImageUrl(payload.image, 'Restaurant card image')
+  assertCloudinaryImageUrl(payload.logo, 'Restaurant logo')
+  assertCloudinaryImageUrl(payload.banner_image, 'Restaurant banner image')
+
+  const oldResult = await pool.query(
+    'SELECT status, image, logo, banner_image FROM restaurants WHERE id = $1',
+    [restaurantId]
+  )
+  const oldRow = oldResult.rows[0] || {}
+  const oldStatus = oldRow.status
 
   const result = await pool.query(
     `UPDATE restaurants
@@ -101,6 +109,12 @@ const updateRestaurantSettings = async (restaurantId, payload, ownerUserId = nul
       [restaurantId, status, ownerUserId, payload.status_change_reason || 'Dashboard settings update']
     )
   }
+
+  await deleteReplacedImages([
+    { previousUrl: oldRow.image, nextUrl: result.rows[0].image },
+    { previousUrl: oldRow.logo, nextUrl: result.rows[0].logo },
+    { previousUrl: oldRow.banner_image, nextUrl: result.rows[0].banner_image },
+  ])
 
   return mapRestaurantSettings(result.rows[0])
 }

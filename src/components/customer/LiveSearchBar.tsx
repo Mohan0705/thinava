@@ -7,6 +7,7 @@ import { Search, ShoppingBag, Sparkles, Star, X } from 'lucide-react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useTranslation } from '@/lib/i18n'
 import { API_BASE_URL } from '@/lib/api'
+import { getOptimizedCloudinaryImageUrl } from '@/lib/cloudinary-image'
 
 interface RestaurantResult {
   id: string
@@ -155,6 +156,9 @@ export default function LiveSearchBar({ elevated = false }: { elevated?: boolean
                     </h3>
                     <div className="space-y-2.5">
                       {restaurants.map((restaurant) => (
+                        (() => {
+                          const imageUrl = getOptimizedCloudinaryImageUrl(restaurant.image, { width: 120, height: 120, crop: 'fill' })
+                          return (
                         <button
                           key={restaurant.id}
                           type="button"
@@ -165,13 +169,19 @@ export default function LiveSearchBar({ elevated = false }: { elevated?: boolean
                           className="flex w-full items-center gap-3 rounded-2xl p-2 text-left transition hover:bg-slate-50"
                         >
                           <div className="relative h-12 w-12 flex-shrink-0 overflow-hidden rounded-xl bg-slate-100">
-                            <Image
-                              src={restaurant.image}
-                              alt={restaurant.name}
-                              fill
-                              sizes="48px"
-                              className="object-cover"
-                            />
+                            {imageUrl ? (
+                              <Image
+                                src={imageUrl}
+                                alt={restaurant.name}
+                                fill
+                                sizes="48px"
+                                className="object-cover"
+                              />
+                            ) : (
+                              <div className="flex h-full w-full items-center justify-center bg-orange-50 text-xs font-bold text-orange-500">
+                                {restaurant.name.charAt(0).toUpperCase()}
+                              </div>
+                            )}
                           </div>
                           <div className="min-w-0 flex-1">
                             <h4 className="truncate text-sm font-bold text-slate-800">{restaurant.name}</h4>
@@ -187,6 +197,8 @@ export default function LiveSearchBar({ elevated = false }: { elevated?: boolean
                             </span>
                           </div>
                         </button>
+                          )
+                        })()
                       ))}
                     </div>
                   </div>
@@ -200,6 +212,9 @@ export default function LiveSearchBar({ elevated = false }: { elevated?: boolean
                     </h3>
                     <div className="space-y-2.5">
                       {menuItems.map((item) => (
+                        (() => {
+                          const imageUrl = getOptimizedCloudinaryImageUrl(item.image, { width: 120, height: 120, crop: 'fill' })
+                          return (
                         <button
                           key={item.id}
                           type="button"
@@ -210,9 +225,9 @@ export default function LiveSearchBar({ elevated = false }: { elevated?: boolean
                           className="flex w-full items-center gap-3 rounded-2xl p-2 text-left transition hover:bg-slate-50"
                         >
                           <div className="relative h-12 w-12 flex-shrink-0 overflow-hidden rounded-xl bg-slate-100">
-                            {item.image ? (
+                            {imageUrl ? (
                               <Image
-                                src={item.image}
+                                src={imageUrl}
                                 alt={item.name}
                                 fill
                                 sizes="48px"
@@ -239,6 +254,8 @@ export default function LiveSearchBar({ elevated = false }: { elevated?: boolean
                             <span className="text-sm font-extrabold text-orange-500">Rs{Number(item.price)}</span>
                           </div>
                         </button>
+                          )
+                        })()
                       ))}
                     </div>
                   </div>

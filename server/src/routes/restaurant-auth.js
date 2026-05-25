@@ -23,6 +23,14 @@ const bcrypt = require('bcryptjs')
 const { body, validationResult } = require('express-validator')
 const pool = require('../database/connection')
 const { signRestaurantToken, verifyRestaurantToken } = require('../lib/auth/tokenService')
+const restaurantPanelAuthService = require('../modules/restaurantPanel/services/authService')
+const {
+  getCleanSupabaseAuthMessage,
+  getSupabaseAdminClient,
+  getSupabaseAuthClient,
+  getSupabaseAuthHttpStatus,
+  logSupabaseAuthResponse,
+} = require('../lib/supabaseAuth')
 
 const BCRYPT_ROUNDS = 10
 const MAX_LOGIN_ATTEMPTS = 5
@@ -38,6 +46,127 @@ const validateEmail = (email) => {
 const validatePhone = (phone) => {
   const re = /^[0-9]{10}$/
   return re.test(phone.replace(/\D/g, ''))
+}
+
+const createRestaurantSupabaseAuthUser = async ({
+  email,
+  password,
+  restaurantName,
+  ownerName,
+  ownerPhone,
+}) => {
+  const supabase = getSupabaseAuthClient()
+
+  if (!supabase) {
+    console.warn('Supabase Auth signup skipped; missing SUPABASE_URL/SUPABASE_ANON_KEY', {
+      email,
+    })
+    return {
+      provider: 'legacy',
+      userId: null,
+      emailConfirmationRequired: false,
+      hasSession: false,
+    }
+  }
+
+  console.log('Supabase Auth signup starting', {
+    email,
+    passwordLength: password.length,
+    restaurantName,
+  })
+
+  const { data, error } = await supabase.auth.signUp({
+    email,
+    password,
+    options: {
+      data: {
+        role: 'restaurant_owner',
+        restaurant_name: restaurantName,
+        owner_name: ownerName,
+        owner_phone: ownerPhone,
+      },
+    },
+  })
+
+  logSupabaseAuthResponse('restaurant_signup', email, data, error, {
+    passwordLength: password.length,
+  })
+
+  if (error || !data?.user?.id) {
+    const signupError = new Error(
+      error ? getCleanSupabaseAuthMessage(error, 'Restaurant auth signup failed') : 'Restaurant auth signup did not return a user'
+    )
+    signupError.status = error ? getSupabaseAuthHttpStatus(error, 400) : 502
+    signupError.code = 'SUPABASE_SIGNUP_FAILED'
+    throw signupError
+  }
+
+  if (
+    data.user.email &&
+    data.user.email.toLowerCase().trim() !== email.toLowerCase().trim()
+  ) {
+    const signupError = new Error('Supabase Auth returned a different email for this signup')
+    signupError.status = 502
+    signupError.code = 'SUPABASE_EMAIL_MISMATCH'
+    signupError.supabaseUserId = data.user.id
+    throw signupError
+  }
+
+  if (
+    process.env.SUPABASE_AUTH_AUTO_CONFIRM_RESTAURANTS === 'true' &&
+    !data.user.email_confirmed_at
+  ) {
+    const adminClient = getSupabaseAdminClient()
+
+    if (adminClient) {
+      const { data: confirmedData, error: confirmError } =
+        await adminClient.auth.admin.updateUserById(data.user.id, {
+          email_confirm: true,
+        })
+
+      logSupabaseAuthResponse('restaurant_signup_auto_confirm', email, confirmedData, confirmError, {
+        userId: data.user.id,
+      })
+
+      if (confirmError) {
+        const confirmFailure = new Error(getCleanSupabaseAuthMessage(confirmError, 'Failed to confirm restaurant email'))
+        confirmFailure.status = getSupabaseAuthHttpStatus(confirmError, 502)
+        confirmFailure.code = 'SUPABASE_CONFIRM_FAILED'
+        confirmFailure.supabaseUserId = data.user.id
+        throw confirmFailure
+      }
+    } else {
+      console.warn('SUPABASE_AUTH_AUTO_CONFIRM_RESTAURANTS=true but SUPABASE_SERVICE_ROLE_KEY is missing', {
+        email,
+        userId: data.user.id,
+      })
+    }
+  }
+
+  return {
+    provider: 'supabase',
+    userId: data.user.id,
+    emailConfirmationRequired: !data.session && !data.user.email_confirmed_at,
+    hasSession: Boolean(data.session),
+  }
+}
+
+const cleanupSupabaseAuthUser = async (userId, email) => {
+  if (!userId) {
+    return
+  }
+
+  const adminClient = getSupabaseAdminClient()
+  if (!adminClient) {
+    console.warn('Skipping Supabase Auth cleanup; SUPABASE_SERVICE_ROLE_KEY is missing', {
+      email,
+      userId,
+    })
+    return
+  }
+
+  const { data, error } = await adminClient.auth.admin.deleteUser(userId)
+  logSupabaseAuthResponse('restaurant_signup_cleanup', email, data, error, { userId })
 }
 
 // Error handler wrapper
@@ -74,7 +203,7 @@ router.post('/register', asyncHandler(async (req, res) => {
     restaurantName, 
     ownerName, 
     ownerPhone, 
-    ownerEmail, 
+    ownerEmail: rawEmail, 
     password, 
     confirmPassword,
     address,
@@ -92,16 +221,26 @@ router.post('/register', asyncHandler(async (req, res) => {
     fssaiLicense
   } = req.body
 
+  // Normalize email to lowercase
+  const ownerEmail = String(rawEmail || '').toLowerCase().trim()
+
+  console.log('📝 Signup Request:', {
+    restaurantName,
+    ownerEmail,
+    ownerPhone,
+    timestamp: new Date().toISOString()
+  })
+
   // Validation
   if (!restaurantName || !ownerName || !ownerPhone || !ownerEmail || !password || !address || !city || !state || !pincode) {
-    return res.status(400).json({ 
+    return res.status(400).json({
       success: false, 
       error: 'Missing required fields' 
     })
   }
 
   if (!validateEmail(ownerEmail)) {
-    return res.status(400).json({ 
+    return res.status(400).json({
       success: false, 
       error: 'Invalid email format' 
     })
@@ -142,6 +281,7 @@ router.post('/register', asyncHandler(async (req, res) => {
   }
 
   const client = await pool.connect()
+  let createdSupabaseUserId = null
   try {
     await client.query('BEGIN')
 
@@ -186,6 +326,24 @@ router.post('/register', asyncHandler(async (req, res) => {
         error: 'Restaurant name already exists' 
       })
     }
+
+    const authSignup = await createRestaurantSupabaseAuthUser({
+      email: ownerEmail,
+      password,
+      restaurantName,
+      ownerName,
+      ownerPhone,
+    })
+
+    createdSupabaseUserId = authSignup.userId
+
+    console.log('Restaurant signup auth step completed', {
+      email: ownerEmail,
+      authProvider: authSignup.provider,
+      supabaseUserId: authSignup.userId,
+      hasSupabaseSession: authSignup.hasSession,
+      emailConfirmationRequired: authSignup.emailConfirmationRequired,
+    })
 
     // Create restaurant
     const restaurantResult = await client.query(
@@ -235,21 +393,34 @@ router.post('/register', asyncHandler(async (req, res) => {
     )
 
     // Hash password with bcrypt (10 salt rounds for production)
+    console.log('🔐 Hashing password...', {
+      passwordLength: password.length,
+      saltRounds: BCRYPT_ROUNDS,
+      email: ownerEmail
+    })
     const hashedPassword = await bcrypt.hash(password, BCRYPT_ROUNDS)
+    console.log('✅ Password hashed successfully', {
+      hashedPasswordLength: hashedPassword.length,
+      hashPrefix: hashedPassword.substring(0, 15),
+      email: ownerEmail
+    })
 
-    // Create restaurant user - explicitly set is_active = true
+    // Create restaurant user only after Supabase Auth signup succeeds.
     const userResult = await client.query(
       `INSERT INTO restaurant_users 
-       (restaurant_id, email, password_hash, full_name, phone, role, is_active)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
-       RETURNING id`,
-      [restaurantId, ownerEmail, hashedPassword, ownerName, ownerPhone, 'restaurant_owner', true]
+       (supabase_user_id, restaurant_id, email, password_hash, full_name, phone, role, is_active)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       RETURNING id, email, password_hash`,
+      [authSignup.userId, restaurantId, ownerEmail, hashedPassword, ownerName, ownerPhone, 'restaurant_owner', true]
     )
     
+    const createdUser = userResult.rows[0]
     console.log('✅ Restaurant user created:', {
-      userId: userResult.rows[0].id,
+      userId: createdUser.id,
       email: ownerEmail,
       restaurantId,
+      supabaseUserId: authSignup.userId,
+      authProvider: authSignup.provider,
       passwordHashLength: hashedPassword.length,
       isActive: true
     })
@@ -268,11 +439,19 @@ router.post('/register', asyncHandler(async (req, res) => {
       message: 'Registration successful! Your restaurant is under review.',
       restaurantId,
       status: 'PENDING_APPROVAL',
-      nextStep: 'Wait for admin approval'
+      nextStep: authSignup.emailConfirmationRequired
+        ? 'Verify your email and wait for admin approval'
+        : 'Wait for admin approval',
+      auth: {
+        provider: authSignup.provider,
+        userId: authSignup.userId,
+        emailConfirmationRequired: authSignup.emailConfirmationRequired,
+      }
     })
 
   } catch (error) {
     await client.query('ROLLBACK')
+    await cleanupSupabaseAuthUser(createdSupabaseUserId || error.supabaseUserId, ownerEmail)
     console.error('❌ Restaurant registration error:', {
       message: error.message,
       code: error.code,
@@ -291,7 +470,7 @@ router.post('/register', asyncHandler(async (req, res) => {
     })
     
     // Return meaningful error to frontend
-    return res.status(400).json({
+    return res.status(error.status || 400).json({
       success: false,
       error: error.detail || error.message || 'Registration failed. Please check your details and try again.',
       code: error.code
@@ -305,14 +484,38 @@ router.post('/register', asyncHandler(async (req, res) => {
 // LOGIN RESTAURANT
 // ============================================================
 router.post('/login', asyncHandler(async (req, res) => {
-  const { email, password } = req.body
+  const { email: rawEmail, password } = req.body
 
-  if (!email || !password) {
+  if (!rawEmail || !password) {
     return res.status(400).json({ 
       success: false, 
       error: 'Email and password required' 
     })
   }
+
+  // Normalize email to lowercase and trim
+  const email = rawEmail.toLowerCase().trim()
+
+  const session = await restaurantPanelAuthService.loginRestaurantOwner({ email, password })
+
+  return res.json({
+    success: true,
+    message: 'Login successful',
+    token: session.token,
+    authProvider: session.authProvider,
+    owner: {
+      id: session.owner.id,
+      restaurantId: session.owner.restaurant.id,
+      email: session.owner.email,
+      full_name: session.owner.full_name,
+    }
+  })
+
+  console.log('🔐 Login Attempt:', {
+    email,
+    passwordLength: password.length,
+    timestamp: new Date().toISOString()
+  })
 
   // Find restaurant user
   const userResult = await pool.query(
@@ -355,13 +558,28 @@ router.post('/login', asyncHandler(async (req, res) => {
     userFound: true,
     restaurantStatus: user.restaurant_status,
     passwordHashExists: !!user.password_hash,
-    passwordHashLength: user.password_hash?.length
+    passwordHashLength: user.password_hash?.length,
+    passwordHashPrefix: user.password_hash?.substring(0, 15)
   })
   
   const isPasswordValid = await bcrypt.compare(password, user.password_hash)
   
+  console.log('🔐 Password verification result:', {
+    email,
+    userId: user.id,
+    isPasswordValid,
+    passwordLength: password.length,
+    hashLength: user.password_hash?.length,
+    hashAlgorithm: user.password_hash?.startsWith('$2') ? 'bcrypt' : 'unknown'
+  })
+  
   if (!isPasswordValid) {
-    console.log('❌ Password mismatch:', { email, userId: user.id })
+    console.error('❌ Login failed - Invalid password:', {
+      email,
+      userId: user.id,
+      hashPrefix: user.password_hash?.substring(0, 20),
+      timestamp: new Date().toISOString()
+    })
     return res.status(401).json({ 
       success: false, 
       error: 'Invalid credentials' 
@@ -384,15 +602,24 @@ router.post('/login', asyncHandler(async (req, res) => {
     restaurant_id: user.restaurant_id,
   })
 
+  console.log('✅ Login successful - Token generated:', {
+    email,
+    userId: user.id,
+    restaurantId: user.restaurant_id,
+    tokenLength: token.length,
+    tokenPrefix: token.substring(0, 20) + '...',
+    timestamp: new Date().toISOString()
+  })
+
   return res.json({
     success: true,
     message: 'Login successful',
     token,
-    user: {
+    owner: {
       id: user.id,
       restaurantId: user.restaurant_id,
       email: user.email,
-      fullName: user.full_name
+      full_name: user.full_name,
     }
   })
 }))
@@ -517,5 +744,150 @@ router.post('/logout', authenticateRestaurant, (req, res) => {
     message: 'Logged out successfully' 
   })
 })
+
+// ============================================================
+// PASSWORD RESET - REQUEST
+// ============================================================
+router.post('/password-reset/request', asyncHandler(async (req, res) => {
+  const { email } = req.body
+
+  if (!email) {
+    return res.status(400).json({ 
+      success: false, 
+      error: 'Email is required' 
+    })
+  }
+
+  if (!validateEmail(email)) {
+    return res.status(400).json({ 
+      success: false, 
+      error: 'Invalid email format' 
+    })
+  }
+
+  const passwordResetService = require('../modules/restaurantPanel/services/passwordResetService')
+  
+  try {
+    const result = await passwordResetService.requestPasswordReset(email)
+    
+    // Only return reset token in development
+    if (process.env.NODE_ENV === 'development') {
+      return res.json(result)
+    }
+    
+    // In production, only return success message
+    return res.json({
+      success: result.success,
+      message: result.message,
+      email: result.email
+    })
+  } catch (error) {
+    console.error('Password reset request error:', error)
+    return res.status(500).json({ 
+      success: false, 
+      error: 'Failed to process password reset request' 
+    })
+  }
+}))
+
+// ============================================================
+// PASSWORD RESET - VERIFY TOKEN
+// ============================================================
+router.get('/password-reset/verify', asyncHandler(async (req, res) => {
+  const { token } = req.query
+
+  if (!token) {
+    return res.status(400).json({ 
+      success: false, 
+      error: 'Reset token is required' 
+    })
+  }
+
+  const passwordResetService = require('../modules/restaurantPanel/services/passwordResetService')
+  
+  try {
+    const user = await passwordResetService.verifyResetToken(token)
+    
+    return res.json({
+      success: true,
+      valid: true,
+      message: 'Token is valid',
+      email: user.email,
+      fullName: user.fullName
+    })
+  } catch (error) {
+    console.error('Token verification error:', error)
+    return res.status(error.status || 400).json({ 
+      success: false, 
+      error: error.message || 'Invalid or expired token' 
+    })
+  }
+}))
+
+router.get('/password-reset/verify/:token', asyncHandler(async (req, res) => {
+  const { token } = req.params
+
+  if (!token) {
+    return res.status(400).json({ 
+      success: false, 
+      error: 'Reset token is required' 
+    })
+  }
+
+  const passwordResetService = require('../modules/restaurantPanel/services/passwordResetService')
+  
+  try {
+    const user = await passwordResetService.verifyResetToken(token)
+    
+    return res.json({
+      success: true,
+      valid: true,
+      message: 'Token is valid',
+      email: user.email,
+      fullName: user.fullName
+    })
+  } catch (error) {
+    console.error('Token verification error:', error)
+    return res.status(error.status || 400).json({ 
+      success: false, 
+      error: error.message || 'Invalid or expired token' 
+    })
+  }
+}))
+
+// ============================================================
+// PASSWORD RESET - CONFIRM
+// ============================================================
+router.post('/password-reset/confirm', asyncHandler(async (req, res) => {
+  const { token, newPassword, confirmPassword } = req.body
+
+  if (!token) {
+    return res.status(400).json({ 
+      success: false, 
+      error: 'Reset token is required' 
+    })
+  }
+
+  if (!newPassword) {
+    return res.status(400).json({ 
+      success: false, 
+      error: 'New password is required' 
+    })
+  }
+
+  const passwordResetService = require('../modules/restaurantPanel/services/passwordResetService')
+  
+  try {
+    const result = await passwordResetService.resetPassword(token, newPassword, confirmPassword)
+    
+    return res.json(result)
+  } catch (error) {
+    console.error('Password reset confirmation error:', error)
+    return res.status(error.status || 400).json({ 
+      success: false, 
+      error: error.message || 'Failed to reset password' 
+    })
+  }
+}))
 
 module.exports = router

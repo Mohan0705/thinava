@@ -5,7 +5,7 @@ import Link from 'next/link'
 import Image from 'next/image'
 import { useParams } from 'next/navigation'
 import { useEffect, useMemo, useState } from 'react'
-import { Star, Clock, MapPin, Plus, Minus, ShoppingCart } from 'lucide-react'
+import { Star, Clock, ImageIcon, MapPin, Plus, Minus, ShoppingCart } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Card, CardContent } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
@@ -20,11 +20,7 @@ import Footer from '@/components/layout/Footer'
 import MobileNav from '@/components/layout/MobileNav'
 import { MenuItem, Restaurant } from '@/types'
 import { cn } from '@/lib/utils'
-
-const FALLBACK_RESTAURANT_IMAGE =
-  'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=1200&q=80'
-const FALLBACK_MENU_ITEM_IMAGE =
-  'https://images.unsplash.com/photo-1544025162-d76694265947?w=800&q=80'
+import { getOptimizedCloudinaryImageUrl } from '@/lib/cloudinary-image'
 
 function MenuQuantityControl({
   quantity,
@@ -194,14 +190,23 @@ export default function RestaurantPage() {
   const restaurantStatusLabel = restaurant.status === 'TEMPORARILY_UNAVAILABLE'
     ? 'Currently Unavailable'
     : 'Currently Closed'
-  const heroImage = restaurant.image?.trim() || restaurant.bannerImage?.trim() || FALLBACK_RESTAURANT_IMAGE
+  const heroImage = getOptimizedCloudinaryImageUrl(
+    restaurant.bannerImage?.trim() || restaurant.image?.trim() || '',
+    { width: 1600, crop: 'fill', quality: 'auto:good' }
+  )
 
   return (
     <div className="thinava-page-mobile">
       <Header />
 
       <div className="relative h-44 md:h-52">
-        <Image src={heroImage} alt={restaurant.name} fill className="object-cover" priority sizes="100vw" />
+        {heroImage ? (
+          <Image src={heroImage} alt={restaurant.name} fill className="object-cover" priority sizes="100vw" />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center bg-orange-50 text-orange-500">
+            <ImageIcon className="h-12 w-12" />
+          </div>
+        )}
         <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
         <div className="absolute bottom-0 left-0 right-0 p-4 md:p-6">
           <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
@@ -294,13 +299,23 @@ export default function RestaurantPage() {
                 <div className="space-y-3">
                   {groupedMenu[category].map((item) => {
                     const quantity = getItemQuantity(item.id)
-                    const itemImage = item.image?.trim() || FALLBACK_MENU_ITEM_IMAGE
+                    const itemImage = getOptimizedCloudinaryImageUrl(item.image?.trim() || '', {
+                      width: 240,
+                      height: 240,
+                      crop: 'fill',
+                    })
 
                     return (
                       <Card key={item.id} className="overflow-hidden transition-shadow hover:shadow-card-hover">
                         <CardContent className="flex gap-3 p-3 sm:gap-4 sm:p-4">
                           <div className="relative h-[88px] w-[88px] shrink-0 overflow-hidden rounded-xl sm:h-24 sm:w-24">
-                            <Image src={itemImage} alt={item.name} fill sizes="96px" className="object-cover" />
+                            {itemImage ? (
+                              <Image src={itemImage} alt={item.name} fill sizes="96px" className="object-cover" />
+                            ) : (
+                              <div className="flex h-full w-full items-center justify-center bg-orange-50 text-orange-500">
+                                <ImageIcon className="h-6 w-6" />
+                              </div>
+                            )}
                           </div>
                           <div className="min-w-0 flex-1">
                             <div className="flex flex-wrap items-start gap-1.5">

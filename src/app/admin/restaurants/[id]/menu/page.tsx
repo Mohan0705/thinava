@@ -11,10 +11,12 @@ import {
 import { AdminPageShell } from '@/components/admin/AdminPageShell'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
+import { ImageUploadField } from '@/components/restaurant-panel/ImageUploadField'
 import { adminApi } from '@/features/admin/api'
 import { useAdminAuthStore } from '@/features/admin/auth-store'
 import { adminPermissions } from '@/features/admin/permissions'
 import { useAdminRealtimeSync } from '@/lib/realtimeManager'
+import { getOptimizedCloudinaryImageUrl } from '@/lib/cloudinary-image'
 
 interface Category {
   id: string
@@ -326,13 +328,20 @@ export default function AdminRestaurantMenuPage() {
           </div>
         ) : (
           <div className="grid gap-4">
-            {filteredItems.map(item => (
+            {filteredItems.map(item => {
+              const imageUrl = getOptimizedCloudinaryImageUrl(item.image || '', {
+                width: 160,
+                height: 160,
+                crop: 'fill',
+              })
+
+              return (
               <div key={item.id} className="bg-slate-900/80 rounded-2xl border border-slate-800 overflow-hidden">
                 <div className="p-4 flex items-start gap-4">
                   {/* Image */}
                   <div className="w-20 h-20 rounded-xl bg-slate-800 flex items-center justify-center flex-shrink-0 overflow-hidden">
-                    {item.image ? (
-                      <img src={item.image} alt={item.name} className="w-full h-full object-cover" />
+                    {imageUrl ? (
+                      <img src={imageUrl} alt={item.name} className="w-full h-full object-cover" loading="lazy" />
                     ) : (
                       <ImageIcon className="w-8 h-8 text-slate-600" />
                     )}
@@ -468,7 +477,8 @@ export default function AdminRestaurantMenuPage() {
                   </div>
                 )}
               </div>
-            ))}
+              )
+            })}
           </div>
         )}
 
@@ -548,7 +558,7 @@ export default function AdminRestaurantMenuPage() {
                       placeholder="Item description"
                     />
                   </div>
-                  <div>
+                  <div className="col-span-2">
                     <label className="block text-sm font-medium text-slate-300 mb-1">Price (₹) *</label>
                     <input
                       type="number"
@@ -579,14 +589,16 @@ export default function AdminRestaurantMenuPage() {
                       {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                     </select>
                   </div>
-                  <div>
-                    <label className="block text-sm font-medium text-slate-300 mb-1">Image URL</label>
-                    <input
-                      type="text"
+                  <div className="col-span-2">
+                    <ImageUploadField
+                      label="Image"
                       value={itemForm.image}
-                      onChange={e => setItemForm({ ...itemForm, image: e.target.value })}
-                      className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white focus:border-orange-500 focus:outline-none"
-                      placeholder="https://..."
+                      onChange={(image) => setItemForm({ ...itemForm, image })}
+                      placeholder="https://res.cloudinary.com/.../thinava/menu-items/item.jpg"
+                      folder="menuItems"
+                      scope="admin"
+                      token={token}
+                      theme="dark"
                     />
                   </div>
                   <div>

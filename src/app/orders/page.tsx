@@ -4,7 +4,7 @@ import { motion } from 'framer-motion'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
-import { AlertCircle, CheckCircle, Clock, Home, MessageCircle, Package, Truck, Star, FileText, X, Phone, MapPin } from 'lucide-react'
+import { AlertCircle, CheckCircle, Clock, Home, MessageCircle, Package, Truck, Star, FileText, X, Phone, MapPin, ImageIcon } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Card, CardContent } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
@@ -22,6 +22,7 @@ import { DeliveryLiveMap } from '@/components/delivery/DeliveryLiveMap'
 import ReviewModal from '@/components/customer/ReviewModal'
 import InvoicePDF from '@/components/customer/InvoicePDF'
 import { getRealtimeSocket, releaseRealtimeSocket } from '@/lib/realtime'
+import { getOptimizedCloudinaryImageUrl } from '@/lib/cloudinary-image'
 
 type ApiOrderItem = {
   id: string
@@ -484,10 +485,11 @@ export default function OrdersPage() {
 
     return {
       name: restaurant?.name || order.restaurant_name || 'Restaurant',
-      image:
-        restaurant?.image ||
-        order.restaurant_image ||
-        'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=400&q=80',
+      image: getOptimizedCloudinaryImageUrl(restaurant?.image || order.restaurant_image || '', {
+        width: 180,
+        height: 180,
+        crop: 'fill',
+      }),
       cuisines: restaurant?.cuisines || [],
     }
   }
@@ -575,7 +577,11 @@ export default function OrdersPage() {
                       <div className="relative h-16 w-16 rounded-full border-2 border-orange-500 overflow-hidden bg-slate-850 flex-shrink-0 flex items-center justify-center">
                         {currentOrder.rider_profile_image ? (
                           <Image
-                            src={currentOrder.rider_profile_image}
+                            src={getOptimizedCloudinaryImageUrl(currentOrder.rider_profile_image, {
+                              width: 160,
+                              height: 160,
+                              crop: 'fill',
+                            })}
                             alt={currentOrder.rider_name}
                             fill
                             className="object-cover"
@@ -696,12 +702,18 @@ export default function OrdersPage() {
                 <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-3 sm:p-4">
                   <div className="flex flex-col sm:flex-row items-center gap-4">
                     <div className="h-16 w-16 overflow-hidden rounded-xl bg-slate-800 flex-shrink-0 relative">
-                      <Image
-                        src={getRestaurantDetails(currentOrder).image}
-                        alt={getRestaurantDetails(currentOrder).name}
-                        fill
-                        className="object-cover"
-                      />
+                      {getRestaurantDetails(currentOrder).image ? (
+                        <Image
+                          src={getRestaurantDetails(currentOrder).image}
+                          alt={getRestaurantDetails(currentOrder).name}
+                          fill
+                          className="object-cover"
+                        />
+                      ) : (
+                        <div className="flex h-full w-full items-center justify-center text-orange-400">
+                          <ImageIcon className="h-6 w-6" />
+                        </div>
+                      )}
                     </div>
                     <div className="flex-1 text-center sm:text-left">
                       <h3 className="font-bold text-lg text-white">{getRestaurantDetails(currentOrder).name}</h3>
@@ -855,13 +867,19 @@ export default function OrdersPage() {
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                         <div className="flex items-center gap-4">
                           <div className="h-16 w-16 overflow-hidden rounded-xl bg-slate-100 flex-shrink-0 ring-1 ring-slate-200/50">
-                            <Image
-                              src={restaurant.image}
-                              alt={restaurant.name}
-                              width={64}
-                              height={64}
-                              className="h-full w-full object-cover"
-                            />
+                            {restaurant.image ? (
+                              <Image
+                                src={restaurant.image}
+                                alt={restaurant.name}
+                                width={64}
+                                height={64}
+                                className="h-full w-full object-cover"
+                              />
+                            ) : (
+                              <div className="flex h-full w-full items-center justify-center bg-orange-50 text-orange-500">
+                                <ImageIcon className="h-5 w-5" />
+                              </div>
+                            )}
                           </div>
                           <div>
                             <h3 className="font-bold text-slate-900 dark:text-white">{restaurant.name}</h3>

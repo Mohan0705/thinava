@@ -15,6 +15,7 @@ import { PanelSkeleton } from '@/components/restaurant-panel/PanelSkeleton'
 import { RestaurantPanelShell } from '@/components/restaurant-panel/RestaurantPanelShell'
 import { RestaurantRouteGuard } from '@/components/restaurant-panel/RestaurantRouteGuard'
 import { restaurantPanelApi } from '@/lib/restaurant-panel-api'
+import { getOptimizedCloudinaryImageUrl } from '@/lib/cloudinary-image'
 import { formatPrice } from '@/lib/utils'
 import { useRestaurantOwnerAuthStore } from '@/store/restaurantOwnerAuthStore'
 import { RestaurantCategory, RestaurantPanelMenuItem } from '@/types/restaurant-panel'
@@ -250,10 +251,16 @@ function MenuContent() {
 
             <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
               {items.map((item) => (
+                (() => {
+                  const imageUrl = getOptimizedCloudinaryImageUrl(item.image, {
+                    width: 640,
+                    crop: 'fill',
+                  })
+                  return (
                 <Card key={item.id} className="border border-white/60 bg-white/90">
                   <CardContent className="p-5">
                     <div className="mb-4 aspect-[16/10] overflow-hidden rounded-3xl bg-slate-100">
-                      {item.image ? <img src={item.image} alt={item.name} className="h-full w-full object-cover" /> : null}
+                      {imageUrl ? <img src={imageUrl} alt={item.name} className="h-full w-full object-cover" loading="lazy" /> : null}
                     </div>
 
                     <div className="mb-3 flex items-start justify-between gap-3">
@@ -306,6 +313,8 @@ function MenuContent() {
                     </div>
                   </CardContent>
                 </Card>
+                  )
+                })()
               ))}
             </div>
           </section>
@@ -373,7 +382,8 @@ function MenuContent() {
                 label="Food image"
                 value={form.image}
                 onChange={(value) => setForm({ ...form, image: value })}
-                placeholder="https://example.com/dish.jpg or upload one"
+                folder="menuItems"
+                placeholder="https://res.cloudinary.com/.../thinava/menu-items/dish.jpg"
               />
 
               <div className="grid gap-3">

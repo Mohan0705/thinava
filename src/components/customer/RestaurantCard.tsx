@@ -3,9 +3,10 @@
 import Link from 'next/link'
 import Image from 'next/image'
 import { motion } from 'framer-motion'
-import { Clock, Percent, Star, Zap } from 'lucide-react'
+import { Clock, ImageIcon, Percent, Star, Zap } from 'lucide-react'
 import type { Restaurant } from '@/types'
 import { cn } from '@/lib/utils'
+import { getOptimizedCloudinaryImageUrl } from '@/lib/cloudinary-image'
 
 export function RestaurantCardSkeleton({ layout = 'grid' }: { layout?: 'grid' | 'carousel' }) {
   return (
@@ -42,6 +43,10 @@ export function RestaurantCard({
   const ratingText = Number(restaurant.rating || 0).toFixed(1)
   const reviewCount = restaurant.ratingCount ?? 0
   const unavailableLabel = isClosed ? 'Currently Closed' : 'Currently Unavailable'
+  const imageUrl = getOptimizedCloudinaryImageUrl(restaurant.image, {
+    width: layout === 'carousel' ? 640 : 900,
+    crop: 'fill',
+  })
 
   const card = (
     <div
@@ -51,17 +56,23 @@ export function RestaurantCard({
       )}
     >
       <div className="relative aspect-[16/10.5] overflow-hidden">
-        <Image
-          src={restaurant.image}
-          alt={restaurant.name}
-          fill
-          sizes={layout === 'carousel' ? '300px' : '(max-width:768px) 100vw, 33vw'}
-          className={cn(
-            'object-cover transition-transform duration-500',
-            !isUnavailable && 'group-hover:scale-105',
-            isUnavailable && 'scale-[1.02] grayscale-[35%]'
-          )}
-        />
+        {imageUrl ? (
+          <Image
+            src={imageUrl}
+            alt={restaurant.name}
+            fill
+            sizes={layout === 'carousel' ? '300px' : '(max-width:768px) 100vw, 33vw'}
+            className={cn(
+              'object-cover transition-transform duration-500',
+              !isUnavailable && 'group-hover:scale-105',
+              isUnavailable && 'scale-[1.02] grayscale-[35%]'
+            )}
+          />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center bg-orange-50 text-orange-500">
+            <ImageIcon className="h-9 w-9" />
+          </div>
+        )}
         <div className="absolute inset-0 bg-gradient-to-t from-black/48 via-black/8 to-transparent" />
 
         <div className="absolute left-3 top-3 flex flex-wrap gap-1.5">

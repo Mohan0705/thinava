@@ -1,6 +1,7 @@
 const bcrypt = require('bcryptjs')
 const pool = require('../../../database/connection')
 const { signRiderToken, verifyRiderTokenIgnoreExp } = require('../../../lib/auth/tokenService')
+const { assertCloudinaryImageUrl, deleteReplacedImages } = require('../../../lib/cloudinaryService')
 const { logger } = require('../../../lib/logger')
 
 const generateToken = (partner) => signRiderToken(partner)
@@ -142,6 +143,36 @@ const getDeliveryPartnerProfile = async (partnerId) => {
   }
 
   return result.rows[0]
+}
+
+const updateDeliveryPartnerProfile = async (partnerId, payload) => {
+  const hasProfileImage = Object.prototype.hasOwnProperty.call(payload, 'profile_image')
+  const profileImage = hasProfileImage && payload.profile_image ? String(payload.profile_image).trim() : null
+  assertCloudinaryImageUrl(profileImage, 'Profile image')
+
+  const oldResult = await pool.query(
+    'SELECT profile_image FROM delivery_partners WHERE id = $1',
+    [partnerId]
+  )
+  const oldProfileImage = oldResult.rows[0]?.profile_image
+
+  const result = await pool.query(
+    `UPDATE delivery_partners
+     SET profile_image = CASE WHEN $2::boolean THEN $3 ELSE profile_image END,
+         updated_at = CURRENT_TIMESTAMP
+     WHERE id = $1
+     RETURNING id, profile_image`,
+    [partnerId, hasProfileImage, profileImage]
+  )
+
+  if (result.rows.length === 0) {
+    const error = new Error('Delivery partner not found')
+    error.status = 404
+    throw error
+  }
+
+  await deleteReplacedImages([{ previousUrl: oldProfileImage, nextUrl: result.rows[0].profile_image }])
+  return getDeliveryPartnerProfile(partnerId)
 }
 
 const updateDeliveryPartnerStatus = async (partnerId, status) => {
@@ -289,6 +320,7 @@ module.exports = {
   registerDeliveryPartner,
   loginDeliveryPartner,
   getDeliveryPartnerProfile,
+  updateDeliveryPartnerProfile,
   updateDeliveryPartnerStatus,
   setDeliveryPartnerOnlineStatus,
   generateToken,

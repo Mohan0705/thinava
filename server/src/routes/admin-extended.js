@@ -19,6 +19,7 @@ const express = require('express')
 const router = express.Router()
 const pool = require('../database/connection')
 const { authenticateAdmin } = require('../modules/admin/middleware/auth')
+const { assertCloudinaryImageUrl, deleteReplacedImages } = require('../lib/cloudinaryService')
 
 // Error handler
 const asyncHandler = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next)
@@ -873,6 +874,8 @@ router.post('/restaurants/:id/item', asyncHandler(async (req, res) => {
     return res.status(400).json({ success: false, error: 'Name and price required' })
   }
 
+  assertCloudinaryImageUrl(image, 'Menu item image')
+
   const result = await pool.query(
     `INSERT INTO menu_items 
      (restaurant_id, name, description, price, offer_price, image, category_id, is_veg, is_bestseller, is_recommended, is_available, in_stock, preparation_time, spice_level, calories, display_order)
@@ -904,6 +907,13 @@ router.put('/restaurants/:id/item/:itemId', asyncHandler(async (req, res) => {
     preparationTime, spiceLevel, calories, displayOrder
   } = req.body
 
+  assertCloudinaryImageUrl(image, 'Menu item image')
+  const oldItemResult = await pool.query(
+    'SELECT image FROM menu_items WHERE id = $1 AND restaurant_id = $2',
+    [itemId, restaurantId]
+  )
+  const oldImage = oldItemResult.rows[0]?.image
+
   const result = await pool.query(
     `UPDATE menu_items SET
      name = COALESCE($1, name), description = COALESCE($2, description), price = COALESCE($3, price),
@@ -924,6 +934,8 @@ router.put('/restaurants/:id/item/:itemId', asyncHandler(async (req, res) => {
   if (result.rows.length === 0) {
     return res.status(404).json({ success: false, error: 'Item not found' })
   }
+
+  await deleteReplacedImages([{ previousUrl: oldImage, nextUrl: result.rows[0].image }])
 
   const io = req.app.get('io')
   if (io) {
@@ -960,7 +972,11 @@ router.delete('/restaurants/:id/item/:itemId', asyncHandler(async (req, res) => 
   const { id: restaurantId, itemId } = req.params
 
   // Variants and addons will be cascade deleted
-  await pool.query(`DELETE FROM menu_items WHERE id = $1 AND restaurant_id = $2`, [itemId, restaurantId])
+  const result = await pool.query(
+    `DELETE FROM menu_items WHERE id = $1 AND restaurant_id = $2 RETURNING image`,
+    [itemId, restaurantId]
+  )
+  await deleteReplacedImages([{ previousUrl: result.rows[0]?.image, nextUrl: null }])
 
   const io = req.app.get('io')
   if (io) {

@@ -39,6 +39,11 @@ router.use(authenticateDeliveryPartner)
 
 // Profile routes
 router.get('/auth/profile', authController.getProfile)
+router.patch('/auth/profile',
+  body('profile_image').optional({ nullable: true }).isString().withMessage('profile_image must be a Cloudinary URL'),
+  handleValidation,
+  authController.updateProfile
+)
 router.post('/auth/online-status',
   body('is_online').isBoolean().withMessage('is_online must be a boolean'),
   handleValidation,

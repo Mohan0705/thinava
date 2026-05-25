@@ -5,6 +5,7 @@ import { Mail, Phone, ShieldCheck, User } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
+import { ImageUploadField } from '@/components/restaurant-panel/ImageUploadField'
 import { customerAuthApi } from '@/features/auth/api'
 import { useAuthStore } from '@/store/authStore'
 import { toast } from 'sonner'
@@ -15,6 +16,7 @@ export default function ProfileSettingsPage() {
   const setUser = useAuthStore((state) => state.setUser)
   const [fullName, setFullName] = useState('')
   const [email, setEmail] = useState('')
+  const [profileImage, setProfileImage] = useState('')
   const [saving, setSaving] = useState(false)
   const initializedForUserIdRef = useRef<string | null>(null)
 
@@ -27,6 +29,7 @@ export default function ProfileSettingsPage() {
     if (initializedForUserIdRef.current !== user.id) {
       setFullName(user.fullName || user.name || '')
       setEmail(user.email || '')
+      setProfileImage(user.profileImage || '')
       initializedForUserIdRef.current = user.id
     }
   }, [user])
@@ -53,6 +56,7 @@ export default function ProfileSettingsPage() {
       const updatedUser = await customerAuthApi.updateProfile(token, {
         full_name: fullName.trim(),
         email: email?.trim() || null,
+        profile_image: profileImage || null,
       })
       
       setUser(updatedUser)
@@ -117,6 +121,15 @@ export default function ProfileSettingsPage() {
           </p>
         </CardHeader>
         <CardContent className="space-y-4">
+          <ImageUploadField
+            label="Profile image"
+            value={profileImage}
+            onChange={setProfileImage}
+            placeholder="https://res.cloudinary.com/.../thinava/profiles/avatar.jpg"
+            folder="profiles"
+            scope="customer"
+            token={token}
+          />
           <Input value={fullName} onChange={(event) => setFullName(event.target.value)} placeholder="Full name" />
           <Input value={email} onChange={(event) => setEmail(event.target.value)} placeholder="Email address" type="email" />
           <Button onClick={handleSave} disabled={saving}>
