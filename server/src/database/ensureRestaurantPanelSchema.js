@@ -1,6 +1,5 @@
-const bcrypt = require('bcryptjs')
 const pool = require('./connection')
-const { OWNER_ROLE, RESTAURANT_STATUSES } = require('../modules/restaurantPanel/constants')
+const { RESTAURANT_STATUSES } = require('../modules/restaurantPanel/constants')
 
 const ensureRestaurantPanelSchema = async () => {
   const client = await pool.connect()
@@ -398,73 +397,6 @@ const ensureRestaurantPanelSchema = async () => {
     client.release()
   }
 
-  if (process.env.SEED_RESTAURANT_DEMO_OWNER_ACCOUNTS !== 'true') {
-    return
-  }
-
-  if (process.env.NODE_ENV === 'production') {
-    console.warn('Skipping restaurant demo owner seed in production.')
-    return
-  }
-
-  const seedPassword = process.env.RESTAURANT_OWNER_SEED_PASSWORD
-  if (!seedPassword || seedPassword.length < 8) {
-    console.warn('Skipping restaurant demo owner seed because RESTAURANT_OWNER_SEED_PASSWORD is not set.')
-    return
-  }
-
-  const passwordHash = await bcrypt.hash(seedPassword, 10)
-  const restaurantsResult = await pool.query(`
-    SELECT r.id, r.name
-    FROM restaurants r
-    LEFT JOIN restaurant_users ru ON ru.restaurant_id = r.id
-    WHERE ru.id IS NULL
-    ORDER BY r.created_at ASC
-  `)
-
-  for (const restaurant of restaurantsResult.rows) {
-    const slug = restaurant.name
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '.')
-      .replace(/^\.+|\.+$/g, '')
-
-    const compactSlug = restaurant.name
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '')
-      .trim()
-
-    const preferredEmail =
-      compactSlug === 'ibbuskingshotel'
-        ? 'ibbus@demo.thinava.local'
-        : `${slug || 'restaurant'}@demo.thinava.local`
-
-    const emailResult = await pool.query(
-      'SELECT id FROM restaurant_users WHERE LOWER(email) = LOWER($1) LIMIT 1',
-      [preferredEmail]
-    )
-
-    if (emailResult.rows.length > 0) {
-      console.warn('Skipping restaurant demo owner seed because generated email already exists.', {
-        restaurantId: restaurant.id,
-        preferredEmail,
-      })
-      continue
-    }
-
-    await pool.query(
-      `INSERT INTO restaurant_users (restaurant_id, email, password_hash, full_name, role, is_active)
-       VALUES ($1, $2, $3, $4, $5, $6)
-       ON CONFLICT DO NOTHING`,
-      [
-        restaurant.id,
-        preferredEmail,
-        passwordHash,
-        `${restaurant.name} Owner`,
-        OWNER_ROLE,
-        true,
-      ]
-    )
-  }
 }
 
 module.exports = {

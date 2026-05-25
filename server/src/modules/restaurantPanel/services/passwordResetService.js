@@ -2,11 +2,9 @@ const crypto = require('crypto')
 const bcrypt = require('bcryptjs')
 const pool = require('../../../database/connection')
 const {
-  getCleanSupabaseAuthMessage,
-  getSupabaseAdminClient,
-  getSupabaseAuthHttpStatus,
-  logSupabaseAuthResponse,
-} = require('../../../lib/supabaseAuth')
+  ensureSupabaseUserForRestaurantOwner,
+  updateSupabaseRestaurantPassword,
+} = require('./supabaseRestaurantAuthService')
 
 const RESET_TOKEN_EXPIRY_MINUTES = 15
 
@@ -50,9 +48,11 @@ async function requestPasswordReset(rawEmail) {
   console.log('[RestaurantPasswordReset] reset requested', { email })
 
   const userResult = await pool.query(
-    `SELECT id, email, full_name, supabase_user_id
-     FROM restaurant_users
-     WHERE LOWER(email) = LOWER($1)
+    `SELECT ru.id, ru.email, ru.full_name, ru.phone, ru.supabase_user_id, ru.restaurant_id,
+            r.name AS restaurant_name
+     FROM restaurant_users ru
+     JOIN restaurants r ON r.id = ru.restaurant_id
+     WHERE LOWER(ru.email) = LOWER($1)
      LIMIT 1`,
     [email]
   )
@@ -66,6 +66,32 @@ async function requestPasswordReset(rawEmail) {
   }
 
   const owner = userResult.rows[0]
+  try {
+    const ensured = await ensureSupabaseUserForRestaurantOwner(owner)
+    if (ensured.userId && ensured.userId !== owner.supabase_user_id) {
+      await pool.query(
+        `UPDATE restaurant_users
+         SET supabase_user_id = $1,
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = $2`,
+        [ensured.userId, owner.id]
+      )
+      owner.supabase_user_id = ensured.userId
+    }
+  } catch (error) {
+    console.warn('[RestaurantPasswordReset] auth repair failed before reset request', {
+      email: owner.email,
+      restaurantUserId: owner.id,
+      message: error.message,
+      code: error.code,
+    })
+    throw createResetError(
+      'Password reset is temporarily unavailable. Please try again later.',
+      error.status === 503 ? 503 : 502,
+      'PASSWORD_RESET_UNAVAILABLE'
+    )
+  }
+
   const token = generateResetToken()
   const tokenHash = hashResetToken(token)
   const expiresAt = new Date(Date.now() + RESET_TOKEN_EXPIRY_MINUTES * 60 * 1000)
@@ -86,11 +112,14 @@ async function requestPasswordReset(rawEmail) {
     restaurantUserId: owner.id,
     expiresAt: expiresAt.toISOString(),
   })
-  console.log('[RestaurantPasswordReset] reset URL:', resetUrl)
+  if (process.env.NODE_ENV === 'development') {
+    console.log('[RestaurantPasswordReset] development reset URL:', resetUrl)
+  }
 
   return {
     success: true,
     message: 'Password reset link generated',
+    ...(process.env.NODE_ENV === 'development' ? { resetUrl } : {}),
   }
 }
 
@@ -102,8 +131,10 @@ async function verifyResetToken(token) {
   const tokenHash = hashResetToken(token)
 
   const result = await pool.query(
-    `SELECT id, email, full_name, supabase_user_id, reset_token_expiry
-     FROM restaurant_users
+    `SELECT ru.id, ru.email, ru.full_name, ru.phone, ru.supabase_user_id,
+            ru.restaurant_id, ru.reset_token_expiry, r.name AS restaurant_name
+     FROM restaurant_users ru
+     JOIN restaurants r ON r.id = ru.restaurant_id
      WHERE reset_token = $1
      LIMIT 1`,
     [tokenHash]
@@ -136,6 +167,9 @@ async function verifyResetToken(token) {
     userId: owner.id,
     email: owner.email,
     fullName: owner.full_name,
+    phone: owner.phone,
+    restaurantId: owner.restaurant_id,
+    restaurantName: owner.restaurant_name,
     supabaseUserId: owner.supabase_user_id,
   }
 }
@@ -156,43 +190,28 @@ async function resetPassword(token, newPassword, confirmPassword) {
   const owner = await verifyResetToken(token)
   const hashedPassword = await bcrypt.hash(newPassword, 10)
 
-  if (owner.supabaseUserId) {
-    const adminClient = getSupabaseAdminClient()
+  const ensured = await ensureSupabaseUserForRestaurantOwner({
+    id: owner.userId,
+    email: owner.email,
+    full_name: owner.fullName,
+    phone: owner.phone,
+    restaurant_id: owner.restaurantId,
+    restaurant_name: owner.restaurantName,
+    supabase_user_id: owner.supabaseUserId,
+  }, { password: newPassword })
+  const supabaseUserId = ensured.userId
 
-    if (!adminClient) {
-      throw createResetError(
-        'Password reset requires SUPABASE_SERVICE_ROLE_KEY for Supabase Auth restaurant accounts.',
-        500,
-        'SUPABASE_SERVICE_ROLE_REQUIRED'
-      )
-    }
-
-    const { data, error } = await adminClient.auth.admin.updateUserById(owner.supabaseUserId, {
-      password: newPassword,
-    })
-
-    logSupabaseAuthResponse('restaurant_password_reset_update_user', owner.email, data, error, {
-      restaurantUserId: owner.userId,
-      supabaseUserId: owner.supabaseUserId,
-    })
-
-    if (error) {
-      throw createResetError(
-        getCleanSupabaseAuthMessage(error, 'Failed to update Supabase Auth password'),
-        getSupabaseAuthHttpStatus(error, 500),
-        'SUPABASE_PASSWORD_UPDATE_FAILED'
-      )
-    }
-  }
+  await updateSupabaseRestaurantPassword(supabaseUserId, owner.email, newPassword)
 
   await pool.query(
     `UPDATE restaurant_users
      SET password_hash = $1,
+         supabase_user_id = $2,
          reset_token = NULL,
          reset_token_expiry = NULL,
          updated_at = CURRENT_TIMESTAMP
-     WHERE id = $2`,
-    [hashedPassword, owner.userId]
+     WHERE id = $3`,
+    [hashedPassword, supabaseUserId, owner.userId]
   )
 
   console.log('[RestaurantPasswordReset] password updated', {

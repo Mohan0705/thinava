@@ -16,6 +16,7 @@ const cors = require('cors')
 const helmet = require('helmet')
 const rateLimit = require('express-rate-limit')
 const { logger } = require('./lib/logger')
+const { validateRestaurantSupabaseAuthEnvironment } = require('./lib/supabaseAuth')
 
 // ============================================================
 // PROCESS SAFETY HANDLERS + GRACEFUL SHUTDOWN
@@ -105,6 +106,7 @@ const { ensureRestaurantRegistrationSchema } = require('./database/ensureRestaur
 const { ensureMarketingSchema } = require('./database/ensureMarketingSchema')
 const addNotesToOrderItems = require('./database/migrations/add-notes-to-order-items')
 const addOrderLifecycleColumns = require('./database/migrations/add-order-lifecycle-columns')
+const { repairRestaurantAuthUsers } = require('./modules/restaurantPanel/services/authRepairService')
 const { createSocketServer, closeSocketServer } = require('./realtime/socketServer')
 const { checkHealth, getPoolStatus } = require('./database/connection')
 
@@ -215,7 +217,9 @@ app.use('/api/orders-advanced', ordersAdvancedRoutes)
 app.use('/api/users', userRoutes)
 app.use('/api/restaurant', restaurantPanelRoutes)
 app.use('/api/restaurant-auth', restaurantAuthRoutes)
-app.use('/api/restaurant-auth-debug', restaurantAuthDebugRoutes)
+if (!isProduction) {
+  app.use('/api/restaurant-auth-debug', restaurantAuthDebugRoutes)
+}
 app.use('/api/rider-auth', riderAuthRoutes)
 app.use('/api/delivery', deliveryRoutes)
 app.use('/api/admin', adminRoutes)
@@ -403,6 +407,8 @@ registerShutdownTask(async () => {
 })
 
 // Test database connection first
+validateRestaurantSupabaseAuthEnvironment()
+
 testConnection()
   .then(() => ensureRestaurantPanelSchema())
   .then(() => ensureAdminSchema())
@@ -412,6 +418,12 @@ testConnection()
   .then(() => ensureCustomerAuthSchema())
   .then(() => ensureFeaturesSchema())
   .then(() => ensureRestaurantRegistrationSchema())
+  .then(() => repairRestaurantAuthUsers().catch((error) => {
+    logger.error('Restaurant auth repair failed during startup; continuing with server start', {
+      error,
+      tag: 'restaurant_auth_repair',
+    })
+  }))
   .then(() => ensureRestaurantMenuSchema())
   .then(() => ensureMarketingSchema())
   .then(() => ensureOrderPrivacyAndRatingSchema())

@@ -29,7 +29,7 @@ const getSupabaseAuthClient = () => {
   if (!isSupabaseAuthConfigured()) {
     if (!missingConfigWarned) {
       missingConfigWarned = true
-      logger.warn('Supabase Auth is not configured; restaurant auth is using legacy bcrypt fallback', {
+      logger.error('Supabase Auth is not configured; restaurant authentication is disabled', {
         tag: 'supabase_auth',
         hasUrl: Boolean(getSupabaseUrl()),
         hasAnonKey: Boolean(getSupabaseAnonKey()),
@@ -62,6 +62,33 @@ const getSupabaseAuthStatus = () => ({
   hasServiceRole: Boolean(getSupabaseUrl() && getSupabaseServiceRoleKey()),
 })
 
+const validateRestaurantSupabaseAuthEnvironment = () => {
+  const missing = []
+  if (!getSupabaseUrl()) missing.push('SUPABASE_URL')
+  if (!getSupabaseAnonKey()) missing.push('SUPABASE_ANON_KEY')
+  if (!getSupabaseServiceRoleKey()) missing.push('SUPABASE_SERVICE_ROLE_KEY')
+
+  if (missing.length > 0) {
+    logger.error('Restaurant Supabase Auth environment is incomplete', {
+      tag: 'supabase_auth',
+      missing,
+      impact: 'Restaurant signup, login repair, and password reset will be unavailable until configured.',
+    })
+  } else {
+    logger.info('Restaurant Supabase Auth environment is configured', {
+      tag: 'supabase_auth',
+      hasUrl: true,
+      hasAnonKey: true,
+      hasServiceRole: true,
+    })
+  }
+
+  return {
+    ready: missing.length === 0,
+    missing,
+  }
+}
+
 const logSupabaseAuthResponse = (flow, email, data, error, extra = {}) => {
   const payload = {
     tag: 'supabase_auth',
@@ -89,7 +116,7 @@ const getCleanSupabaseAuthMessage = (error, fallback = 'Authentication failed') 
   const message = String(error?.message || fallback)
 
   if (/email not confirmed/i.test(message)) {
-    return 'Please verify your email before signing in. For testing, temporarily disable Confirm email in Supabase Auth settings.'
+    return 'Your restaurant account needs admin confirmation. Please contact THINAVA support.'
   }
 
   if (/invalid login credentials|invalid.*credentials/i.test(message)) {
@@ -122,4 +149,5 @@ module.exports = {
   getSupabaseAuthStatus,
   isSupabaseAuthConfigured,
   logSupabaseAuthResponse,
+  validateRestaurantSupabaseAuthEnvironment,
 }

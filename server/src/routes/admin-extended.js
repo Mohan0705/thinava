@@ -20,6 +20,11 @@ const router = express.Router()
 const pool = require('../database/connection')
 const { authenticateAdmin } = require('../modules/admin/middleware/auth')
 const { assertCloudinaryImageUrl, deleteReplacedImages } = require('../lib/cloudinaryService')
+const {
+  createConfirmedRestaurantAuthUser,
+  deleteSupabaseRestaurantAuthUser,
+  syncSupabaseRestaurantMetadata,
+} = require('../modules/restaurantPanel/services/supabaseRestaurantAuthService')
 
 // Error handler
 const asyncHandler = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next)
@@ -370,8 +375,45 @@ router.post('/restaurants/register-manual', asyncHandler(async (req, res) => {
     })
   }
 
+  const existingOwner = await pool.query(
+    `SELECT id FROM restaurant_users
+     WHERE LOWER(email) = LOWER($1)
+        OR ($2::text IS NOT NULL AND phone = $2)
+     LIMIT 1`,
+    [normalizedOwnerEmail, ownerPhone || null]
+  )
+
+  if (existingOwner.rows.length > 0) {
+    return res.status(409).json({
+      success: false,
+      error: 'Email or phone number already registered'
+    })
+  }
+
+  const existingRestaurant = await pool.query(
+    'SELECT id FROM restaurants WHERE LOWER(name) = LOWER($1) LIMIT 1',
+    [restaurantName]
+  )
+
+  if (existingRestaurant.rows.length > 0) {
+    return res.status(409).json({
+      success: false,
+      error: 'Restaurant name already exists'
+    })
+  }
+
+  let createdSupabaseUserId = null
   const client = await pool.connect()
   try {
+    const authSignup = await createConfirmedRestaurantAuthUser({
+      email: normalizedOwnerEmail,
+      password,
+      restaurantName,
+      ownerName,
+      ownerPhone,
+    })
+    createdSupabaseUserId = authSignup.userId
+
     await client.query('BEGIN')
 
     // Create restaurant with all fields
@@ -405,6 +447,12 @@ router.post('/restaurants/register-manual', asyncHandler(async (req, res) => {
     )
 
     const restaurantId = restResult.rows[0].id
+    await syncSupabaseRestaurantMetadata(authSignup.userId, normalizedOwnerEmail, {
+      ownerName,
+      ownerPhone,
+      restaurantId,
+      restaurantName,
+    })
     console.log('✅ Restaurant created:', restaurantId)
 
     // Create restaurant details with all address fields
@@ -464,10 +512,10 @@ router.post('/restaurants/register-manual', asyncHandler(async (req, res) => {
     const hashedPassword = await bcrypt.hash(password, 10)
 
     const userResult = await client.query(
-      `INSERT INTO restaurant_users (restaurant_id, email, password_hash, full_name, phone, role, is_active)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
+      `INSERT INTO restaurant_users (supabase_user_id, restaurant_id, email, password_hash, full_name, phone, role, is_active)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
        RETURNING id`,
-      [restaurantId, normalizedOwnerEmail, hashedPassword, ownerName, ownerPhone || null, 'restaurant_owner', true]
+      [authSignup.userId, restaurantId, normalizedOwnerEmail, hashedPassword, ownerName, ownerPhone || null, 'restaurant_owner', true]
     )
     console.log('✅ Restaurant user created')
 
@@ -496,6 +544,7 @@ router.post('/restaurants/register-manual', asyncHandler(async (req, res) => {
 
   } catch (error) {
     await client.query('ROLLBACK')
+    await deleteSupabaseRestaurantAuthUser(createdSupabaseUserId, normalizedOwnerEmail)
     console.error('❌ Manual restaurant registration failed:', {
       message: error.message,
       code: error.code,
@@ -528,10 +577,17 @@ router.post('/riders/register-manual', asyncHandler(async (req, res) => {
     password
   } = req.body
 
-  if (!fullName || !phone || !vehicleType || !vehicleNumber) {
+  if (!fullName || !phone || !vehicleType || !vehicleNumber || !password) {
     return res.status(400).json({
       success: false,
       error: 'Missing required fields'
+    })
+  }
+
+  if (password.length < 8) {
+    return res.status(400).json({
+      success: false,
+      error: 'Password must be at least 8 characters'
     })
   }
 
@@ -541,7 +597,7 @@ router.post('/riders/register-manual', asyncHandler(async (req, res) => {
 
     // Create rider
     const bcrypt = require('bcryptjs')
-    const hashedPassword = await bcrypt.hash(password || 'temp123456', 10)
+    const hashedPassword = await bcrypt.hash(password, 10)
 
     const riderResult = await client.query(
       `INSERT INTO delivery_partners (phone, email, full_name, password_hash, status, approval_status)

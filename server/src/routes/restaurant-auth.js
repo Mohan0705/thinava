@@ -20,22 +20,16 @@
 const express = require('express')
 const router = express.Router()
 const bcrypt = require('bcryptjs')
-const { body, validationResult } = require('express-validator')
 const pool = require('../database/connection')
-const { signRestaurantToken, verifyRestaurantToken } = require('../lib/auth/tokenService')
+const { verifyRestaurantToken } = require('../lib/auth/tokenService')
 const restaurantPanelAuthService = require('../modules/restaurantPanel/services/authService')
 const {
-  getCleanSupabaseAuthMessage,
-  getSupabaseAdminClient,
-  getSupabaseAuthClient,
-  getSupabaseAuthHttpStatus,
-  logSupabaseAuthResponse,
-} = require('../lib/supabaseAuth')
+  createConfirmedRestaurantAuthUser,
+  deleteSupabaseRestaurantAuthUser,
+  syncSupabaseRestaurantMetadata,
+} = require('../modules/restaurantPanel/services/supabaseRestaurantAuthService')
 
 const BCRYPT_ROUNDS = 10
-const MAX_LOGIN_ATTEMPTS = 5
-const LOGIN_ATTEMPT_WINDOW = 15 * 60 * 1000 // 15 minutes
-const MAX_SIGNUPS_PER_PHONE_PER_DAY = 3
 
 // Validation middleware
 const validateEmail = (email) => {
@@ -55,99 +49,24 @@ const createRestaurantSupabaseAuthUser = async ({
   ownerName,
   ownerPhone,
 }) => {
-  const supabase = getSupabaseAuthClient()
-
-  if (!supabase) {
-    console.warn('Supabase Auth signup skipped; missing SUPABASE_URL/SUPABASE_ANON_KEY', {
-      email,
-    })
-    return {
-      provider: 'legacy',
-      userId: null,
-      emailConfirmationRequired: false,
-      hasSession: false,
-    }
-  }
-
-  console.log('Supabase Auth signup starting', {
+  console.log('Supabase restaurant auth create starting', {
     email,
-    passwordLength: password.length,
     restaurantName,
   })
 
-  const { data, error } = await supabase.auth.signUp({
+  const authUser = await createConfirmedRestaurantAuthUser({
     email,
     password,
-    options: {
-      data: {
-        role: 'restaurant_owner',
-        restaurant_name: restaurantName,
-        owner_name: ownerName,
-        owner_phone: ownerPhone,
-      },
-    },
+    restaurantName,
+    ownerName,
+    ownerPhone,
   })
-
-  logSupabaseAuthResponse('restaurant_signup', email, data, error, {
-    passwordLength: password.length,
-  })
-
-  if (error || !data?.user?.id) {
-    const signupError = new Error(
-      error ? getCleanSupabaseAuthMessage(error, 'Restaurant auth signup failed') : 'Restaurant auth signup did not return a user'
-    )
-    signupError.status = error ? getSupabaseAuthHttpStatus(error, 400) : 502
-    signupError.code = 'SUPABASE_SIGNUP_FAILED'
-    throw signupError
-  }
-
-  if (
-    data.user.email &&
-    data.user.email.toLowerCase().trim() !== email.toLowerCase().trim()
-  ) {
-    const signupError = new Error('Supabase Auth returned a different email for this signup')
-    signupError.status = 502
-    signupError.code = 'SUPABASE_EMAIL_MISMATCH'
-    signupError.supabaseUserId = data.user.id
-    throw signupError
-  }
-
-  if (
-    process.env.SUPABASE_AUTH_AUTO_CONFIRM_RESTAURANTS === 'true' &&
-    !data.user.email_confirmed_at
-  ) {
-    const adminClient = getSupabaseAdminClient()
-
-    if (adminClient) {
-      const { data: confirmedData, error: confirmError } =
-        await adminClient.auth.admin.updateUserById(data.user.id, {
-          email_confirm: true,
-        })
-
-      logSupabaseAuthResponse('restaurant_signup_auto_confirm', email, confirmedData, confirmError, {
-        userId: data.user.id,
-      })
-
-      if (confirmError) {
-        const confirmFailure = new Error(getCleanSupabaseAuthMessage(confirmError, 'Failed to confirm restaurant email'))
-        confirmFailure.status = getSupabaseAuthHttpStatus(confirmError, 502)
-        confirmFailure.code = 'SUPABASE_CONFIRM_FAILED'
-        confirmFailure.supabaseUserId = data.user.id
-        throw confirmFailure
-      }
-    } else {
-      console.warn('SUPABASE_AUTH_AUTO_CONFIRM_RESTAURANTS=true but SUPABASE_SERVICE_ROLE_KEY is missing', {
-        email,
-        userId: data.user.id,
-      })
-    }
-  }
 
   return {
-    provider: 'supabase',
-    userId: data.user.id,
-    emailConfirmationRequired: !data.session && !data.user.email_confirmed_at,
-    hasSession: Boolean(data.session),
+    provider: authUser.provider,
+    userId: authUser.userId,
+    emailConfirmationRequired: false,
+    hasSession: false,
   }
 }
 
@@ -156,17 +75,7 @@ const cleanupSupabaseAuthUser = async (userId, email) => {
     return
   }
 
-  const adminClient = getSupabaseAdminClient()
-  if (!adminClient) {
-    console.warn('Skipping Supabase Auth cleanup; SUPABASE_SERVICE_ROLE_KEY is missing', {
-      email,
-      userId,
-    })
-    return
-  }
-
-  const { data, error } = await adminClient.auth.admin.deleteUser(userId)
-  logSupabaseAuthResponse('restaurant_signup_cleanup', email, data, error, { userId })
+  await deleteSupabaseRestaurantAuthUser(userId, email)
 }
 
 // Error handler wrapper
@@ -376,6 +285,13 @@ router.post('/register', asyncHandler(async (req, res) => {
 
     const restaurantId = restaurantResult.rows[0].id
 
+    await syncSupabaseRestaurantMetadata(authSignup.userId, ownerEmail, {
+      ownerName,
+      ownerPhone,
+      restaurantId,
+      restaurantName,
+    })
+
     // Create restaurant details
     await client.query(
       `INSERT INTO restaurant_details 
@@ -392,25 +308,14 @@ router.post('/register', asyncHandler(async (req, res) => {
       [restaurantId, ownerName, ownerPhone, ownerEmail, gstNumber || null, fssaiLicense || null, '', address, latitude && latitude !== '0' ? parseFloat(latitude) : null, longitude && longitude !== '0' ? parseFloat(longitude) : null, 'PENDING', category, vegNonVeg, openingTime, closingTime, parseFloat(deliveryRadius) || 5]
     )
 
-    // Hash password with bcrypt (10 salt rounds for production)
-    console.log('🔐 Hashing password...', {
-      passwordLength: password.length,
-      saltRounds: BCRYPT_ROUNDS,
-      email: ownerEmail
-    })
     const hashedPassword = await bcrypt.hash(password, BCRYPT_ROUNDS)
-    console.log('✅ Password hashed successfully', {
-      hashedPasswordLength: hashedPassword.length,
-      hashPrefix: hashedPassword.substring(0, 15),
-      email: ownerEmail
-    })
 
-    // Create restaurant user only after Supabase Auth signup succeeds.
+    // Supabase Auth is the login source of truth; this hash is retained only for audit/compatibility.
     const userResult = await client.query(
       `INSERT INTO restaurant_users 
        (supabase_user_id, restaurant_id, email, password_hash, full_name, phone, role, is_active)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-       RETURNING id, email, password_hash`,
+       RETURNING id, email`,
       [authSignup.userId, restaurantId, ownerEmail, hashedPassword, ownerName, ownerPhone, 'restaurant_owner', true]
     )
     
@@ -421,7 +326,6 @@ router.post('/register', asyncHandler(async (req, res) => {
       restaurantId,
       supabaseUserId: authSignup.userId,
       authProvider: authSignup.provider,
-      passwordHashLength: hashedPassword.length,
       isActive: true
     })
 
@@ -439,13 +343,11 @@ router.post('/register', asyncHandler(async (req, res) => {
       message: 'Registration successful! Your restaurant is under review.',
       restaurantId,
       status: 'PENDING_APPROVAL',
-      nextStep: authSignup.emailConfirmationRequired
-        ? 'Verify your email and wait for admin approval'
-        : 'Wait for admin approval',
+      nextStep: 'Wait for admin approval',
       auth: {
         provider: authSignup.provider,
         userId: authSignup.userId,
-        emailConfirmationRequired: authSignup.emailConfirmationRequired,
+        emailConfirmationRequired: false,
       }
     })
 
@@ -511,117 +413,6 @@ router.post('/login', asyncHandler(async (req, res) => {
     }
   })
 
-  console.log('🔐 Login Attempt:', {
-    email,
-    passwordLength: password.length,
-    timestamp: new Date().toISOString()
-  })
-
-  // Find restaurant user
-  const userResult = await pool.query(
-    `SELECT ru.*, r.id as restaurant_id, r.status as restaurant_status
-     FROM restaurant_users ru
-     JOIN restaurants r ON r.id = ru.restaurant_id
-     WHERE ru.email = $1`,
-    [email]
-  )
-
-  if (userResult.rows.length === 0) {
-    return res.status(401).json({ 
-      success: false, 
-      error: 'Invalid credentials' 
-    })
-  }
-
-  const user = userResult.rows[0]
-
-  // Check if restaurant is approved
-  if (user.restaurant_status === 'PENDING_APPROVAL') {
-    return res.status(403).json({ 
-      success: false, 
-      error: 'Restaurant pending admin approval. Please wait.',
-      status: 'PENDING_APPROVAL'
-    })
-  }
-
-  if (user.restaurant_status === 'REJECTED' || user.restaurant_status === 'SUSPENDED') {
-    return res.status(403).json({ 
-      success: false, 
-      error: `Restaurant status: ${user.restaurant_status}`,
-      status: user.restaurant_status
-    })
-  }
-
-  // Verify password
-  console.log('🔍 Login attempt:', {
-    email,
-    userFound: true,
-    restaurantStatus: user.restaurant_status,
-    passwordHashExists: !!user.password_hash,
-    passwordHashLength: user.password_hash?.length,
-    passwordHashPrefix: user.password_hash?.substring(0, 15)
-  })
-  
-  const isPasswordValid = await bcrypt.compare(password, user.password_hash)
-  
-  console.log('🔐 Password verification result:', {
-    email,
-    userId: user.id,
-    isPasswordValid,
-    passwordLength: password.length,
-    hashLength: user.password_hash?.length,
-    hashAlgorithm: user.password_hash?.startsWith('$2') ? 'bcrypt' : 'unknown'
-  })
-  
-  if (!isPasswordValid) {
-    console.error('❌ Login failed - Invalid password:', {
-      email,
-      userId: user.id,
-      hashPrefix: user.password_hash?.substring(0, 20),
-      timestamp: new Date().toISOString()
-    })
-    return res.status(401).json({ 
-      success: false, 
-      error: 'Invalid credentials' 
-    })
-  }
-  
-  console.log('✅ Password verified:', { email, userId: user.id })
-
-  // Update last login
-  await pool.query(
-    'UPDATE restaurant_users SET last_login_at = NOW() WHERE id = $1',
-    [user.id]
-  )
-
-  // Generate JWT
-  const token = signRestaurantToken({
-    id: user.id,
-    email: user.email,
-    full_name: user.full_name,
-    restaurant_id: user.restaurant_id,
-  })
-
-  console.log('✅ Login successful - Token generated:', {
-    email,
-    userId: user.id,
-    restaurantId: user.restaurant_id,
-    tokenLength: token.length,
-    tokenPrefix: token.substring(0, 20) + '...',
-    timestamp: new Date().toISOString()
-  })
-
-  return res.json({
-    success: true,
-    message: 'Login successful',
-    token,
-    owner: {
-      id: user.id,
-      restaurantId: user.restaurant_id,
-      email: user.email,
-      full_name: user.full_name,
-    }
-  })
 }))
 
 // ============================================================
@@ -782,10 +573,15 @@ router.post('/password-reset/request', asyncHandler(async (req, res) => {
       email: result.email
     })
   } catch (error) {
-    console.error('Password reset request error:', error)
-    return res.status(500).json({ 
-      success: false, 
-      error: 'Failed to process password reset request' 
+    console.error('Password reset request error:', {
+      message: error.message,
+      code: error.code,
+      status: error.status,
+    })
+    return res.status(error.status || 500).json({
+      success: false,
+      error: error.message || 'Failed to process password reset request',
+      code: error.code,
     })
   }
 }))

@@ -357,7 +357,6 @@ export default function RestaurantAuthPage() {
         restaurantName: signupPayload.restaurantName,
         ownerEmail: signupPayload.ownerEmail,
         ownerPhone: signupPayload.ownerPhone,
-        passwordLength: signupPayload.password.length,
       })
 
       const response = await fetch(`${API_BASE_URL}/restaurant/auth/signup`, {
