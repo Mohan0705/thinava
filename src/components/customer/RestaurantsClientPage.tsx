@@ -17,18 +17,10 @@ import { fetchRestaurants } from '@/lib/customer-api'
 import { getRealtimeSocket, releaseRealtimeSocket } from '@/lib/realtime'
 import { isValidJwt } from '@/lib/auth/session'
 import { useAuthStore } from '@/store/authStore'
+import { API_BASE_URL } from '@/lib/api'
 import type { Restaurant } from '@/types'
 
 const normalize = (value: string) => value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
-
-const matchesCategory = (restaurant: Restaurant, category: string) => {
-  const needle = normalize(category)
-  const haystack = [restaurant.name, restaurant.description || '', restaurant.cuisines.join(' ')]
-    .map(normalize)
-    .join(' ')
-
-  return haystack.includes(needle)
-}
 
 export function RestaurantsClientPage({
   initialCategory,
@@ -41,6 +33,7 @@ export function RestaurantsClientPage({
   const [restaurants, setRestaurants] = useState<Restaurant[]>([])
   const [loading, setLoading] = useState(true)
   const [query, setQuery] = useState(initialQuery)
+  const [emptyMessage, setEmptyMessage] = useState('')
 
   const token = useAuthStore((state) => state.token)
 
@@ -48,11 +41,40 @@ export function RestaurantsClientPage({
     let mounted = true
 
     const loadRestaurants = async () => {
+      setLoading(true)
+      setEmptyMessage('')
       try {
-        const response = await fetchRestaurants()
-        if (mounted) setRestaurants(response)
-      } catch {
-        if (mounted) setRestaurants([])
+        if (initialCategory) {
+          // Use the new category filtering endpoint
+          const response = await fetch(
+            `${API_BASE_URL}/search/by-category/${encodeURIComponent(initialCategory)}`
+          )
+          const data = await response.json()
+          if (mounted) {
+            if (data.success) {
+              setRestaurants(data.restaurants || [])
+              if (data.restaurants.length === 0) {
+                setEmptyMessage(data.message || `No restaurants serving ${initialCategory} nearby`)
+              }
+            } else {
+              setRestaurants([])
+              setEmptyMessage(`Failed to load restaurants: ${data.error}`)
+            }
+          }
+        } else {
+          // Load all restaurants
+          const response = await fetchRestaurants()
+          if (mounted) setRestaurants(response)
+        }
+      } catch (error) {
+        if (mounted) {
+          setRestaurants([])
+          setEmptyMessage(
+            initialCategory
+              ? `No restaurants serving ${initialCategory} nearby`
+              : 'Failed to load restaurants'
+          )
+        }
       } finally {
         if (mounted) setLoading(false)
       }
@@ -63,7 +85,7 @@ export function RestaurantsClientPage({
     return () => {
       mounted = false
     }
-  }, [])
+  }, [initialCategory])
 
   useEffect(() => {
     if (!token || !isValidJwt(token)) {
@@ -110,16 +132,25 @@ export function RestaurantsClientPage({
     router.push(nextUrl)
   }
 
+  // Filter restaurants by search query
   const filteredRestaurants = useMemo(() => {
-    const textQuery = normalize(query)
+    if (!query.trim()) {
+      return restaurants
+    }
 
+    const textQuery = normalize(query)
     return restaurants.filter((restaurant) => {
-      const categoryMatch = initialCategory ? matchesCategory(restaurant, initialCategory) : true
-      if (!categoryMatch) return false
-      if (!textQuery) return true
-      return matchesCategory(restaurant, textQuery)
+      const restaurantText = [
+        restaurant.name,
+        restaurant.description || '',
+        restaurant.cuisines.join(' ')
+      ]
+        .map(normalize)
+        .join(' ')
+
+      return restaurantText.includes(textQuery)
     })
-  }, [initialCategory, query, restaurants])
+  }, [query, restaurants])
 
   return (
     <div className="thinava-page-mobile">
@@ -179,8 +210,12 @@ export function RestaurantsClientPage({
         ) : filteredRestaurants.length === 0 ? (
           <Card>
             <CardContent className="p-10 text-center">
-              <h3 className="text-lg font-bold text-thinava-text">No matching restaurants</h3>
-              <p className="mt-2 text-sm text-gray-500">Try another category or browse all partners.</p>
+              <h3 className="text-lg font-bold text-thinava-text">{emptyMessage || 'No matching restaurants'}</h3>
+              <p className="mt-2 text-sm text-gray-500">
+                {initialCategory 
+                  ? `Try a different category or browse all restaurants.`
+                  : 'Try another search term or browse all partners.'}
+              </p>
               <Link href="/" className="mt-5 inline-flex">
                 <Button variant="outline">Back to homepage</Button>
               </Link>

@@ -60,14 +60,19 @@ export default function LiveSearchBar({ elevated = false }: { elevated?: boolean
     const delayDebounce = window.setTimeout(async () => {
       setLoading(true)
       try {
-        const res = await fetch(`${API_BASE_URL}/search?q=${encodeURIComponent(query)}`)
+        const res = await fetch(
+          `${API_BASE_URL}/search?q=${encodeURIComponent(query)}&veg=&maxPrice=`
+        )
         const data = await res.json()
         if (data.success) {
           setRestaurants(data.restaurants || [])
           setMenuItems(data.menuItems || [])
+          setShowDropdown(true)
         }
       } catch (err) {
         console.error('Search failed', err)
+        setRestaurants([])
+        setMenuItems([])
       } finally {
         setLoading(false)
       }
@@ -144,7 +149,9 @@ export default function LiveSearchBar({ elevated = false }: { elevated?: boolean
             ) : restaurants.length === 0 && menuItems.length === 0 ? (
               <div className="p-8 text-center">
                 <p className="text-sm font-bold text-slate-700">{t('noResults')}</p>
-                <p className="mt-1 text-xs text-slate-400">Try double checking your spelling.</p>
+                <p className="mt-1 text-xs text-slate-400">
+                  No restaurants or dishes match "{query}". Try searching for other items or restaurants.
+                </p>
               </div>
             ) : (
               <>
