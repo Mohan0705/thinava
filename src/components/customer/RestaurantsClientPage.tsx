@@ -17,10 +17,19 @@ import { fetchRestaurants } from '@/lib/customer-api'
 import { getRealtimeSocket, releaseRealtimeSocket } from '@/lib/realtime'
 import { isValidJwt } from '@/lib/auth/session'
 import { useAuthStore } from '@/store/authStore'
+import { useFilterStore } from '@/store/filterStore'
 import { API_BASE_URL } from '@/lib/api'
 import type { Restaurant } from '@/types'
 
 const normalize = (value: string) => value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+
+interface ApiResponse {
+  success?: boolean
+  restaurants?: Restaurant[]
+  error?: string
+  message?: string
+  count?: number
+}
 
 export function RestaurantsClientPage({
   initialCategory,
@@ -34,44 +43,111 @@ export function RestaurantsClientPage({
   const [loading, setLoading] = useState(true)
   const [query, setQuery] = useState(initialQuery)
   const [emptyMessage, setEmptyMessage] = useState('')
+  const [error, setError] = useState<string | null>(null)
 
   const token = useAuthStore((state) => state.token)
+  const { resetHomepageFilters, setCategory, setSearchQuery } = useFilterStore()
 
+  // CRITICAL: Reset homepage filters when navigating to category/search
+  useEffect(() => {
+    resetHomepageFilters()
+    
+    if (initialCategory && initialCategory.trim()) {
+      setCategory(initialCategory)
+    } else if (initialQuery && initialQuery.trim()) {
+      setSearchQuery(initialQuery)
+    }
+
+    return () => {
+      // Cleanup: clear category context when unmounting
+      setCategory(null)
+      setSearchQuery(null)
+    }
+  }, [initialCategory, initialQuery, resetHomepageFilters, setCategory, setSearchQuery])
+
+  // Load restaurants based on category or query
   useEffect(() => {
     let mounted = true
 
     const loadRestaurants = async () => {
       setLoading(true)
       setEmptyMessage('')
+      setError(null)
+      
       try {
-        if (initialCategory) {
-          // Use the new category filtering endpoint
+        if (initialCategory && initialCategory.trim()) {
+          // Fetch by category - this is isolated from homepage filters
           const response = await fetch(
             `${API_BASE_URL}/search/by-category/${encodeURIComponent(initialCategory)}`
           )
-          const data = await response.json()
+          
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`)
+          }
+
+          const data: ApiResponse = await response.json()
+
           if (mounted) {
-            if (data.success) {
-              setRestaurants(data.restaurants || [])
-              if (data.restaurants.length === 0) {
-                setEmptyMessage(data.message || `No restaurants serving ${initialCategory} nearby`)
-              }
-            } else {
-              setRestaurants([])
-              setEmptyMessage(`Failed to load restaurants: ${data.error}`)
+            // Safe parsing with defaults - prevent undefined errors
+            const fetchedRestaurants = Array.isArray(data.restaurants) ? data.restaurants : []
+            const validRestaurants = fetchedRestaurants.filter((r): r is Restaurant => !!r && typeof r === 'object')
+            
+            setRestaurants(validRestaurants)
+            
+            if (validRestaurants.length === 0) {
+              setEmptyMessage(
+                data.message || `No restaurants serving ${initialCategory} nearby`
+              )
+            }
+            
+            if (!data.success && data.error) {
+              setError(data.error)
+            }
+          }
+        } else if (initialQuery && initialQuery.trim()) {
+          // Search by query
+          const response = await fetch(
+            `${API_BASE_URL}/search?q=${encodeURIComponent(initialQuery)}`
+          )
+          
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`)
+          }
+
+          const data: ApiResponse = await response.json()
+
+          if (mounted) {
+            const fetchedRestaurants = Array.isArray(data.restaurants) ? data.restaurants : []
+            const validRestaurants = fetchedRestaurants.filter((r): r is Restaurant => !!r && typeof r === 'object')
+            
+            setRestaurants(validRestaurants)
+            
+            if (validRestaurants.length === 0) {
+              setEmptyMessage('No restaurants or dishes match your search. Try different keywords.')
+            }
+            
+            if (!data.success && data.error) {
+              setError(data.error)
             }
           }
         } else {
-          // Load all restaurants
+          // Load all restaurants - homepage state does NOT affect this
           const response = await fetchRestaurants()
-          if (mounted) setRestaurants(response)
+          if (mounted) {
+            const validResponse = Array.isArray(response) ? response.filter((r): r is Restaurant => !!r && typeof r === 'object') : []
+            setRestaurants(validResponse)
+          }
         }
-      } catch (error) {
+      } catch (err) {
         if (mounted) {
+          const errorMsg = err instanceof Error ? err.message : 'Failed to load restaurants'
+          setError(errorMsg)
           setRestaurants([])
           setEmptyMessage(
             initialCategory
               ? `No restaurants serving ${initialCategory} nearby`
+              : initialQuery
+              ? 'Failed to load search results'
               : 'Failed to load restaurants'
           )
         }
@@ -80,13 +156,14 @@ export function RestaurantsClientPage({
       }
     }
 
-    void loadRestaurants()
+    loadRestaurants()
 
     return () => {
       mounted = false
     }
-  }, [initialCategory])
+  }, [initialCategory, initialQuery])
 
+  // Real-time restaurant status updates
   useEffect(() => {
     if (!token || !isValidJwt(token)) {
       return
@@ -115,8 +192,9 @@ export function RestaurantsClientPage({
     }
   }, [token])
 
+  // Sync query state with URL params
   useEffect(() => {
-    setQuery(initialQuery)
+    setQuery(initialQuery || '')
   }, [initialQuery])
 
   const handleSearchSubmit = (event: FormEvent<HTMLFormElement>) => {
@@ -132,7 +210,7 @@ export function RestaurantsClientPage({
     router.push(nextUrl)
   }
 
-  // Filter restaurants by search query
+  // Filter restaurants by search query ONLY (not by homepage filters)
   const filteredRestaurants = useMemo(() => {
     if (!query.trim()) {
       return restaurants
@@ -143,7 +221,7 @@ export function RestaurantsClientPage({
       const restaurantText = [
         restaurant.name,
         restaurant.description || '',
-        restaurant.cuisines.join(' ')
+        restaurant.cuisines?.join(' ') || ''
       ]
         .map(normalize)
         .join(' ')
@@ -210,12 +288,19 @@ export function RestaurantsClientPage({
         ) : filteredRestaurants.length === 0 ? (
           <Card>
             <CardContent className="p-10 text-center">
-              <h3 className="text-lg font-bold text-thinava-text">{emptyMessage || 'No matching restaurants'}</h3>
+              <h3 className="text-lg font-bold text-thinava-text">
+                {emptyMessage || 'No matching restaurants'}
+              </h3>
               <p className="mt-2 text-sm text-gray-500">
                 {initialCategory 
                   ? `Try a different category or browse all restaurants.`
                   : 'Try another search term or browse all partners.'}
               </p>
+              {error && (
+                <p className="mt-2 text-sm text-red-600">
+                  Error: {error}
+                </p>
+              )}
               <Link href="/" className="mt-5 inline-flex">
                 <Button variant="outline">Back to homepage</Button>
               </Link>

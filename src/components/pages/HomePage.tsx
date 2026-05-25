@@ -12,6 +12,7 @@ import { categories } from '@/data/categories'
 import { fetchRestaurants } from '@/lib/customer-api'
 import { getOptimizedCloudinaryImageUrl } from '@/lib/cloudinary-image'
 import { Restaurant } from '@/types'
+import { useFilterStore } from '@/store/filterStore'
 import { HomeActiveOrderCard } from '@/components/customer/HomeActiveOrderCard'
 import { HeroBanner } from '@/components/customer/HeroBanner'
 import { SectionHeading } from '@/components/customer/SectionHeading'
@@ -56,8 +57,7 @@ export default function HomePage() {
   const [allRestaurants, setAllRestaurants] = useState<Restaurant[]>([])
   const [loadingRestaurants, setLoadingRestaurants] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
-  const [activeRatingFilter, setActiveRatingFilter] = useState<number | null>(null)
-  const [activeFilterChips, setActiveFilterChips] = useState<FilterChip[]>([])
+  const { activeRatingFilter, activeFilterChips, setRatingFilter, toggleFilterChip } = useFilterStore()
 
   useEffect(() => {
     let isMounted = true
@@ -121,36 +121,8 @@ export default function HomePage() {
     return nextRestaurants
   }, [activeFilterChips, activeRatingFilter, allRestaurants])
 
-  const toggleFilterChip = (chip: FilterChip) => {
-    setActiveFilterChips((current) => {
-      if (chip === 'Under Rs99') {
-        return current.includes(chip)
-          ? current.filter((item) => item !== chip)
-          : [...current.filter((item) => item !== 'Under Rs199'), chip]
-      }
-
-      if (chip === 'Under Rs199') {
-        return current.includes(chip)
-          ? current.filter((item) => item !== chip)
-          : [...current.filter((item) => item !== 'Under Rs99'), chip]
-      }
-
-      if (chip === 'Pure Veg') {
-        return current.includes(chip)
-          ? current.filter((item) => item !== chip)
-          : [...current.filter((item) => item !== 'Non Veg'), chip]
-      }
-
-      if (chip === 'Non Veg') {
-        return current.includes(chip)
-          ? current.filter((item) => item !== chip)
-          : [...current.filter((item) => item !== 'Pure Veg'), chip]
-      }
-
-      return current.includes(chip)
-        ? current.filter((item) => item !== chip)
-        : [...current, chip]
-    })
+  const handleRatingFilterToggle = (rating: number) => {
+    setRatingFilter(activeRatingFilter === rating ? null : rating)
   }
 
   return (
@@ -229,7 +201,7 @@ export default function HomePage() {
                 <button
                   key={rating}
                   type="button"
-                  onClick={() => setActiveRatingFilter((current) => (current === rating ? null : rating))}
+                  onClick={() => handleRatingFilterToggle(rating)}
                   className={`snap-start shrink-0 rounded-full border px-4 py-2.5 text-sm font-bold transition-all active:scale-[0.97] ${
                     isActive
                       ? 'border-[#FF6B35] bg-[#FF6B35] text-white shadow-[0_12px_26px_-16px_rgba(255,107,53,0.72)]'
