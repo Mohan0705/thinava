@@ -3,7 +3,6 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { ChevronDown, MapPin, ShoppingCart, User } from 'lucide-react'
-import { Button } from '@/components/ui/Button'
 import { useCartStore } from '@/store/cartStore'
 import { useAuthStore } from '@/store/authStore'
 import LiveSearchBar from '@/components/customer/LiveSearchBar'
@@ -31,10 +30,10 @@ export default function Header({ immersive = false }: HeaderProps) {
   const renderLocationBlock = (dark: boolean) => (
     <Link
       href={token ? '/profile/addresses' : '/login'}
-      className="group min-w-0 flex-1"
+      className="group min-w-0 flex-1 basis-0 overflow-visible"
       aria-label="Manage delivery address"
     >
-      <div className="flex items-start gap-3">
+      <div className="flex min-w-0 items-start gap-3">
         <span
           className={cn(
             'flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl',
@@ -45,7 +44,7 @@ export default function Header({ immersive = false }: HeaderProps) {
         >
           <MapPin className="h-4 w-4 text-[#FF8A5B]" />
         </span>
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1">
             <span
               className={cn(
@@ -70,72 +69,78 @@ export default function Header({ immersive = false }: HeaderProps) {
     </Link>
   )
 
-  const headerActions = (
-    <div className="relative z-[60] flex min-w-[5.75rem] shrink-0 items-center justify-end gap-2 overflow-visible pr-1">
-      {!immersive && !token ? (
-        <Link href="/login" className="hidden lg:inline-flex">
-          <Button
-            variant="outline"
-            size="sm"
-            className="rounded-full border-[#E5E7EB] bg-white/90 px-4 font-semibold shadow-sm"
-          >
-            Login
-          </Button>
+  const actionButtonClass = (dark: boolean) =>
+    cn(
+      'relative inline-flex h-10 w-10 shrink-0 items-center justify-center overflow-visible rounded-full transition duration-200 active:scale-95 md:h-11 md:w-11',
+      dark
+        ? 'bg-white/10 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.18)] backdrop-blur-sm hover:bg-white/16'
+        : 'border border-[#E5E7EB] bg-white text-[#111827] shadow-sm hover:border-[#FFD0BC] hover:bg-[#FFF8F4]'
+    )
+
+  const renderHeaderActions = (dark: boolean) => (
+    <nav
+      className="relative z-[80] ml-auto flex min-w-[5.75rem] shrink-0 items-center justify-end gap-2 overflow-visible pl-1 sm:gap-2.5"
+      aria-label="Header actions"
+    >
+      {!dark && !token ? (
+        <Link
+          href="/login"
+          className="hidden h-10 shrink-0 items-center justify-center rounded-full border border-[#E5E7EB] bg-white/95 px-4 text-sm font-semibold text-[#111827] shadow-sm transition hover:border-[#FFD0BC] hover:bg-[#FFF8F4] lg:inline-flex"
+        >
+          Login
         </Link>
       ) : null}
 
-      <Link href="/cart" aria-label="Cart">
-        <span
-          className={cn(
-            'relative flex h-10 w-10 items-center justify-center rounded-full',
-            immersive
-              ? 'bg-white/10 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.18)]'
-              : 'border border-[#E5E7EB] bg-white text-[#111827] shadow-sm'
-          )}
-        >
-          <ShoppingCart className="h-5 w-5" />
-          {itemCount > 0 ? (
-            <span className="absolute -right-1.5 -top-1.5 z-10 flex h-[19px] min-w-[19px] items-center justify-center rounded-full bg-[#FF6B35] px-1 text-[10px] font-bold text-white ring-2 ring-white">
-              {itemCount > 9 ? '9+' : itemCount}
-            </span>
-          ) : null}
-        </span>
+      <Link href="/cart" aria-label="Cart" className={actionButtonClass(dark)}>
+        <ShoppingCart className="h-5 w-5 shrink-0" />
+        {itemCount > 0 ? (
+          <span className="pointer-events-none absolute -right-1.5 -top-1.5 z-10 flex h-5 min-w-5 items-center justify-center rounded-full bg-[#FF6B35] px-1 text-[10px] font-bold leading-none text-white ring-2 ring-white">
+            {itemCount > 9 ? '9+' : itemCount}
+          </span>
+        ) : null}
       </Link>
 
-      <Link href={token ? '/profile' : '/login'} aria-label="Profile">
+      <Link
+        href={token ? '/profile' : '/login'}
+        aria-label="Profile"
+        className={
+          token && user
+            ? cn(
+                'relative inline-flex h-10 w-10 shrink-0 items-center justify-center overflow-visible rounded-full thinava-gradient-bg text-sm font-bold text-white shadow-md ring-2 transition duration-200 active:scale-95 md:h-11 md:w-11',
+                dark ? 'ring-white/20' : 'ring-white'
+              )
+            : actionButtonClass(dark)
+        }
+      >
         {token && user ? (
-          <span className="flex h-10 w-10 items-center justify-center rounded-full thinava-gradient-bg text-sm font-bold text-white shadow-md">
-            {(user.fullName || user.name || 'C').charAt(0).toUpperCase()}
-          </span>
+          (user.fullName || user.name || 'C').charAt(0).toUpperCase()
         ) : (
-          <span
-            className={cn(
-              'flex h-10 w-10 items-center justify-center rounded-full',
-              immersive
-                ? 'bg-white/10 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.18)]'
-                : 'border border-[#E5E7EB] bg-white text-[#111827] shadow-sm'
-            )}
-          >
-            <User className="h-5 w-5" />
-          </span>
+          <User className="h-5 w-5 shrink-0" />
         )}
       </Link>
-    </div>
+    </nav>
   )
 
-  const standardHeader = (
-    <header className="sticky top-0 z-40 overflow-visible border-b border-white/70 bg-[#FFF8F4]/92 backdrop-blur-xl">
-      <div className="container mx-auto overflow-visible px-4 py-3 sm:px-6 lg:px-8">
-        <div className="flex items-center gap-3 overflow-visible sm:gap-4">
+  const renderStandardHeader = (className?: string) => (
+    <header
+      className={cn(
+        'sticky top-0 z-[70] overflow-visible border-b border-white/70 bg-[#FFF8F4]/92 backdrop-blur-xl',
+        className
+      )}
+    >
+      <div className="mx-auto w-full max-w-7xl overflow-visible px-4 py-3 pr-5 sm:px-6 sm:pr-7 lg:px-8 lg:pr-10">
+        <div className="flex min-w-0 items-center gap-2 overflow-visible sm:gap-3 lg:gap-4">
           {showBackButton ? <BackButton /> : null}
-          <div className="max-w-[260px] min-w-0">{renderLocationBlock(false)}</div>
-          <div className="hidden min-w-0 flex-1 md:block">
+          <div className="min-w-0 flex-1 overflow-visible md:flex-[0_1_15rem] lg:flex-[0_1_17.5rem]">
+            {renderLocationBlock(false)}
+          </div>
+          <div className="hidden min-w-0 flex-1 overflow-visible md:block">
             <LiveSearchBar />
           </div>
-          {headerActions}
+          {renderHeaderActions(false)}
         </div>
 
-        <div className="mt-3 md:hidden">
+        <div className="mt-3 overflow-visible md:hidden">
           <LiveSearchBar />
         </div>
       </div>
@@ -145,7 +150,7 @@ export default function Header({ immersive = false }: HeaderProps) {
   if (immersive) {
     return (
       <>
-        <header className="sticky top-0 z-50 md:hidden">
+        <header className="sticky top-0 z-[70] md:hidden">
           <div className="relative overflow-hidden bg-[linear-gradient(135deg,#0f172a_0%,#162544_55%,#1f2937_100%)] px-4 pb-2 pt-[max(0.85rem,env(safe-area-inset-top))] shadow-[0_16px_40px_-20px_rgba(15,23,42,0.7)]">
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.18),transparent_28%)]" />
             <div className="absolute -left-14 top-2 h-28 w-28 rounded-full bg-[#FF6B35]/18 blur-3xl" />
@@ -154,7 +159,7 @@ export default function Header({ immersive = false }: HeaderProps) {
             <div className="relative flex items-start justify-between gap-3 overflow-visible">
               {showBackButton ? <BackButton dark /> : null}
               {renderLocationBlock(true)}
-              {headerActions}
+              {renderHeaderActions(true)}
             </div>
 
             <div className="relative mt-4 pb-3">
@@ -163,10 +168,10 @@ export default function Header({ immersive = false }: HeaderProps) {
           </div>
           <div className="h-5 rounded-t-[1.6rem] bg-[#FFF8F4]" />
         </header>
-        <div className="hidden md:block">{standardHeader}</div>
+        {renderStandardHeader('hidden md:block')}
       </>
     )
   }
 
-  return standardHeader
+  return renderStandardHeader()
 }

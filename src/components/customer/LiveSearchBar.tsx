@@ -109,7 +109,7 @@ export default function LiveSearchBar({ elevated = false }: { elevated?: boolean
   const placeholderText = elevated ? 'Search "biryani"' : t('searchPlaceholder')
 
   return (
-    <div ref={searchRef} className="relative z-50 max-w-xl flex-1">
+    <div ref={searchRef} className="relative z-50 min-w-0 w-full max-w-xl flex-1">
       <form onSubmit={handleSearchSubmit} className="flex gap-2">
         <div className="relative flex-1">
           <Search
