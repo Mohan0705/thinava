@@ -30,6 +30,9 @@ const getRestaurantAuthEnvStatus = () => {
   if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
     missing.push('SUPABASE_SERVICE_ROLE_KEY')
   }
+  if (!process.env.FRONTEND_URL) {
+    missing.push('FRONTEND_URL')
+  }
 
   return {
     ready: missing.length === 0,
@@ -37,6 +40,7 @@ const getRestaurantAuthEnvStatus = () => {
     hasUrl: !missing.includes('SUPABASE_URL'),
     hasAnonKey: !missing.includes('SUPABASE_ANON_KEY'),
     hasServiceRoleKey: !missing.includes('SUPABASE_SERVICE_ROLE_KEY'),
+    hasFrontendUrl: !missing.includes('FRONTEND_URL'),
   }
 }
 

@@ -10,7 +10,7 @@ import { Card, CardContent } from '@/components/ui/Card'
 import { DeliveryBottomNav } from '@/components/delivery/DeliveryBottomNav'
 import { DeliveryLiveMap } from '@/components/delivery/DeliveryLiveMap'
 import { deliveryApi } from '@/lib/delivery-api'
-import { getRealtimeSocket } from '@/lib/realtime'
+import { getRealtimeSocket, releaseRealtimeSocket } from '@/lib/realtime'
 import { useDeliveryAuthStore } from '@/store/deliveryAuthStore'
 import { useDeliveryOrderStore } from '@/store/deliveryOrderStore'
 
@@ -59,6 +59,10 @@ export default function DeliveryOrdersPage() {
     }
 
     const socket = getRealtimeSocket('delivery_partner', token)
+    if (!socket) {
+      return
+    }
+
     const handleAssignedOrder = () => {
       void loadAssignedOrder(true)
     }
@@ -69,6 +73,7 @@ export default function DeliveryOrdersPage() {
     return () => {
       socket.off('delivery:active_order_updated', handleAssignedOrder)
       socket.off('delivery:offer_removed', handleAssignedOrder)
+      releaseRealtimeSocket('delivery_partner', token)
     }
   }, [token])
 

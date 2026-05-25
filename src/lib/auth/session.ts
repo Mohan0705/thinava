@@ -41,6 +41,15 @@ const getPersistedState = (key: string) => {
   }
 }
 
+export const isValidJwt = (token: unknown): boolean => {
+  if (typeof token !== 'string') {
+    return false
+  }
+
+  const parts = token.trim().split('.')
+  return parts.length === 3 && parts.every((part) => part.length > 0)
+}
+
 export const getAuthScopeFromPath = (path: string): AuthScope => {
   if (path.startsWith('/delivery/')) {
     return 'delivery'
@@ -55,6 +64,19 @@ export const getAuthScopeFromPath = (path: string): AuthScope => {
   }
 
   return 'customer'
+}
+
+export const clearStoredAuthForScope = (scope: AuthScope) => {
+  if (typeof window !== 'undefined') {
+    window.localStorage.removeItem(AUTH_STORAGE_KEYS[scope])
+
+    const legacyKeys = LEGACY_STORAGE_KEYS[scope] || []
+    for (const key of legacyKeys) {
+      window.localStorage.removeItem(key)
+    }
+  }
+
+  syncAuthCookie(scope, null)
 }
 
 export const getStoredTokenForScope = (scope: AuthScope) => {
@@ -75,6 +97,11 @@ export const getStoredTokenForScope = (scope: AuthScope) => {
       : null
 
   if (persistedToken) {
+    if (!isValidJwt(persistedToken)) {
+      clearStoredAuthForScope(scope)
+      return null
+    }
+
     return persistedToken
   }
 
@@ -82,6 +109,11 @@ export const getStoredTokenForScope = (scope: AuthScope) => {
   for (const key of legacyKeys) {
     const legacyToken = window.localStorage.getItem(key)
     if (legacyToken && legacyToken.trim().length > 0) {
+      if (!isValidJwt(legacyToken)) {
+        window.localStorage.removeItem(key)
+        continue
+      }
+
       return legacyToken
     }
   }

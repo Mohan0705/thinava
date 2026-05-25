@@ -1,12 +1,15 @@
 import { io, Socket } from 'socket.io-client'
 import { apiConfig } from '@/config/api'
 import { useEffect, useRef } from 'react'
+import { clearStoredAuthForScope, isValidJwt } from '@/lib/auth/session'
+import type { AuthScope } from '@/lib/auth/cookies'
 
 export type RealtimeRole = 'admin' | 'customer' | 'delivery_partner' | 'restaurant'
 
 type SubscribeResponse = {
   success: boolean
   error?: string
+  code?: string
   rooms?: string[]
 }
 
@@ -16,8 +19,24 @@ const sockets = new Map<string, { socket: Socket; refCount: number }>()
 
 const RECONNECT_ATTEMPTS = 5
 const RECONNECT_DELAY_MS = 2000
+const ROLE_SCOPE: Record<RealtimeRole, AuthScope> = {
+  admin: 'admin',
+  customer: 'customer',
+  delivery_partner: 'delivery',
+  restaurant: 'restaurant',
+}
 
 export const getRealtimeSocket = (role: RealtimeRole, token: string) => {
+  if (!isValidJwt(token)) {
+    clearStoredAuthForScope(ROLE_SCOPE[role])
+    console.warn('[SOCKET] Skipping realtime connection because token is invalid', {
+      role,
+      hasToken: Boolean(token),
+      tokenParts: typeof token === 'string' ? token.split('.').length : 0,
+    })
+    return null
+  }
+
   const key = `${role}:${token}`
 
   const existing = sockets.get(key)
@@ -40,6 +59,10 @@ export const getRealtimeSocket = (role: RealtimeRole, token: string) => {
     socket.emit('session:subscribe', { role, token }, (response: SubscribeResponse) => {
       if (!response?.success) {
         console.error('[SOCKET] Subscription failed:', response?.error || 'Unknown error')
+        if (response?.code === 'INVALID_REALTIME_TOKEN' || response?.code === 'REALTIME_AUTH_REQUIRED') {
+          clearStoredAuthForScope(ROLE_SCOPE[role])
+        }
+        socket.disconnect()
       } else {
         console.log('[SOCKET] Subscription successful', {
           socketId: socket.id,
@@ -58,6 +81,19 @@ export const getRealtimeSocket = (role: RealtimeRole, token: string) => {
     console.error('[SOCKET] Connection error', { message: error.message, role })
   })
 
+  socket.on('session:error', (response: SubscribeResponse & { code?: string }) => {
+    console.error('[SOCKET] Session error', {
+      message: response?.error || 'Realtime authentication failed',
+      code: response?.code,
+      role,
+    })
+
+    if (response?.code === 'INVALID_REALTIME_TOKEN' || response?.code === 'REALTIME_AUTH_REQUIRED') {
+      clearStoredAuthForScope(ROLE_SCOPE[role])
+    }
+    socket.disconnect()
+  })
+
   // Listen to all events for debugging
   socket.onAny((event, ...args) => {
     if (event !== 'heartbeat' && event !== 'session:subscribed') {
@@ -70,6 +106,8 @@ export const getRealtimeSocket = (role: RealtimeRole, token: string) => {
 }
 
 export const releaseRealtimeSocket = (role: RealtimeRole, token: string) => {
+  if (!isValidJwt(token)) return
+
   const key = `${role}:${token}`
   const existing = sockets.get(key)
   if (!existing) return
@@ -97,8 +135,9 @@ export function useRealtimeSocket(role: RealtimeRole, token: string | null) {
   tokenRef.current = token
 
   useEffect(() => {
-    if (!token) return
+    if (!token || !isValidJwt(token)) return
     const socket = getRealtimeSocket(role, token)
+    if (!socket) return
     return () => {
       releaseRealtimeSocket(role, token)
     }

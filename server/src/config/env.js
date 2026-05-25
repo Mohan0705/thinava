@@ -45,6 +45,19 @@ const OPTIONAL = {
   NEXT_PUBLIC_SUPABASE_ANON_KEY: {},
   SUPABASE_SERVICE_ROLE_KEY: {},
 
+  PASSWORD_RESET_EMAIL_PROVIDER: {},
+  PASSWORD_RESET_FROM_EMAIL: {},
+  PASSWORD_RESET_FROM_NAME: {},
+  EMAIL_FROM: {},
+  EMAIL_FROM_NAME: {},
+  RESEND_API_KEY: {},
+  RESEND_FROM_EMAIL: {},
+  BREVO_API_KEY: {},
+  BREVO_FROM_EMAIL: {},
+  BREVO_SENDER_EMAIL: {},
+  SENDGRID_API_KEY: {},
+  SENDGRID_FROM_EMAIL: {},
+
   CLOUDINARY_URL: {},
   CLOUDINARY_CLOUD_NAME: {},
   CLOUDINARY_API_KEY: {},
@@ -104,5 +117,10 @@ if (errors.length > 0) {
 }
 
 const env = resolved
+for (const [key, value] of Object.entries(resolved)) {
+  if (process.env[key] === undefined || process.env[key] === '') {
+    process.env[key] = String(value)
+  }
+}
 
 module.exports = env

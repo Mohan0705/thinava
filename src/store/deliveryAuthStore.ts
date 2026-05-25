@@ -1,7 +1,8 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { DeliveryPartner, DeliveryAuthSession } from '@/types/delivery'
-import { syncAuthCookie, syncLegacyDeliveryToken } from '@/lib/auth/session'
+import { isValidJwt, syncAuthCookie, syncLegacyDeliveryToken } from '@/lib/auth/session'
+import { disconnectRealtimeSocket } from '@/lib/realtime'
 
 interface DeliveryAuthStore {
   token: string | null
@@ -91,6 +92,7 @@ export const useDeliveryAuthStore = create<DeliveryAuthStore>()(
       logout: () => {
         syncAuthCookie('delivery', null)
         syncLegacyDeliveryToken(null)
+        disconnectRealtimeSocket()
         // SECURITY: Clear old global key for migration
         if (typeof window !== 'undefined') {
           window.localStorage.removeItem('delivery-auth-storage')
@@ -218,6 +220,12 @@ export const useDeliveryAuthStore = create<DeliveryAuthStore>()(
         const resolvedToken = state?.token || legacyToken
 
         if (resolvedToken) {
+          if (!isValidJwt(resolvedToken)) {
+            state?.logout()
+            state?.setHydrated(true)
+            return
+          }
+
           syncAuthCookie('delivery', resolvedToken)
           syncLegacyDeliveryToken(resolvedToken)
           state?.setToken(resolvedToken)

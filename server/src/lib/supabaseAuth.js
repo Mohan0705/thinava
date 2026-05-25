@@ -67,6 +67,7 @@ const validateRestaurantSupabaseAuthEnvironment = () => {
   if (!getSupabaseUrl()) missing.push('SUPABASE_URL')
   if (!getSupabaseAnonKey()) missing.push('SUPABASE_ANON_KEY')
   if (!getSupabaseServiceRoleKey()) missing.push('SUPABASE_SERVICE_ROLE_KEY')
+  if (!process.env.FRONTEND_URL) missing.push('FRONTEND_URL')
 
   if (missing.length > 0) {
     logger.error('Restaurant Supabase Auth environment is incomplete', {
@@ -80,6 +81,7 @@ const validateRestaurantSupabaseAuthEnvironment = () => {
       hasUrl: true,
       hasAnonKey: true,
       hasServiceRole: true,
+      hasFrontendUrl: true,
     })
   }
 

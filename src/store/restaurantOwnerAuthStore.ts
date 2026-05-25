@@ -1,7 +1,8 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { RestaurantOwner } from '@/types/restaurant-panel'
-import { syncAuthCookie } from '@/lib/auth/session'
+import { isValidJwt, syncAuthCookie } from '@/lib/auth/session'
+import { disconnectRealtimeSocket } from '@/lib/realtime'
 
 interface RestaurantOwnerAuthStore {
   token: string | null
@@ -27,6 +28,7 @@ export const useRestaurantOwnerAuthStore = create<RestaurantOwnerAuthStore>()(
       setHydrated: (hydrated) => set({ hydrated }),
       logout: () => {
         syncAuthCookie('restaurant', null)
+        disconnectRealtimeSocket()
         // SECURITY: Clear old global key for migration
         if (typeof window !== 'undefined') {
           window.localStorage.removeItem('restaurant-owner-auth')
@@ -38,6 +40,12 @@ export const useRestaurantOwnerAuthStore = create<RestaurantOwnerAuthStore>()(
       name: 'restaurant-owner-auth',
       onRehydrateStorage: () => (state) => {
         if (state?.token) {
+          if (!isValidJwt(state.token)) {
+            state.logout()
+            state.setHydrated(true)
+            return
+          }
+
           syncAuthCookie('restaurant', state.token)
         }
         state?.setHydrated(true)

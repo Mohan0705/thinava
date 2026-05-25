@@ -22,6 +22,7 @@ import { DeliveryLiveMap } from '@/components/delivery/DeliveryLiveMap'
 import ReviewModal from '@/components/customer/ReviewModal'
 import InvoicePDF from '@/components/customer/InvoicePDF'
 import { getRealtimeSocket, releaseRealtimeSocket } from '@/lib/realtime'
+import { isValidJwt } from '@/lib/auth/session'
 import { getOptimizedCloudinaryImageUrl } from '@/lib/cloudinary-image'
 
 type ApiOrderItem = {
@@ -165,10 +166,11 @@ export default function OrdersPage() {
 
   // Socket.IO realtime order sync
   useEffect(() => {
-    if (!token) return
+    if (!token || !isValidJwt(token)) return
 
-    const socketToken = token || 'guest-token'
-    const socket = getRealtimeSocket('customer', socketToken)
+    const socket = getRealtimeSocket('customer', token)
+    if (!socket) return
+
     const activeOrderId = currentOrderIdRef.current
 
     if (activeOrderId) {

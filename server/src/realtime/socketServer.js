@@ -28,10 +28,27 @@ const MAX_CONNECTIONS = 200
 const HEARTBEAT_INTERVAL_MS = 25000
 const STALE_SOCKET_TIMEOUT_MS = 60000
 
+const isValidJwt = (token) => {
+  if (!token || typeof token !== 'string') {
+    return false
+  }
+
+  const parts = token.trim().split('.')
+  return parts.length === 3 && parts.every((part) => part.length > 0)
+}
+
 const authenticateRealtimeSession = ({ role, token }) => {
-  if (!role || !token) {
+  if (!role) {
     const error = new Error('Realtime role and token are required')
     error.status = 401
+    error.code = 'REALTIME_AUTH_REQUIRED'
+    throw error
+  }
+
+  if (!isValidJwt(token)) {
+    const error = new Error('Realtime session token is invalid')
+    error.status = 401
+    error.code = 'INVALID_REALTIME_TOKEN'
     throw error
   }
 
@@ -150,7 +167,7 @@ const createSocketServer = (httpServer, options = {}) => {
       socket.data._lastPing = Date.now()
     })
 
-    socket.on('session:subscribe', (payload) => {
+    socket.on('session:subscribe', (payload, acknowledgement) => {
       try {
         const session = authenticateRealtimeSession(payload)
         socket.data.session = session
@@ -177,16 +194,35 @@ const createSocketServer = (httpServer, options = {}) => {
           })
         }
         
-        socket.emit('session:subscribed', { rooms: session.rooms })
+        const response = { success: true, rooms: session.rooms }
+        if (typeof acknowledgement === 'function') {
+          acknowledgement(response)
+        }
+        socket.emit('session:subscribed', response)
       } catch (error) {
+        const response = {
+          success: false,
+          error: error.message || 'Realtime authentication failed',
+          code: error.code || 'REALTIME_AUTH_FAILED',
+        }
+
         console.error('[SOCKET_SUBSCRIBE_ERROR]', {
           socketId: socket.id,
-          error: error.message,
+          error: response.error,
+          code: response.code,
           role: payload?.role,
+          hasToken: Boolean(payload?.token),
+          tokenParts: typeof payload?.token === 'string' ? payload.token.split('.').length : 0,
         })
-        socket.emit('error', {
-          message: error.message || 'Realtime authentication failed',
-        })
+
+        if (typeof acknowledgement === 'function') {
+          acknowledgement(response)
+        }
+        socket.emit('session:error', response)
+
+        if (error.status === 401) {
+          socket.disconnect(true)
+        }
       }
     })
 
@@ -285,4 +321,5 @@ module.exports = {
   ROLES,
   ROOMS,
   authenticateRealtimeSession,
+  isValidJwt,
 }

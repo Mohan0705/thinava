@@ -6,6 +6,7 @@ import { motion } from 'framer-motion'
 import { Clock3, Navigation, Truck } from 'lucide-react'
 import { apiRequest } from '@/lib/api'
 import { getRealtimeSocket, releaseRealtimeSocket } from '@/lib/realtime'
+import { isValidJwt } from '@/lib/auth/session'
 import { useAuthStore } from '@/store/authStore'
 import type { DeliveryRealtimeEvent } from '@/types/delivery'
 
@@ -104,7 +105,7 @@ export function HomeActiveOrderCard() {
 
     void loadOrders()
 
-    const socket = getRealtimeSocket('customer', token)
+    const socket = isValidJwt(token) ? getRealtimeSocket('customer', token) : null
     const refreshFromRealtime = (event?: DeliveryRealtimeEvent) => {
       if (mounted && event?.order) {
         const realtimeOrder = event.order
@@ -134,8 +135,8 @@ export function HomeActiveOrderCard() {
       }
     }
 
-    socket.on('customer:order_updated', refreshFromRealtime)
-    socket.on('delivery:location_updated', refreshFromRealtime)
+    socket?.on('customer:order_updated', refreshFromRealtime)
+    socket?.on('delivery:location_updated', refreshFromRealtime)
 
     const fallbackIntervalId = window.setInterval(() => {
       void loadOrders()
@@ -150,9 +151,11 @@ export function HomeActiveOrderCard() {
       mounted = false
       window.clearInterval(fallbackIntervalId)
       document.removeEventListener('visibilitychange', handleVisibilityChange)
-      socket.off('customer:order_updated', refreshFromRealtime)
-      socket.off('delivery:location_updated', refreshFromRealtime)
-      releaseRealtimeSocket('customer', token)
+      socket?.off('customer:order_updated', refreshFromRealtime)
+      socket?.off('delivery:location_updated', refreshFromRealtime)
+      if (socket) {
+        releaseRealtimeSocket('customer', token)
+      }
     }
   }, [hydrated, token, user?.id])
 

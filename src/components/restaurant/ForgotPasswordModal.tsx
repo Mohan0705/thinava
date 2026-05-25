@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { toast } from 'sonner'
-import { Mail, X, Loader2, ArrowLeft } from 'lucide-react'
+import { Mail, X, Loader2 } from 'lucide-react'
 import { restaurantPanelApi } from '@/lib/restaurant-panel-api'
 
 interface ForgotPasswordModalProps {
@@ -16,18 +16,22 @@ export function ForgotPasswordModal({ isOpen, onClose, onSuccess }: ForgotPasswo
   const [loading, setLoading] = useState(false)
   const [step, setStep] = useState<'email' | 'sent'>('email')
   const [sentEmail, setSentEmail] = useState('')
+  const [statusMessage, setStatusMessage] = useState('')
+  const isDevelopment = process.env.NODE_ENV === 'development'
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
 
     try {
-      await restaurantPanelApi.requestPasswordReset(email)
+      const result = await restaurantPanelApi.requestPasswordReset(email)
+      const message = result.message || 'Check your email for reset link.'
       
       setSentEmail(email)
+      setStatusMessage(message)
       setStep('sent')
       setEmail('')
-      toast.success('Reset link sent to your email!')
+      toast.success(message)
       
       // Auto-close after 3 seconds
       setTimeout(() => {
@@ -46,6 +50,7 @@ export function ForgotPasswordModal({ isOpen, onClose, onSuccess }: ForgotPasswo
     setStep('email')
     setEmail('')
     setSentEmail('')
+    setStatusMessage('')
     onClose()
   }
 
@@ -117,10 +122,11 @@ export function ForgotPasswordModal({ isOpen, onClose, onSuccess }: ForgotPasswo
                 </button>
               </form>
 
-              {/* Help text */}
-              <p className="text-xs text-slate-500 mt-4 text-center">
-                For testing, check the backend console for the reset link. The link expires in 15 minutes.
-              </p>
+              {isDevelopment ? (
+                <p className="text-xs text-slate-500 mt-4 text-center">
+                  Reset link available in server logs. The link expires in 15 minutes.
+                </p>
+              ) : null}
             </>
           ) : (
             <>
@@ -133,18 +139,20 @@ export function ForgotPasswordModal({ isOpen, onClose, onSuccess }: ForgotPasswo
                 </div>
 
                 <div>
-                  <h3 className="text-xl font-bold text-white">Email Sent!</h3>
+                  <h3 className="text-xl font-bold text-white">Request Received</h3>
                   <p className="text-slate-300 text-sm mt-1">
-                    We've sent a password reset link to:
+                    {statusMessage || 'Check your email for reset link.'}
                   </p>
                   <p className="text-orange-400 font-semibold mt-2 break-all">{sentEmail}</p>
                 </div>
 
-                <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3 text-left">
-                  <p className="text-sm text-blue-300">
-                    <span className="font-semibold">💡 Tip:</span> During testing, use the reset link printed in the backend console. The link expires in 15 minutes.
-                  </p>
-                </div>
+                {isDevelopment ? (
+                  <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3 text-left">
+                    <p className="text-sm text-blue-300">
+                      Reset link available in server logs. The link expires in 15 minutes.
+                    </p>
+                  </div>
+                ) : null}
 
                 <button
                   onClick={handleClose}

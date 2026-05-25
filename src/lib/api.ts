@@ -6,9 +6,11 @@ import { useAdminAuthStore } from '@/features/admin/auth-store'
 import { mapUserResponse } from '@/features/auth/utils'
 import {
   emitSessionExpiredEvent,
+  clearStoredAuthForScope,
   getAuthScopeFromPath,
   getStoredTokenForScope,
   getSupabaseSessionToken,
+  isValidJwt,
   isSessionErrorMessage,
   syncAuthCookie,
 } from '@/lib/auth/session'
@@ -86,12 +88,20 @@ const getStoreToken = (scope: AuthScope) => {
 
 const getTokenForScope = (scope: AuthScope, explicitToken?: string | null) => {
   if (explicitToken && explicitToken.trim().length > 0) {
-    return explicitToken
+    if (isValidJwt(explicitToken)) {
+      return explicitToken
+    }
+    clearStoredAuthForScope(scope)
+    return null
   }
 
   const storeToken = getStoreToken(scope)
   if (storeToken && storeToken.trim().length > 0) {
-    return storeToken
+    if (isValidJwt(storeToken)) {
+      return storeToken
+    }
+    clearStoredAuthForScope(scope)
+    return null
   }
 
   const persistedToken = getStoredTokenForScope(scope)
@@ -315,7 +325,7 @@ export async function apiRequest<T>(path: string, options: ApiOptions = {}): Pro
 
       if (!shouldRetry(networkError, attempt)) {
         const msg = networkError instanceof TypeError
-          ? 'Unable to reach the server. Please check your connection and try again.'
+          ? 'Unable to reach the server. It may still be waking up, so please try again in a moment.'
           : (networkError instanceof Error ? networkError.message : 'Request failed')
         throw new ApiError(msg, 0)
       }

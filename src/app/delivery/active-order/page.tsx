@@ -111,6 +111,9 @@ export default function DeliveryActiveOrderPage() {
     }
 
     const socket = getRealtimeSocket('delivery_partner', token)
+    if (!socket) {
+      return
+    }
 
     const handleActiveOrderUpdate = () => {
       void loadActiveOrder(true)

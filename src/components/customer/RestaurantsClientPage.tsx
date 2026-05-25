@@ -14,7 +14,8 @@ import { Input } from '@/components/ui/Input'
 import { RestaurantCard, RestaurantCardSkeleton } from '@/components/customer/RestaurantCard'
 import { SectionHeading } from '@/components/customer/SectionHeading'
 import { fetchRestaurants } from '@/lib/customer-api'
-import { getRealtimeSocket } from '@/lib/realtime'
+import { getRealtimeSocket, releaseRealtimeSocket } from '@/lib/realtime'
+import { isValidJwt } from '@/lib/auth/session'
 import { useAuthStore } from '@/store/authStore'
 import type { Restaurant } from '@/types'
 
@@ -65,8 +66,14 @@ export function RestaurantsClientPage({
   }, [])
 
   useEffect(() => {
-    const socketToken = token || 'guest-token'
-    const socket = getRealtimeSocket('customer', socketToken)
+    if (!token || !isValidJwt(token)) {
+      return
+    }
+
+    const socket = getRealtimeSocket('customer', token)
+    if (!socket) {
+      return
+    }
 
     const handleRestaurantStatusUpdated = (data: { restaurantId: string; status: string }) => {
       setRestaurants((prevRestaurants) =>
@@ -82,6 +89,7 @@ export function RestaurantsClientPage({
 
     return () => {
       socket.off('restaurantStatusUpdated', handleRestaurantStatusUpdated)
+      releaseRealtimeSocket('customer', token)
     }
   }, [token])
 

@@ -5,6 +5,10 @@ const {
   ensureSupabaseUserForRestaurantOwner,
   updateSupabaseRestaurantPassword,
 } = require('./supabaseRestaurantAuthService')
+const {
+  getFrontendResetUrl,
+  sendPasswordResetEmail,
+} = require('./passwordResetEmailService')
 
 const RESET_TOKEN_EXPIRY_MINUTES = 15
 
@@ -14,11 +18,6 @@ function generateResetToken() {
 
 function hashResetToken(token) {
   return crypto.createHash('sha256').update(String(token)).digest('hex')
-}
-
-function getFrontendResetUrl(token) {
-  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000'
-  return `${frontendUrl.replace(/\/$/, '')}/reset-password?token=${encodeURIComponent(token)}`
 }
 
 function createResetError(message, status = 400, code) {
@@ -61,7 +60,7 @@ async function requestPasswordReset(rawEmail) {
     console.log('[RestaurantPasswordReset] reset requested for unknown email', { email })
     return {
       success: true,
-      message: 'Password reset link generated',
+      message: 'Check your email for reset link.',
     }
   }
 
@@ -106,20 +105,48 @@ async function requestPasswordReset(rawEmail) {
   )
 
   const resetUrl = getFrontendResetUrl(token)
+  const emailDelivery = await sendPasswordResetEmail({
+    toEmail: owner.email,
+    resetUrl,
+    ownerName: owner.full_name,
+    restaurantName: owner.restaurant_name,
+    expiresInMinutes: RESET_TOKEN_EXPIRY_MINUTES,
+  })
 
   console.log('[RestaurantPasswordReset] token generated', {
     email: owner.email,
     restaurantUserId: owner.id,
     expiresAt: expiresAt.toISOString(),
+    emailProvider: emailDelivery.provider || null,
+    emailSent: emailDelivery.sent,
   })
-  if (process.env.NODE_ENV === 'development') {
-    console.log('[RestaurantPasswordReset] development reset URL:', resetUrl)
+
+  if (process.env.NODE_ENV !== 'production' || !emailDelivery.sent) {
+    console.log('[RestaurantPasswordReset] reset URL:', resetUrl)
+  }
+
+  if (!emailDelivery.sent) {
+    console.warn('[RestaurantPasswordReset] email unavailable; reset URL logged as fallback', {
+      email: owner.email,
+      restaurantUserId: owner.id,
+      provider: emailDelivery.provider || null,
+      reason: emailDelivery.fallbackReason || 'unknown',
+    })
   }
 
   return {
     success: true,
-    message: 'Password reset link generated',
-    ...(process.env.NODE_ENV === 'development' ? { resetUrl } : {}),
+    message: process.env.NODE_ENV === 'development'
+      ? 'Reset link available in server logs.'
+      : 'Check your email for reset link.',
+    ...(process.env.NODE_ENV === 'development' ? {
+      resetUrl,
+      delivery: {
+        sent: emailDelivery.sent,
+        provider: emailDelivery.provider || null,
+        fallbackReason: emailDelivery.fallbackReason || null,
+      },
+    } : {}),
   }
 }
 

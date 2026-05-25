@@ -1,6 +1,7 @@
 import { useEffect, useRef, useCallback } from 'react'
 import type { Socket } from 'socket.io-client'
 import { getRealtimeSocket, releaseRealtimeSocket, type RealtimeRole } from '@/lib/realtime'
+import { isValidJwt } from '@/lib/auth/session'
 import { useDeliveryOrderStore } from '@/store/deliveryOrderStore'
 import { useDeliveryAuthStore } from '@/store/deliveryAuthStore'
 import { useOrderStore } from '@/store/orderStore'
@@ -46,9 +47,11 @@ export function useRealtimeManager({ role, token, enabled = true }: RealtimeMana
   }, [])
 
   useEffect(() => {
-    if (!token || !enabled) return
+    if (!token || !enabled || !isValidJwt(token)) return
 
     const socket = getRealtimeSocket(role, token)
+    if (!socket) return
+
     socketRef.current = socket
     const subs = subscriptionsRef.current
 

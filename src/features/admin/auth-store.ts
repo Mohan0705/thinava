@@ -3,7 +3,8 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { AdminSession, AdminUser } from '@/features/admin/types'
-import { syncAuthCookie } from '@/lib/auth/session'
+import { isValidJwt, syncAuthCookie } from '@/lib/auth/session'
+import { disconnectRealtimeSocket } from '@/lib/realtime'
 
 interface AdminAuthState {
   token: string | null
@@ -29,6 +30,7 @@ export const useAdminAuthStore = create<AdminAuthState>()(
       setHydrated: (hydrated) => set({ hydrated }),
       logout: () => {
         syncAuthCookie('admin', null)
+        disconnectRealtimeSocket()
         // SECURITY: Clear old global key for migration
         if (typeof window !== 'undefined') {
           window.localStorage.removeItem('thinava-admin-auth')
@@ -40,6 +42,12 @@ export const useAdminAuthStore = create<AdminAuthState>()(
       name: 'thinava-admin-auth',
       onRehydrateStorage: () => (state) => {
         if (state?.token) {
+          if (!isValidJwt(state.token)) {
+            state.logout()
+            state.setHydrated(true)
+            return
+          }
+
           syncAuthCookie('admin', state.token)
         }
         state?.setHydrated(true)

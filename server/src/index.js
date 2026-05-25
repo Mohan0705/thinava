@@ -107,6 +107,7 @@ const { ensureMarketingSchema } = require('./database/ensureMarketingSchema')
 const addNotesToOrderItems = require('./database/migrations/add-notes-to-order-items')
 const addOrderLifecycleColumns = require('./database/migrations/add-order-lifecycle-columns')
 const { repairRestaurantAuthUsers } = require('./modules/restaurantPanel/services/authRepairService')
+const { getPasswordResetEmailStatus } = require('./modules/restaurantPanel/services/passwordResetEmailService')
 const { createSocketServer, closeSocketServer } = require('./realtime/socketServer')
 const { checkHealth, getPoolStatus } = require('./database/connection')
 
@@ -245,6 +246,10 @@ registerShutdownTask(async () => {
 // ============================================================
 // HEALTH + READINESS ENDPOINTS
 // ============================================================
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok' })
+})
+
 app.get('/api/health', async (req, res) => {
   const dbHealth = await checkHealth()
   const poolStatus = getPoolStatus()
@@ -408,6 +413,14 @@ registerShutdownTask(async () => {
 
 // Test database connection first
 validateRestaurantSupabaseAuthEnvironment()
+const passwordResetEmailStatus = getPasswordResetEmailStatus()
+if (!passwordResetEmailStatus.configured) {
+  logger.warn('Restaurant password reset email provider is not configured; reset URLs will be logged as fallback', {
+    tag: 'restaurant_password_reset',
+    provider: passwordResetEmailStatus.provider || null,
+    reason: passwordResetEmailStatus.reason,
+  })
+}
 
 testConnection()
   .then(() => ensureRestaurantPanelSchema())

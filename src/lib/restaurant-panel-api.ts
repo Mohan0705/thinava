@@ -74,7 +74,12 @@ export const restaurantPanelApi = {
 
   // Password Reset Endpoints
   requestPasswordReset(email: string) {
-    return apiRequest<{ success: boolean; message: string }>(
+    return apiRequest<{
+      success: boolean
+      message: string
+      resetUrl?: string
+      delivery?: { sent: boolean; provider: string | null; fallbackReason: string | null }
+    }>(
       '/restaurant/auth/password-reset/request',
       {
         method: 'POST',

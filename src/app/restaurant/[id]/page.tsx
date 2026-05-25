@@ -12,7 +12,8 @@ import { Badge } from '@/components/ui/Badge'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { fetchRestaurant, fetchRestaurantMenu } from '@/lib/customer-api'
 import { useCartStore } from '@/store/cartStore'
-import { getRealtimeSocket } from '@/lib/realtime'
+import { getRealtimeSocket, releaseRealtimeSocket } from '@/lib/realtime'
+import { isValidJwt } from '@/lib/auth/session'
 import { useAuthStore } from '@/store/authStore'
 import { formatPrice } from '@/lib/utils'
 import Header from '@/components/layout/Header'
@@ -105,10 +106,10 @@ export default function RestaurantPage() {
   }, [restaurantId])
 
   useEffect(() => {
-    if (!restaurantId) return
+    if (!restaurantId || !token || !isValidJwt(token)) return
 
-    const socketToken = token || 'guest-token'
-    const socket = getRealtimeSocket('customer', socketToken)
+    const socket = getRealtimeSocket('customer', token)
+    if (!socket) return
 
     const handleRestaurantStatusUpdated = (data: { restaurantId: string; status: string }) => {
       if (data.restaurantId === restaurantId) {
@@ -122,6 +123,7 @@ export default function RestaurantPage() {
 
     return () => {
       socket.off('restaurantStatusUpdated', handleRestaurantStatusUpdated)
+      releaseRealtimeSocket('customer', token)
     }
   }, [token, restaurantId])
 

@@ -3,7 +3,8 @@ import { persist } from 'zustand/middleware'
 import { User } from '@/types'
 import type { Address } from '@/types'
 import type { AuthProfileStats, AuthVerificationSession } from '@/features/auth/types'
-import { syncAuthCookie } from '@/lib/auth/session'
+import { isValidJwt, syncAuthCookie } from '@/lib/auth/session'
+import { disconnectRealtimeSocket } from '@/lib/realtime'
 import { useCartStore } from '@/store/cartStore'
 
 interface AuthStore {
@@ -93,6 +94,7 @@ export const useAuthStore = create<AuthStore>()(
         const previousUserId = get().user?.id ?? null
 
         syncAuthCookie('customer', null)
+        disconnectRealtimeSocket()
         useCartStore.setState({ items: [], userId: null })
 
         if (typeof window !== 'undefined') {
@@ -123,6 +125,12 @@ export const useAuthStore = create<AuthStore>()(
       }),
       onRehydrateStorage: () => (state) => {
         if (state?.token) {
+          if (!isValidJwt(state.token)) {
+            state.logout()
+            state.setHydrated(true)
+            return
+          }
+
           syncAuthCookie('customer', state.token)
         }
         state?.setHydrated(true)
