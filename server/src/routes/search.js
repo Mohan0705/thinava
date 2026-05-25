@@ -86,8 +86,10 @@ router.get('/by-category/:category', asyncHandler(async (req, res) => {
   try {
     // Find restaurants by menu item category OR restaurant cuisine
     // IMPROVED: Better normalization and more robust matching
+    // Using DISTINCT ON (r.id) to allow flexible ORDER BY without requiring all expressions in SELECT
     const query = `
-      SELECT DISTINCT r.*,
+      SELECT DISTINCT ON (r.id) r.id,
+             r.*,
              CASE
                WHEN COALESCE(r.rating_count, 0) > 0
                THEN ROUND((COALESCE(r.rating_sum, 0) / NULLIF(r.rating_count, 0))::numeric, 1)
@@ -110,7 +112,7 @@ router.get('/by-category/:category', asyncHandler(async (req, res) => {
         )
       )
       AND r.is_open = TRUE
-      ORDER BY
+      ORDER BY r.id,
         CASE WHEN COALESCE(r.status, CASE WHEN r.is_open THEN 'OPEN' ELSE 'CLOSED' END) = 'OPEN' THEN 0 ELSE 1 END,
         CASE
           WHEN COALESCE(r.rating_count, 0) > 0
@@ -138,15 +140,14 @@ router.get('/by-category/:category', asyncHandler(async (req, res) => {
   } catch (error) {
     logger.error(`Error fetching restaurants for category ${category}:`, error)
     
-    // Even on error, return safe response
+    // Even on error, return safe response without exposing SQL details
     res.json(safeResponse({
       success: false,
       category: String(category || ''),
       count: 0,
       restaurants: [],
       total: 0,
-      message: `No restaurants serving ${String(category)} nearby`,
-      error: error.message ? String(error.message) : 'Database error'
+      message: `No restaurants serving ${String(category)} nearby`
     }))
   }
 }))
@@ -164,8 +165,10 @@ router.get('/', asyncHandler(async (req, res) => {
 
   try {
     // Search restaurants by name, description, or cuisines
+    // Using DISTINCT ON (r.id) to allow flexible ORDER BY without requiring all expressions in SELECT
     const restaurantQuery = `
-      SELECT DISTINCT r.*,
+      SELECT DISTINCT ON (r.id) r.id,
+             r.*,
              CASE
                WHEN COALESCE(r.rating_count, 0) > 0
                THEN ROUND((COALESCE(r.rating_sum, 0) / NULLIF(r.rating_count, 0))::numeric, 1)
@@ -180,7 +183,7 @@ router.get('/', asyncHandler(async (req, res) => {
       )
       AND COALESCE(r.rating, 0) >= $2
       AND r.is_open = TRUE
-      ORDER BY
+      ORDER BY r.id,
         CASE
           WHEN COALESCE(r.rating_count, 0) > 0
           THEN ROUND((COALESCE(r.rating_sum, 0) / NULLIF(r.rating_count, 0))::numeric, 1)
@@ -237,7 +240,8 @@ router.get('/', asyncHandler(async (req, res) => {
     if (menuItemRestaurantIds.length > 0) {
       const uniqueIds = [...new Set(menuItemRestaurantIds)]
       const menuRestQuery = `
-        SELECT DISTINCT r.*,
+        SELECT DISTINCT ON (r.id) r.id,
+               r.*,
                CASE
                  WHEN COALESCE(r.rating_count, 0) > 0
                  THEN ROUND((COALESCE(r.rating_sum, 0) / NULLIF(r.rating_count, 0))::numeric, 1)
@@ -246,7 +250,7 @@ router.get('/', asyncHandler(async (req, res) => {
                COALESCE(r.rating_count, 0) AS rating_count
         FROM restaurants r
         WHERE r.id = ANY($1::uuid[])
-        ORDER BY
+        ORDER BY r.id,
           CASE
             WHEN COALESCE(r.rating_count, 0) > 0
             THEN ROUND((COALESCE(r.rating_sum, 0) / NULLIF(r.rating_count, 0))::numeric, 1)
@@ -283,7 +287,7 @@ router.get('/', asyncHandler(async (req, res) => {
   } catch (error) {
     logger.error('Error during search:', error)
     
-    // Even on error, return safe response
+    // Even on error, return safe response without exposing SQL details
     res.json(safeResponse({
       success: false,
       query: String(q || ''),
@@ -293,8 +297,7 @@ router.get('/', asyncHandler(async (req, res) => {
       summary: {
         restaurantCount: 0,
         menuItemCount: 0
-      },
-      error: error.message ? String(error.message) : 'Search error'
+      }
     }))
   }
 }))
