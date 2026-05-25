@@ -249,12 +249,18 @@ const ensureRestaurantPanelSchema = async () => {
         AND mi.category_id IS NULL;
     `)
 
-    await client.query(`
-      DELETE FROM restaurant_users duplicate_owner
-      USING restaurant_users kept_owner
-      WHERE duplicate_owner.restaurant_id = kept_owner.restaurant_id
-        AND duplicate_owner.id < kept_owner.id;
+    const duplicateOwnerResult = await client.query(`
+      SELECT restaurant_id, COUNT(*)::int AS owner_count
+      FROM restaurant_users
+      GROUP BY restaurant_id
+      HAVING COUNT(*) > 1;
     `)
+
+    if (duplicateOwnerResult.rows.length > 0) {
+      console.warn('Multiple restaurant owner records found; leaving credentials unchanged for manual review.', {
+        count: duplicateOwnerResult.rows.length,
+      })
+    }
 
     await client.query(`
       CREATE INDEX IF NOT EXISTS idx_users_phone ON users(phone);
@@ -272,8 +278,6 @@ const ensureRestaurantPanelSchema = async () => {
       CREATE INDEX IF NOT EXISTS idx_restaurant_users_reset_token
       ON restaurant_users(reset_token)
       WHERE reset_token IS NOT NULL;
-      CREATE UNIQUE INDEX IF NOT EXISTS idx_restaurant_users_restaurant_unique
-      ON restaurant_users(restaurant_id);
       CREATE INDEX IF NOT EXISTS idx_restaurant_categories_restaurant_id ON restaurant_categories(restaurant_id);
       CREATE UNIQUE INDEX IF NOT EXISTS idx_restaurant_categories_restaurant_name_unique
       ON restaurant_categories(restaurant_id, name);
@@ -394,13 +398,29 @@ const ensureRestaurantPanelSchema = async () => {
     client.release()
   }
 
-  if (process.env.NODE_ENV === 'production') {
+  if (process.env.SEED_RESTAURANT_DEMO_OWNER_ACCOUNTS !== 'true') {
     return
   }
 
-  const seedPassword = process.env.RESTAURANT_OWNER_SEED_PASSWORD || 'Restaurant@123'
+  if (process.env.NODE_ENV === 'production') {
+    console.warn('Skipping restaurant demo owner seed in production.')
+    return
+  }
+
+  const seedPassword = process.env.RESTAURANT_OWNER_SEED_PASSWORD
+  if (!seedPassword || seedPassword.length < 8) {
+    console.warn('Skipping restaurant demo owner seed because RESTAURANT_OWNER_SEED_PASSWORD is not set.')
+    return
+  }
+
   const passwordHash = await bcrypt.hash(seedPassword, 10)
-  const restaurantsResult = await pool.query('SELECT id, name FROM restaurants ORDER BY created_at ASC')
+  const restaurantsResult = await pool.query(`
+    SELECT r.id, r.name
+    FROM restaurants r
+    LEFT JOIN restaurant_users ru ON ru.restaurant_id = r.id
+    WHERE ru.id IS NULL
+    ORDER BY r.created_at ASC
+  `)
 
   for (const restaurant of restaurantsResult.rows) {
     const slug = restaurant.name
@@ -415,50 +435,26 @@ const ensureRestaurantPanelSchema = async () => {
 
     const preferredEmail =
       compactSlug === 'ibbuskingshotel'
-        ? 'ibbus@thinava.com'
-        : `${slug || 'restaurant'}@thinava.com`
+        ? 'ibbus@demo.thinava.local'
+        : `${slug || 'restaurant'}@demo.thinava.local`
 
-    await pool.query(
-      `DELETE FROM restaurant_users
-       WHERE email = $1
-         AND restaurant_id != $2`,
-      [preferredEmail, restaurant.id]
+    const emailResult = await pool.query(
+      'SELECT id FROM restaurant_users WHERE LOWER(email) = LOWER($1) LIMIT 1',
+      [preferredEmail]
     )
 
-    const updatedOwner = await pool.query(
-      `UPDATE restaurant_users
-       SET email = $2,
-           password_hash = $3,
-           full_name = $4,
-           role = $5,
-           is_active = $6,
-           updated_at = CURRENT_TIMESTAMP
-       WHERE restaurant_id = $1`,
-      [
-        restaurant.id,
+    if (emailResult.rows.length > 0) {
+      console.warn('Skipping restaurant demo owner seed because generated email already exists.', {
+        restaurantId: restaurant.id,
         preferredEmail,
-        passwordHash,
-        `${restaurant.name} Owner`,
-        OWNER_ROLE,
-        true,
-      ]
-    )
-
-    if (updatedOwner.rowCount > 0) {
+      })
       continue
     }
 
     await pool.query(
       `INSERT INTO restaurant_users (restaurant_id, email, password_hash, full_name, role, is_active)
        VALUES ($1, $2, $3, $4, $5, $6)
-       ON CONFLICT (email)
-       DO UPDATE SET
-         restaurant_id = EXCLUDED.restaurant_id,
-         password_hash = EXCLUDED.password_hash,
-         full_name = EXCLUDED.full_name,
-         role = EXCLUDED.role,
-         is_active = EXCLUDED.is_active,
-         updated_at = CURRENT_TIMESTAMP`,
+       ON CONFLICT DO NOTHING`,
       [
         restaurant.id,
         preferredEmail,

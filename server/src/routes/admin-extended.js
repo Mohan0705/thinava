@@ -352,12 +352,21 @@ router.post('/restaurants/register-manual', asyncHandler(async (req, res) => {
     fssaiLicense
   } = req.body
 
-  console.log('📝 Manual restaurant registration:', { restaurantName, ownerName, ownerEmail })
+  const normalizedOwnerEmail = String(ownerEmail || '').toLowerCase().trim()
 
-  if (!restaurantName || !ownerName || !ownerEmail) {
+  console.log('Manual restaurant registration:', { restaurantName, ownerName, ownerEmail: normalizedOwnerEmail })
+
+  if (!restaurantName || !ownerName || !normalizedOwnerEmail || !password) {
     return res.status(400).json({
       success: false,
-      error: 'Missing required fields: restaurantName, ownerName, ownerEmail'
+      error: 'Missing required fields: restaurantName, ownerName, ownerEmail, password'
+    })
+  }
+
+  if (password.length < 8) {
+    return res.status(400).json({
+      success: false,
+      error: 'Password must be at least 8 characters'
     })
   }
 
@@ -407,7 +416,7 @@ router.post('/restaurants/register-manual', asyncHandler(async (req, res) => {
         restaurantId,
         ownerName,
         ownerPhone || null,
-        ownerEmail,
+        normalizedOwnerEmail,
         gstNumber || null,
         fssaiLicense || null,
         parseFloat(latitude) || null,
@@ -430,7 +439,7 @@ router.post('/restaurants/register-manual', asyncHandler(async (req, res) => {
         restaurantId,
         ownerName,
         ownerPhone || null,
-        ownerEmail,
+        normalizedOwnerEmail,
         gstNumber || null,
         fssaiLicense || null,
         '', // restaurant_image
@@ -452,13 +461,13 @@ router.post('/restaurants/register-manual', asyncHandler(async (req, res) => {
 
     // Create restaurant user with hashed password - explicitly set is_active = true
     const bcrypt = require('bcryptjs')
-    const hashedPassword = await bcrypt.hash(password || 'DefaultTemp123!', 10)
+    const hashedPassword = await bcrypt.hash(password, 10)
 
     const userResult = await client.query(
       `INSERT INTO restaurant_users (restaurant_id, email, password_hash, full_name, phone, role, is_active)
        VALUES ($1, $2, $3, $4, $5, $6, $7)
        RETURNING id`,
-      [restaurantId, ownerEmail, hashedPassword, ownerName, ownerPhone || null, 'restaurant_owner', true]
+      [restaurantId, normalizedOwnerEmail, hashedPassword, ownerName, ownerPhone || null, 'restaurant_owner', true]
     )
     console.log('✅ Restaurant user created')
 
@@ -479,7 +488,7 @@ router.post('/restaurants/register-manual', asyncHandler(async (req, res) => {
       restaurantId,
       status: 'APPROVED',
       user: {
-        email: ownerEmail,
+        email: normalizedOwnerEmail,
         fullName: ownerName,
         role: 'restaurant_owner'
       }

@@ -1,6 +1,7 @@
 const crypto = require('crypto')
 const pool = require('../../database/connection')
 const { logger } = require('../../lib/logger')
+const { getCloudinaryConfig: getBaseCloudinaryConfig } = require('../../lib/cloudinaryConfig')
 const { assertCloudinaryImageUrl, deleteImageByUrl, deleteReplacedImages } = require('../../lib/cloudinaryService')
 
 const REDIRECT_TYPES = new Set(['restaurants', 'restaurant', 'category', 'offers', 'custom'])
@@ -10,17 +11,16 @@ const MIN_WIDTH = 900
 const MIN_HEIGHT = 300
 
 const getCloudinaryConfig = () => ({
-  cloudName: process.env.CLOUDINARY_CLOUD_NAME,
-  apiKey: process.env.CLOUDINARY_API_KEY,
-  apiSecret: process.env.CLOUDINARY_API_SECRET,
+  ...getBaseCloudinaryConfig(),
   folder: process.env.CLOUDINARY_BANNER_FOLDER || 'thinava/banners',
 })
 
 const requireCloudinaryConfig = () => {
   const config = getCloudinaryConfig()
   if (!config.cloudName || !config.apiKey || !config.apiSecret) {
-    const error = new Error('Cloudinary is not configured. Add CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, and CLOUDINARY_API_SECRET.')
-    error.status = 500
+    const error = new Error('Image uploads are temporarily unavailable.')
+    error.status = 503
+    error.code = 'IMAGE_UPLOADS_UNAVAILABLE'
     throw error
   }
   return config

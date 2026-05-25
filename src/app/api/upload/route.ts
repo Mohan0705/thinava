@@ -128,18 +128,18 @@ const requireUploadSession = async (
 
 export async function POST(request: NextRequest) {
   try {
-    if (!hasCloudinaryCredentials()) {
-      throw new CloudinaryImageError(
-        'Cloudinary is not configured. Add CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, and CLOUDINARY_API_SECRET to .env.local, then restart Next.js.',
-        500,
-        'CLOUDINARY_NOT_CONFIGURED'
-      )
-    }
-
     const formData = await request.formData()
     const folder = normalizeImageFolder(formData.get('folder'))
     const scope = getRequestedScope(formData.get('scope'))
     await requireUploadSession(request, folder, scope)
+
+    if (!hasCloudinaryCredentials()) {
+      throw new CloudinaryImageError(
+        'Image uploads are temporarily unavailable.',
+        503,
+        'IMAGE_UPLOADS_UNAVAILABLE'
+      )
+    }
 
     const file = formData.get('file')
     if (!(file instanceof File)) {

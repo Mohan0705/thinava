@@ -1,13 +1,8 @@
 const crypto = require('crypto')
 const { logger } = require('./logger')
+const { getCloudinaryConfig } = require('./cloudinaryConfig')
 
 const CLOUDINARY_HOST = 'res.cloudinary.com'
-
-const getConfig = () => ({
-  cloudName: process.env.CLOUDINARY_CLOUD_NAME,
-  apiKey: process.env.CLOUDINARY_API_KEY,
-  apiSecret: process.env.CLOUDINARY_API_SECRET,
-})
 
 const isCloudinaryUrl = (value) => {
   if (typeof value !== 'string') return false
@@ -65,7 +60,7 @@ const sign = (params, apiSecret) => {
 
 const deleteImageByPublicId = async (publicId) => {
   if (!publicId) return
-  const config = getConfig()
+  const config = getCloudinaryConfig()
   if (!config.cloudName || !config.apiKey || !config.apiSecret) return
 
   const timestamp = Math.round(Date.now() / 1000)

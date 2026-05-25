@@ -1,5 +1,5 @@
 import type { UploadApiResponse } from 'cloudinary'
-import cloudinary from '@/lib/cloudinary'
+import cloudinary, { hasCloudinaryServerCredentials } from '@/lib/cloudinary'
 import { getOptimizedCloudinaryImageUrl } from '@/lib/cloudinary-image'
 
 export const CLOUDINARY_IMAGE_FOLDERS = {
@@ -28,12 +28,7 @@ export class CloudinaryImageError extends Error {
   }
 }
 
-export const hasCloudinaryCredentials = () =>
-  Boolean(
-    process.env.CLOUDINARY_CLOUD_NAME &&
-    process.env.CLOUDINARY_API_KEY &&
-    process.env.CLOUDINARY_API_SECRET
-  )
+export const hasCloudinaryCredentials = hasCloudinaryServerCredentials
 
 export const normalizeImageFolder = (folder: FormDataEntryValue | null): CloudinaryImageFolder => {
   if (typeof folder !== 'string' || !folder) {

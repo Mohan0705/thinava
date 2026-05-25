@@ -8,6 +8,9 @@ type CloudinaryImageOptions = {
 const CLOUDINARY_UPLOAD_PATH = '/upload/'
 const DEFAULT_BANNER_WIDTHS = [640, 960, 1280, 1600, 1920]
 
+export const getPublicCloudinaryCloudName = () =>
+  process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME?.trim() || ''
+
 export const isCloudinaryImageUrl = (url: string) =>
   /^https:\/\/res\.cloudinary\.com\//i.test(url) && url.includes(CLOUDINARY_UPLOAD_PATH)
 
@@ -81,7 +84,11 @@ export const getCloudinaryFetchImageUrl = (
     return getOptimizedCloudinaryImageUrl(url, options)
   }
 
-  const cloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME || 'dcscuoocf'
+  const cloudName = getPublicCloudinaryCloudName()
+  if (!cloudName) {
+    return url
+  }
+
   const width = normalizeDimension(options.width)
   const height = normalizeDimension(options.height)
   const transformations = [
