@@ -7,7 +7,18 @@ const { logger } = require('../lib/logger')
 // Helper function for case-insensitive matching with partial word support
 const normalizeForMatching = (str) => {
   if (!str) return ''
-  return str.toLowerCase().replace(/[^a-z0-9\s]/g, '').trim()
+  // Trim spaces, convert to lowercase, preserve structure for flexible matching
+  return str.toLowerCase().trim()
+}
+
+// Safe URL decoding helper
+const decodeCategory = (encoded) => {
+  try {
+    return decodeURIComponent(encoded || '').trim()
+  } catch (e) {
+    logger.debug('URL decode error:', e)
+    return (encoded || '').trim()
+  }
 }
 
 // Safe response wrapper - ensures consistent response format
@@ -70,7 +81,11 @@ router.get('/categories', asyncHandler(async (req, res) => {
 // Uses JOIN with menu_items table AND checks restaurant cuisines
 // ============================================================
 router.get('/by-category/:category', asyncHandler(async (req, res) => {
-  const { category } = req.params
+  let { category } = req.params
+  
+  // Decode URL-encoded category parameter
+  category = decodeCategory(category)
+  
   if (!category || category.trim() === '') {
     return res.status(400).json(safeResponse({
       success: false,
@@ -81,11 +96,11 @@ router.get('/by-category/:category', asyncHandler(async (req, res) => {
   }
 
   const normalizedCategory = normalizeForMatching(category)
-  const searchPattern = `%${normalizedCategory}%`
+  logger.info(`[CATEGORY_FILTER] Received: "${category}", Normalized: "${normalizedCategory}"`)
 
   try {
-    // Find restaurants by menu item category OR restaurant cuisine
-    // IMPROVED: Better normalization and more robust matching
+    // Find restaurants by menu item category OR name OR restaurant cuisine
+    // IMPROVED: Flexible partial text matching that finds "Chicken Biryani" when searching "Biryani"
     // Using DISTINCT ON (r.id) to allow flexible ORDER BY without requiring all expressions in SELECT
     const query = `
       SELECT DISTINCT ON (r.id) r.id,
@@ -98,17 +113,21 @@ router.get('/by-category/:category', asyncHandler(async (req, res) => {
              COALESCE(r.rating_count, 0) AS rating_count
       FROM restaurants r
       WHERE (
-        -- Match by menu item category (normalized for word boundaries)
+        -- Match by menu item category OR name (flexible partial matching)
+        -- Searches for category/item names containing the search text
         EXISTS (
           SELECT 1 FROM menu_items mi 
           WHERE mi.restaurant_id = r.id 
-            AND LOWER(TRIM(REGEXP_REPLACE(mi.category, '[^a-z0-9\s]', '', 'g'))) ILIKE $1
+            AND (
+              LOWER(TRIM(mi.category)) LIKE LOWER('%' || $1 || '%')
+              OR LOWER(TRIM(mi.name)) LIKE LOWER('%' || $1 || '%')
+            )
             AND mi.in_stock = TRUE
         )
-        -- OR match by restaurant cuisine (normalized)
+        -- OR match by restaurant cuisine (flexible partial matching)
         OR EXISTS (
           SELECT 1 FROM unnest(r.cuisines) c 
-          WHERE LOWER(TRIM(REGEXP_REPLACE(c, '[^a-z0-9\s]', '', 'g'))) ILIKE $1
+          WHERE LOWER(TRIM(c)) LIKE LOWER('%' || $1 || '%')
         )
       )
       AND r.is_open = TRUE
@@ -123,8 +142,9 @@ router.get('/by-category/:category', asyncHandler(async (req, res) => {
       LIMIT 100
     `
 
-    const result = await pool.query(query, [searchPattern])
+    const result = await pool.query(query, [normalizedCategory])
     const restaurants = (result.rows || []).filter(r => r && typeof r === 'object')
+    logger.info(`[CATEGORY_FILTER] Found ${restaurants.length} restaurants for "${normalizedCategory}"`)
 
     // Safe response - never return undefined
     res.json(safeResponse({
@@ -138,7 +158,7 @@ router.get('/by-category/:category', asyncHandler(async (req, res) => {
         : `Found ${restaurants.length} restaurants serving ${String(category)}`
     }))
   } catch (error) {
-    logger.error(`Error fetching restaurants for category ${category}:`, error)
+    logger.error(`[CATEGORY_FILTER] Error fetching restaurants for category "${category}":`, error)
     
     // Even on error, return safe response without exposing SQL details
     res.json(safeResponse({
@@ -165,6 +185,7 @@ router.get('/', asyncHandler(async (req, res) => {
 
   try {
     // Search restaurants by name, description, or cuisines
+    // Using flexible partial matching with LIKE for better results
     // Using DISTINCT ON (r.id) to allow flexible ORDER BY without requiring all expressions in SELECT
     const restaurantQuery = `
       SELECT DISTINCT ON (r.id) r.id,
@@ -177,9 +198,9 @@ router.get('/', asyncHandler(async (req, res) => {
              COALESCE(r.rating_count, 0) AS rating_count
       FROM restaurants r
       WHERE (
-        r.name ILIKE $1 
-        OR r.description ILIKE $1 
-        OR EXISTS (SELECT 1 FROM unnest(r.cuisines) c WHERE c ILIKE $1)
+        LOWER(r.name) LIKE LOWER('%' || $1 || '%')
+        OR LOWER(r.description) LIKE LOWER('%' || $1 || '%')
+        OR EXISTS (SELECT 1 FROM unnest(r.cuisines) c WHERE LOWER(TRIM(c)) LIKE LOWER('%' || $1 || '%'))
       )
       AND COALESCE(r.rating, 0) >= $2
       AND r.is_open = TRUE
@@ -192,11 +213,13 @@ router.get('/', asyncHandler(async (req, res) => {
         r.name ASC
       LIMIT 20
     `
-    const restaurantsResult = await pool.query(restaurantQuery, [queryStr, ratingNum])
+    const restaurantsResult = await pool.query(restaurantQuery, [q || '', ratingNum])
     const restaurants = (restaurantsResult.rows || []).filter(r => r && typeof r === 'object')
+    logger.info(`[SEARCH] Found ${restaurants.length} restaurants for query "${q || ''}"`)
 
     // Search menu items and get their restaurants
     // IMPROVED: Better handling of filters and defaults
+    // Uses flexible partial matching on name, description, and category
     let menuItemsQuery = `
       SELECT DISTINCT mi.*, 
              r.name as restaurant_name, 
@@ -210,11 +233,15 @@ router.get('/', asyncHandler(async (req, res) => {
              COALESCE(r.rating_count, 0) AS restaurant_rating_count
       FROM menu_items mi
       JOIN restaurants r ON mi.restaurant_id = r.id
-      WHERE (mi.name ILIKE $1 OR mi.description ILIKE $1 OR mi.category ILIKE $1)
+      WHERE (
+        LOWER(TRIM(mi.name)) LIKE LOWER('%' || $1 || '%')
+        OR LOWER(TRIM(mi.description)) LIKE LOWER('%' || $1 || '%')
+        OR LOWER(TRIM(mi.category)) LIKE LOWER('%' || $1 || '%')
+      )
         AND mi.in_stock = TRUE
         AND r.is_open = TRUE
     `
-    const params = [queryStr]
+    const params = [q || '']
 
     let paramIdx = 2
     if (veg === 'true') {
@@ -260,6 +287,7 @@ router.get('/', asyncHandler(async (req, res) => {
       `
       const menuRestResult = await pool.query(menuRestQuery, [uniqueIds])
       restaurantsFromMenuItems = (menuRestResult.rows || []).filter(r => r && typeof r === 'object')
+      logger.info(`[SEARCH] Found ${menuItemRestaurantIds.length} menu item matches, ${restaurantsFromMenuItems.length} unique restaurants`)
     }
 
     // Combine restaurant results, removing duplicates
@@ -285,7 +313,7 @@ router.get('/', asyncHandler(async (req, res) => {
       }
     }))
   } catch (error) {
-    logger.error('Error during search:', error)
+    logger.error('[SEARCH] Error during search:', error)
     
     // Even on error, return safe response without exposing SQL details
     res.json(safeResponse({
