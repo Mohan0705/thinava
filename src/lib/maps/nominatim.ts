@@ -2,6 +2,7 @@ import {
   NOMINATIM_BASE_URL,
   NOMINATIM_REQUEST_GAP_MS,
 } from '@/lib/maps/constants'
+import { latLngKey, mapDebug, normalizeLatLng } from '@/lib/maps/performance'
 import type { GeocodeAddress, GeocodeResult, LatLng } from '@/lib/maps/types'
 
 type CacheEntry<T> = {
@@ -69,13 +70,43 @@ const writeCache = <T>(key: string, value: T) => {
   }
 }
 
-const wait = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms))
+const createAbortError = () => {
+  const error = new Error('Request aborted')
+  error.name = 'AbortError'
+  return error
+}
 
-const enqueueFetch = async <T>(run: () => Promise<T>) => {
+const wait = (ms: number, signal?: AbortSignal) =>
+  new Promise<void>((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(createAbortError())
+      return
+    }
+
+    let timer: ReturnType<typeof globalThis.setTimeout>
+
+    const abort = () => {
+      globalThis.clearTimeout(timer)
+      reject(createAbortError())
+    }
+
+    timer = globalThis.setTimeout(() => {
+      signal?.removeEventListener('abort', abort)
+      resolve()
+    }, ms)
+
+    signal?.addEventListener('abort', abort, { once: true })
+  })
+
+const enqueueFetch = async <T>(run: () => Promise<T>, signal?: AbortSignal) => {
   const task = queue.then(async () => {
     const elapsed = Date.now() - lastRequestAt
     if (elapsed < NOMINATIM_REQUEST_GAP_MS) {
-      await wait(NOMINATIM_REQUEST_GAP_MS - elapsed)
+      await wait(NOMINATIM_REQUEST_GAP_MS - elapsed, signal)
+    }
+
+    if (signal?.aborted) {
+      throw createAbortError()
     }
 
     lastRequestAt = Date.now()
@@ -99,13 +130,15 @@ const buildUrl = (path: string, params: Record<string, string | number>) => {
 }
 
 const fetchJson = async <T>(url: URL, signal?: AbortSignal) => {
-  const response = await enqueueFetch(() =>
-    fetch(url.toString(), {
-      signal,
-      headers: {
-        Accept: 'application/json',
-      },
-    })
+  const response = await enqueueFetch(
+    () =>
+      fetch(url.toString(), {
+        signal,
+        headers: {
+          Accept: 'application/json',
+        },
+      }),
+    signal
   )
 
   if (!response.ok) {
@@ -157,19 +190,20 @@ const mapNominatimResult = (item: Record<string, any>): GeocodeResult => {
 }
 
 export const reverseGeocode = async (position: LatLng, signal?: AbortSignal) => {
-  const lat = Number(position.lat.toFixed(6))
-  const lng = Number(position.lng.toFixed(6))
-  const cacheKey = getCacheKey('reverse', `${lat},${lng}`)
+  const queryPosition = normalizeLatLng(position, 6)
+  const cacheKey = getCacheKey('reverse', latLngKey(position, 5))
   const cached = readCache<GeocodeResult>(cacheKey)
 
   if (cached) {
+    mapDebug('reverse geocode cache hit', { key: cacheKey })
     return cached
   }
 
+  mapDebug('reverse geocode request', { key: cacheKey, position: queryPosition })
   const url = buildUrl('/reverse', {
     format: 'jsonv2',
-    lat,
-    lon: lng,
+    lat: queryPosition.lat,
+    lon: queryPosition.lng,
     zoom: 18,
     addressdetails: 1,
     'accept-language': 'en-IN,en',
@@ -190,9 +224,11 @@ export const searchPlaces = async (query: string, signal?: AbortSignal) => {
   const cacheKey = getCacheKey('search', normalized)
   const cached = readCache<GeocodeResult[]>(cacheKey)
   if (cached) {
+    mapDebug('place search cache hit', { query: normalized })
     return cached
   }
 
+  mapDebug('place search request', { query: normalized })
   const url = buildUrl('/search', {
     format: 'jsonv2',
     q: normalized,

@@ -12,6 +12,7 @@ import { getRealtimeSocket, releaseRealtimeSocket } from '@/lib/realtime'
 import { useDeliveryAuthStore } from '@/store/deliveryAuthStore'
 import { useDeliveryOrderStore } from '@/store/deliveryOrderStore'
 import { calculateDistanceKm } from '@/lib/maps/geo'
+import { mapDebug } from '@/lib/maps/performance'
 
 const formatCurrency = (value: number | undefined) => `Rs. ${Number(value || 0).toFixed(0)}`
 const OFFER_TIMEOUT_SECONDS = 25
@@ -29,6 +30,7 @@ export function DeliveryAssignedOrderPopup() {
   const [secondsLeft, setSecondsLeft] = useState(OFFER_TIMEOUT_SECONDS)
   const autoRejectTriggeredRef = useRef(false)
   const lastLocationSyncRef = useRef<{ latitude: number; longitude: number; syncedAt: number } | null>(null)
+  const lastLocationRenderRef = useRef<{ latitude: number; longitude: number; renderedAt: number } | null>(null)
   const shouldShow =
     Boolean(token) &&
     Boolean(activeOrder) &&
@@ -78,17 +80,30 @@ export function DeliveryAssignedOrderPopup() {
   }, [token])
 
   useEffect(() => {
-    if (!activeOrder || !navigator.geolocation) {
+    if (!shouldShow || !activeOrder?.id || !token || !navigator.geolocation) {
       return
     }
 
+    const orderId = activeOrder.id
     const watchId = navigator.geolocation.watchPosition(
       (position) => {
         const nextLocation = {
           latitude: position.coords.latitude,
           longitude: position.coords.longitude,
         }
-        setCurrentLocation(nextLocation)
+        const lastRendered = lastLocationRenderRef.current
+        const renderDistanceMeters = lastRendered
+          ? calculateDistanceKm(
+              { lat: lastRendered.latitude, lng: lastRendered.longitude },
+              { lat: nextLocation.latitude, lng: nextLocation.longitude }
+            ) * 1000
+          : Number.POSITIVE_INFINITY
+
+        if (!lastRendered || renderDistanceMeters >= 8 || Date.now() - lastRendered.renderedAt >= 3000) {
+          lastLocationRenderRef.current = { ...nextLocation, renderedAt: Date.now() }
+          setCurrentLocation(nextLocation)
+        }
+
         const previous = lastLocationSyncRef.current
         const distanceMeters = previous
           ? calculateDistanceKm(
@@ -100,8 +115,8 @@ export function DeliveryAssignedOrderPopup() {
         if (!previous || distanceMeters >= 12 || Date.now() - previous.syncedAt >= 5000) {
           lastLocationSyncRef.current = { ...nextLocation, syncedAt: Date.now() }
           void deliveryApi.updateLocation(
-            token!,
-            activeOrder.id,
+            token,
+            orderId,
             nextLocation.latitude,
             nextLocation.longitude,
             position.coords.accuracy
@@ -112,8 +127,13 @@ export function DeliveryAssignedOrderPopup() {
       { enableHighAccuracy: true, maximumAge: 10000, timeout: 12000 }
     )
 
-    return () => navigator.geolocation.clearWatch(watchId)
-  }, [activeOrder?.id, token])
+    mapDebug('delivery assignment watcher started', { orderId, watchId })
+
+    return () => {
+      navigator.geolocation.clearWatch(watchId)
+      mapDebug('delivery assignment watcher cleared', { orderId, watchId })
+    }
+  }, [activeOrder?.id, shouldShow, token])
 
   useEffect(() => {
     if (!shouldShow || !activeOrder) {

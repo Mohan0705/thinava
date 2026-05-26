@@ -36,6 +36,8 @@ export default function Header({ immersive = false }: HeaderProps) {
       return
     }
 
+    let isMounted = true
+    const controller = new AbortController()
     const cached = window.localStorage.getItem('thinava_detected_location_preview')
     if (cached) {
       setDetectedLocation(cached)
@@ -52,8 +54,12 @@ export default function Header({ immersive = false }: HeaderProps) {
         reverseGeocode({
           lat: position.coords.latitude,
           lng: position.coords.longitude,
-        })
+        }, controller.signal)
           .then((result) => {
+            if (!isMounted) {
+              return
+            }
+
             setDetectedLocation(result.shortName || result.displayName)
             window.localStorage.setItem(
               'thinava_detected_location_preview',
@@ -61,6 +67,10 @@ export default function Header({ immersive = false }: HeaderProps) {
             )
           })
           .catch(() => {
+            if (!isMounted || controller.signal.aborted) {
+              return
+            }
+
             const fallback = 'Current location detected'
             setDetectedLocation(fallback)
             window.localStorage.setItem('thinava_detected_location_preview', fallback)
@@ -69,6 +79,11 @@ export default function Header({ immersive = false }: HeaderProps) {
       () => undefined,
       { enableHighAccuracy: true, maximumAge: 30000, timeout: 12000 }
     )
+
+    return () => {
+      isMounted = false
+      controller.abort()
+    }
   }, [defaultAddress])
 
   const renderLocationBlock = (dark: boolean) => (

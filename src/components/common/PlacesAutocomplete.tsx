@@ -34,6 +34,7 @@ export function PlacesAutocomplete({
   const [showSuggestions, setShowSuggestions] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const debounceRef = useRef<number | null>(null)
+  const requestIdRef = useRef(0)
 
   useEffect(() => {
     setValue(initialValue)
@@ -45,9 +46,13 @@ export function PlacesAutocomplete({
     }
 
     const query = value.trim()
+    const requestId = requestIdRef.current + 1
+    requestIdRef.current = requestId
+
     if (query.length < 3) {
       setSuggestions([])
       setShowSuggestions(false)
+      setIsLoading(false)
       return
     }
 
@@ -57,16 +62,26 @@ export function PlacesAutocomplete({
       setError(null)
       searchPlaces(query, controller.signal)
         .then((results) => {
+          if (controller.signal.aborted || requestId !== requestIdRef.current) {
+            return
+          }
+
           setSuggestions(results)
           setShowSuggestions(results.length > 0)
         })
         .catch((caught) => {
-          if ((caught as Error).name !== 'AbortError') {
-            setSuggestions([])
-            setError('Address suggestions are unavailable right now.')
+          if ((caught as Error).name === 'AbortError' || requestId !== requestIdRef.current) {
+            return
+          }
+
+          setSuggestions([])
+          setError('Address suggestions are unavailable right now.')
+        })
+        .finally(() => {
+          if (requestId === requestIdRef.current) {
+            setIsLoading(false)
           }
         })
-        .finally(() => setIsLoading(false))
     }, 450)
 
     return () => {
@@ -153,4 +168,3 @@ export function PlacesAutocomplete({
     </div>
   )
 }
-

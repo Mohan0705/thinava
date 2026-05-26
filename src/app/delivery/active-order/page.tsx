@@ -29,6 +29,7 @@ import { getRealtimeSocket, releaseRealtimeSocket } from '@/lib/realtime'
 import { DeliveryRealtimeEvent } from '@/types/delivery'
 import { SUPPORT_TEL, getWhatsAppLink } from '@/lib/support'
 import { calculateDistanceKm, openOsmDirections } from '@/lib/maps/geo'
+import { mapDebug } from '@/lib/maps/performance'
 
 const statusTimeline = [
   {
@@ -79,6 +80,22 @@ export default function DeliveryActiveOrderPage() {
   const [currentLocation, setCurrentLocation] = useState<{ lat: number; lng: number } | null>(null)
   const [status, setStatus] = useState<string>('ASSIGNED')
   const lastLocationSyncRef = useRef<{ lat: number; lng: number; syncedAt: number } | null>(null)
+  const lastLocationRenderRef = useRef<{ lat: number; lng: number; renderedAt: number } | null>(null)
+
+  const applyCurrentLocation = (nextLocation: { lat: number; lng: number }) => {
+    const previous = lastLocationRenderRef.current
+    const movedMeters = previous
+      ? calculateDistanceKm(
+          { lat: previous.lat, lng: previous.lng },
+          { lat: nextLocation.lat, lng: nextLocation.lng }
+        ) * 1000
+      : Number.POSITIVE_INFINITY
+
+    if (!previous || movedMeters >= 8 || Date.now() - previous.renderedAt >= 3000) {
+      lastLocationRenderRef.current = { ...nextLocation, renderedAt: Date.now() }
+      setCurrentLocation(nextLocation)
+    }
+  }
 
   useEffect(() => {
     if (!token) {
@@ -123,7 +140,7 @@ export default function DeliveryActiveOrderPage() {
 
     const handleLocationUpdate = (payload?: DeliveryRealtimeEvent) => {
       if (payload?.location?.latitude && payload.location.longitude) {
-        setCurrentLocation({
+        applyCurrentLocation({
           lat: payload.location.latitude,
           lng: payload.location.longitude,
         })
@@ -202,7 +219,7 @@ export default function DeliveryActiveOrderPage() {
           lat: position.coords.latitude,
           lng: position.coords.longitude,
         }
-        setCurrentLocation(nextLocation)
+        applyCurrentLocation(nextLocation)
 
         if (shouldSyncLocation(nextLocation)) {
           lastLocationSyncRef.current = { ...nextLocation, syncedAt: Date.now() }
@@ -221,7 +238,12 @@ export default function DeliveryActiveOrderPage() {
       { enableHighAccuracy: true, maximumAge: 10000, timeout: 12000 }
     )
 
-    return () => navigator.geolocation.clearWatch(watchId)
+    mapDebug('delivery active-order watcher started', { orderId: currentId, watchId })
+
+    return () => {
+      navigator.geolocation.clearWatch(watchId)
+      mapDebug('delivery active-order watcher cleared', { orderId: currentId, watchId })
+    }
   }, [activeOrder?.id, token])
 
   const loadActiveOrder = async (background = false) => {
@@ -246,7 +268,7 @@ export default function DeliveryActiveOrderPage() {
               lat: position.coords.latitude,
               lng: position.coords.longitude,
             }
-            setCurrentLocation(nextLocation)
+            applyCurrentLocation(nextLocation)
 
             void deliveryApi.updateLocation(
               token!,
@@ -339,7 +361,7 @@ export default function DeliveryActiveOrderPage() {
         })
         lat = position.coords.latitude
         lng = position.coords.longitude
-        setCurrentLocation({ lat, lng })
+        applyCurrentLocation({ lat, lng })
       }
 
       await deliveryApi.updateDeliveryStatus(token!, activeOrder.id, newStatus, lat, lng)
