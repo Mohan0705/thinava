@@ -1,10 +1,13 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { Check, LocateFixed, MapPinned, MapPin, Phone, User2 } from 'lucide-react'
+import { Check, MapPinned, MapPin, Phone, User2 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Textarea } from '@/components/ui/Textarea'
+import { LocationPickerMap, type LocationPickerSelection } from '@/components/maps/LocationPickerMap'
+import { openOsmLocation } from '@/lib/maps/geo'
+import type { GeocodeResult } from '@/lib/maps/types'
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/store/authStore'
 import type { Address } from '@/types'
@@ -17,6 +20,7 @@ type AddressDraft = {
   street: string
   area: string
   landmark: string
+  notes: string
   latitude: string
   longitude: string
   isDefault: boolean
@@ -69,6 +73,7 @@ export function AddressEditor({
     address_type: AddressType
     address: string
     landmark?: string
+    notes?: string
     latitude?: number | null
     longitude?: number | null
     is_default: boolean
@@ -85,6 +90,7 @@ export function AddressEditor({
     street: '',
     area: '',
     landmark: '',
+    notes: '',
     latitude: '',
     longitude: '',
     isDefault: false,
@@ -111,6 +117,7 @@ export function AddressEditor({
       street: parsedAddress.street,
       area: parsedAddress.area,
       landmark: address?.landmark || '',
+      notes: address?.notes || '',
       latitude:
         address?.latitude !== undefined && address?.latitude !== null ? String(address.latitude) : '',
       longitude:
@@ -168,18 +175,38 @@ export function AddressEditor({
     }))
   }
 
-  const useCurrentLocation = async () => {
-    if (!navigator.geolocation) {
-      return
-    }
+  const applyResolvedAddress = (result: GeocodeResult) => {
+    setDraft((current) => {
+      const house = [result.address.houseNumber].filter(Boolean).join(' ')
+      const street = result.address.road || ''
+      const area =
+        result.address.neighbourhood ||
+        result.address.suburb ||
+        result.address.city ||
+        result.address.town ||
+        result.address.village ||
+        ''
 
-    navigator.geolocation.getCurrentPosition((position) => {
-      setDraft((current) => ({
+      return {
         ...current,
-        latitude: position.coords.latitude.toFixed(6),
-        longitude: position.coords.longitude.toFixed(6),
-      }))
+        house: current.house || house,
+        street: current.street || street,
+        area: current.area || area,
+      }
     })
+  }
+
+  const handleLocationChange = (selection: LocationPickerSelection) => {
+    setDraft((current) => ({
+      ...current,
+      latitude: selection.lat.toFixed(6),
+      longitude: selection.lng.toFixed(6),
+      area:
+        current.area ||
+        selection.shortName ||
+        selection.address?.split(',').map((part) => part.trim()).filter(Boolean)[0] ||
+        current.area,
+    }))
   }
 
   const handleSave = () => {
@@ -193,6 +220,7 @@ export function AddressEditor({
       address_type: draft.addressType,
       address: composedAddress,
       landmark: draft.landmark.trim() || undefined,
+      notes: draft.notes.trim() || undefined,
       latitude: draft.latitude ? Number(draft.latitude) : null,
       longitude: draft.longitude ? Number(draft.longitude) : null,
       is_default: draft.isDefault,
@@ -279,6 +307,21 @@ export function AddressEditor({
           })}
         </div>
 
+        <div className="mt-4">
+          <LocationPickerMap
+            value={
+              draft.latitude && draft.longitude
+                ? { lat: Number(draft.latitude), lng: Number(draft.longitude) }
+                : null
+            }
+            address={addressPreview}
+            onChange={handleLocationChange}
+            onAddressResolved={applyResolvedAddress}
+            autoDetect={!address?.latitude || !address?.longitude}
+            heightClassName="h-[430px]"
+          />
+        </div>
+
         <div className="mt-4 grid gap-3">
           <Input
             value={draft.house}
@@ -304,6 +347,12 @@ export function AddressEditor({
             placeholder="Landmark (optional)"
             className="min-h-[110px] rounded-[1.2rem] border-[#E9DCD2] bg-white"
           />
+          <Textarea
+            value={draft.notes}
+            onChange={(event) => updateDraft('notes', event.target.value)}
+            placeholder="Delivery notes (optional)"
+            className="min-h-[96px] rounded-[1.2rem] border-[#E9DCD2] bg-white"
+          />
         </div>
 
         <div className="mt-4 rounded-[1.5rem] border border-[#F3DCCD] bg-[linear-gradient(180deg,#FFF8F3_0%,#FFFFFF_100%)] p-4">
@@ -320,34 +369,23 @@ export function AddressEditor({
               </div>
               <p className="mt-3 text-sm leading-6 text-[#4B5563]">{addressPreview}</p>
             </div>
-
-            <Button
-              type="button"
-              variant="outline"
-              onClick={useCurrentLocation}
-              className="rounded-full border-[#F3D1C0] bg-white px-4 text-[#C2410C] shadow-sm"
-            >
-              <LocateFixed className="mr-2 h-4 w-4" />
-              Change
-            </Button>
           </div>
 
           {draft.latitude && draft.longitude ? (
-            <a
-              href={`https://www.google.com/maps/search/?api=1&query=${draft.latitude},${draft.longitude}`}
-              target="_blank"
-              rel="noreferrer"
-              className="mt-3 inline-flex"
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() =>
+                openOsmLocation({
+                  lat: Number(draft.latitude),
+                  lng: Number(draft.longitude),
+                })
+              }
+              className="mt-3 rounded-full border-[#E5E7EB] bg-white px-4 text-[#374151]"
             >
-              <Button
-                type="button"
-                variant="outline"
-                className="rounded-full border-[#E5E7EB] bg-white px-4 text-[#374151]"
-              >
-                <MapPinned className="mr-2 h-4 w-4" />
-                Open in Maps
-              </Button>
-            </a>
+              <MapPinned className="mr-2 h-4 w-4" />
+              Open in OpenStreetMap
+            </Button>
           ) : null}
         </div>
       </section>

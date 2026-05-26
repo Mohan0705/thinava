@@ -27,6 +27,9 @@ const ensureRestaurantPanelSchema = async () => {
         label VARCHAR(100) NOT NULL,
         full_address TEXT NOT NULL,
         landmark VARCHAR(255),
+        notes TEXT,
+        latitude DECIMAL(10, 8),
+        longitude DECIMAL(11, 8),
         is_default BOOLEAN DEFAULT FALSE,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP

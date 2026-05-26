@@ -272,6 +272,9 @@ export default function CheckoutPage() {
           label: selectedAddressDetails.label,
           full_address: selectedAddressDetails.fullAddress,
           landmark: selectedAddressDetails.landmark,
+          notes: selectedAddressDetails.notes,
+          latitude: selectedAddressDetails.latitude,
+          longitude: selectedAddressDetails.longitude,
           contact_name: contactName.trim(),
           phone: phoneNumber.trim(),
           email: email.trim() || undefined,
@@ -385,6 +388,11 @@ export default function CheckoutPage() {
                         {address.landmark && (
                           <p className="text-sm text-gray-500 mt-1">
                             Landmark: {address.landmark}
+                          </p>
+                        )}
+                        {address.notes && (
+                          <p className="text-sm text-gray-500 mt-1">
+                            Notes: {address.notes}
                           </p>
                         )}
                         {(address.receiverName || address.receiverPhone) && (

@@ -19,6 +19,7 @@ export interface Address {
   address?: string
   fullAddress: string
   landmark?: string
+  notes?: string
   latitude?: number | null
   longitude?: number | null
   isDefault: boolean

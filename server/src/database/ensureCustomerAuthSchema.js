@@ -54,6 +54,7 @@ const ensureCustomerAuthSchema = async () => {
         label VARCHAR(100) NOT NULL,
         address TEXT NOT NULL,
         landmark VARCHAR(255),
+        notes TEXT,
         latitude DECIMAL(10, 8),
         longitude DECIMAL(11, 8),
         is_default BOOLEAN DEFAULT FALSE,
@@ -66,12 +67,16 @@ const ensureCustomerAuthSchema = async () => {
     await client.query(`
       ALTER TABLE addresses
       ADD COLUMN IF NOT EXISTS address_type VARCHAR(40),
+      ADD COLUMN IF NOT EXISTS notes TEXT,
+      ADD COLUMN IF NOT EXISTS latitude DECIMAL(10, 8),
+      ADD COLUMN IF NOT EXISTS longitude DECIMAL(11, 8),
       ADD COLUMN IF NOT EXISTS receiver_name VARCHAR(255),
       ADD COLUMN IF NOT EXISTS receiver_phone VARCHAR(40),
       ADD COLUMN IF NOT EXISTS use_account_details BOOLEAN DEFAULT TRUE;
 
       ALTER TABLE user_addresses
       ADD COLUMN IF NOT EXISTS address_type VARCHAR(40),
+      ADD COLUMN IF NOT EXISTS notes TEXT,
       ADD COLUMN IF NOT EXISTS receiver_name VARCHAR(255),
       ADD COLUMN IF NOT EXISTS receiver_phone VARCHAR(40),
       ADD COLUMN IF NOT EXISTS use_account_details BOOLEAN DEFAULT TRUE;
@@ -103,12 +108,13 @@ const ensureCustomerAuthSchema = async () => {
     `)
 
     await client.query(`
-      INSERT INTO user_addresses (user_id, label, address, landmark, latitude, longitude, is_default, legacy_address_id, address_type, receiver_name, receiver_phone, use_account_details, created_at, updated_at)
+      INSERT INTO user_addresses (user_id, label, address, landmark, notes, latitude, longitude, is_default, legacy_address_id, address_type, receiver_name, receiver_phone, use_account_details, created_at, updated_at)
       SELECT
         a.user_id,
         a.label,
         a.full_address,
         a.landmark,
+        a.notes,
         a.latitude,
         a.longitude,
         a.is_default,

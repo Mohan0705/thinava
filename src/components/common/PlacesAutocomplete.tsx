@@ -1,11 +1,13 @@
 'use client'
 
-import { useEffect, useRef, useState, useCallback } from 'react'
-import { loadGoogleMaps } from '@/lib/google-maps'
-import { MapPin } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { Loader2, MapPin, Search, X } from 'lucide-react'
+import { searchPlaces } from '@/lib/maps/nominatim'
+import type { GeocodeResult } from '@/lib/maps/types'
+import { cn } from '@/lib/utils'
 
 interface PlacesAutocompleteProps {
-  apiKey: string
+  apiKey?: string
   onSelect: (place: {
     address: string
     lat: number
@@ -20,173 +22,135 @@ interface PlacesAutocompleteProps {
 }
 
 export function PlacesAutocomplete({
-  apiKey,
   onSelect,
   placeholder = 'Enter address...',
   className = '',
   disabled = false,
   initialValue = '',
 }: PlacesAutocompleteProps) {
-  const inputRef = useRef<HTMLInputElement>(null)
   const [value, setValue] = useState(initialValue)
   const [isLoading, setIsLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [suggestions, setSuggestions] = useState<any[]>([])
+  const [suggestions, setSuggestions] = useState<GeocodeResult[]>([])
   const [showSuggestions, setShowSuggestions] = useState(false)
-  const autocompleteServiceRef = useRef<any>(null)
-  const placesServiceRef = useRef<any>(null)
+  const [error, setError] = useState<string | null>(null)
+  const debounceRef = useRef<number | null>(null)
 
   useEffect(() => {
-    if (!apiKey || apiKey.includes('your-google-maps-api-key')) {
-      setError('Google Maps API key not configured')
+    setValue(initialValue)
+  }, [initialValue])
+
+  useEffect(() => {
+    if (debounceRef.current) {
+      window.clearTimeout(debounceRef.current)
+    }
+
+    const query = value.trim()
+    if (query.length < 3) {
+      setSuggestions([])
+      setShowSuggestions(false)
       return
     }
 
-    const initGooglePlaces = async () => {
-      try {
-        setIsLoading(true)
-        const google = await loadGoogleMaps(apiKey)
+    const controller = new AbortController()
+    debounceRef.current = window.setTimeout(() => {
+      setIsLoading(true)
+      setError(null)
+      searchPlaces(query, controller.signal)
+        .then((results) => {
+          setSuggestions(results)
+          setShowSuggestions(results.length > 0)
+        })
+        .catch((caught) => {
+          if ((caught as Error).name !== 'AbortError') {
+            setSuggestions([])
+            setError('Address suggestions are unavailable right now.')
+          }
+        })
+        .finally(() => setIsLoading(false))
+    }, 450)
 
-        if (google?.maps?.places) {
-          autocompleteServiceRef.current = new google.maps.places.AutocompleteService()
-          placesServiceRef.current = new google.maps.places.PlacesService(
-            document.createElement('div')
-          )
-          setError(null)
-        }
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load Google Places')
-      } finally {
-        setIsLoading(false)
+    return () => {
+      controller.abort()
+      if (debounceRef.current) {
+        window.clearTimeout(debounceRef.current)
       }
     }
+  }, [value])
 
-    initGooglePlaces()
-  }, [apiKey])
+  const handleSelectSuggestion = (suggestion: GeocodeResult) => {
+    setValue(suggestion.displayName)
+    setSuggestions([])
+    setShowSuggestions(false)
+    setError(null)
 
-  const handleInputChange = useCallback(
-    async (inputValue: string) => {
-      setValue(inputValue)
-
-      if (!inputValue || inputValue.length < 3) {
-        setSuggestions([])
-        setShowSuggestions(false)
-        return
-      }
-
-      if (!autocompleteServiceRef.current) {
-        return
-      }
-
-      try {
-        const predictions = await autocompleteServiceRef.current.getPlacePredictions({
-          input: inputValue,
-          componentRestrictions: { country: 'in' }, // Restrict to India
-          types: ['address'],
-        })
-
-        setSuggestions(predictions.predictions || [])
-        setShowSuggestions(true)
-      } catch (err) {
-        console.error('Error fetching predictions:', err)
-        setSuggestions([])
-      }
-    },
-    []
-  )
-
-  const handleSelectSuggestion = useCallback(
-    async (prediction: any) => {
-      if (!placesServiceRef.current) {
-        return
-      }
-
-      try {
-        const details = await new Promise((resolve, reject) => {
-          placesServiceRef.current.getDetails(
-            {
-              placeId: prediction.place_id,
-              fields: [
-                'formatted_address',
-                'geometry',
-                'place_id',
-                'address_components',
-              ],
-            },
-            (place: any, status: string) => {
-              if (status === 'OK') {
-                resolve(place)
-              } else {
-                reject(new Error(`Failed to fetch place details: ${status}`))
-              }
-            }
-          )
-        })
-
-        const place = details as any
-        setValue(place.formatted_address || prediction.description)
-        setSuggestions([])
-        setShowSuggestions(false)
-
-        onSelect({
-          address: place.formatted_address || prediction.description,
-          lat: place.geometry?.location?.lat?.() || 0,
-          lng: place.geometry?.location?.lng?.() || 0,
-          placeId: prediction.place_id,
-          formatted: place.formatted_address || prediction.description,
-        })
-      } catch (err) {
-        console.error('Error selecting place:', err)
-        setError(err instanceof Error ? err.message : 'Failed to select place')
-      }
-    },
-    [onSelect]
-  )
+    onSelect({
+      address: suggestion.displayName,
+      lat: suggestion.lat,
+      lng: suggestion.lng,
+      placeId: suggestion.placeId,
+      formatted: suggestion.displayName,
+    })
+  }
 
   return (
     <div className="relative w-full">
       <div className="relative">
-        <div className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400">
-          <MapPin className="h-5 w-5" />
-        </div>
+        <Search className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" />
         <input
-          ref={inputRef}
           type="text"
           value={value}
-          onChange={(e) => handleInputChange(e.target.value)}
-          onFocus={() => value && showSuggestions && setShowSuggestions(true)}
+          onChange={(event) => setValue(event.target.value)}
+          onFocus={() => suggestions.length > 0 && setShowSuggestions(true)}
           placeholder={placeholder}
-          disabled={disabled || isLoading}
-          className={`w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed transition-colors ${className}`}
+          disabled={disabled}
+          className={cn(
+            'w-full rounded-lg border border-gray-300 py-2 pl-10 pr-10 transition-colors focus:border-transparent focus:ring-2 focus:ring-orange-500 disabled:cursor-not-allowed disabled:bg-gray-100',
+            className
+          )}
         />
+        <div className="absolute right-3 top-1/2 -translate-y-1/2">
+          {isLoading ? (
+            <Loader2 className="h-4 w-4 animate-spin text-orange-500" />
+          ) : value ? (
+            <button
+              type="button"
+              onClick={() => {
+                setValue('')
+                setSuggestions([])
+                setShowSuggestions(false)
+              }}
+              className="flex h-6 w-6 items-center justify-center rounded-full text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+              aria-label="Clear address"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          ) : null}
+        </div>
       </div>
 
-      {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+      {error ? <p className="mt-2 text-sm text-red-600">{error}</p> : null}
 
-      {showSuggestions && suggestions.length > 0 && (
-        <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-300 rounded-lg shadow-lg z-50 max-h-64 overflow-y-auto">
+      {showSuggestions && suggestions.length > 0 ? (
+        <div className="absolute left-0 right-0 top-full z-50 mt-1 max-h-64 overflow-y-auto rounded-lg border border-gray-300 bg-white shadow-lg">
           {suggestions.map((suggestion) => (
             <button
-              key={suggestion.place_id}
+              key={suggestion.placeId}
               onClick={() => handleSelectSuggestion(suggestion)}
-              className="w-full text-left px-4 py-3 hover:bg-gray-50 border-b border-gray-100 last:border-b-0 transition-colors"
+              className="w-full border-b border-gray-100 px-4 py-3 text-left transition-colors last:border-b-0 hover:bg-gray-50"
               type="button"
             >
               <div className="flex items-start gap-2">
-                <MapPin className="h-4 w-4 text-gray-400 mt-1 flex-shrink-0" />
-                <div>
-                  <p className="text-sm font-medium text-gray-900">
-                    {suggestion.main_text}
-                  </p>
-                  <p className="text-xs text-gray-600 mt-0.5">
-                    {suggestion.secondary_text}
-                  </p>
+                <MapPin className="mt-1 h-4 w-4 flex-shrink-0 text-orange-500" />
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium text-gray-900">{suggestion.shortName}</p>
+                  <p className="mt-0.5 line-clamp-2 text-xs text-gray-600">{suggestion.displayName}</p>
                 </div>
               </div>
             </button>
           ))}
         </div>
-      )}
+      ) : null}
     </div>
   )
 }
+

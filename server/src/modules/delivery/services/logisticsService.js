@@ -107,62 +107,6 @@ const calculateDistanceMeters = (from, to) => {
 const getEffectivePerKmRate = (now = new Date()) =>
   isNightWindow(now) ? DELIVERY_PAY_DEFAULTS.nightPerKmRate : DELIVERY_PAY_DEFAULTS.perKmRate
 
-const getGoogleMapsKey = () =>
-  env.GOOGLE_MAPS_SERVER_KEY ||
-  env.GOOGLE_MAPS_API_KEY ||
-  ''
-
-const fetchGoogleRouteMetrics = async ({ origin, restaurant, customer }) => {
-  const apiKey = getGoogleMapsKey()
-  if (!apiKey || apiKey.includes('your-google-maps-api-key')) {
-    return null
-  }
-
-  const url = new URL('https://maps.googleapis.com/maps/api/directions/json')
-  url.searchParams.set('origin', `${origin.latitude},${origin.longitude}`)
-  url.searchParams.set('destination', `${customer.latitude},${customer.longitude}`)
-  url.searchParams.set('waypoints', `via:${restaurant.latitude},${restaurant.longitude}`)
-  url.searchParams.set('mode', 'driving')
-  url.searchParams.set('key', apiKey)
-
-  try {
-    const response = await fetch(url.toString())
-    if (!response.ok) {
-      return null
-    }
-
-    const payload = await response.json()
-    if (payload.status !== 'OK' || !Array.isArray(payload.routes) || payload.routes.length === 0) {
-      return null
-    }
-
-    const route = payload.routes[0]
-    const legs = Array.isArray(route.legs) ? route.legs : []
-    if (legs.length < 2) {
-      return null
-    }
-
-    const pickupLeg = legs[0]
-    const dropoffLeg = legs[1]
-    const pickupDistanceKm = roundMetric((pickupLeg.distance?.value || 0) / 1000)
-    const dropoffDistanceKm = roundMetric((dropoffLeg.distance?.value || 0) / 1000)
-    const pickupEtaMinutes = Math.max(1, Math.round((pickupLeg.duration?.value || 0) / 60))
-    const dropoffEtaMinutes = Math.max(1, Math.round((dropoffLeg.duration?.value || 0) / 60))
-
-    return {
-      pickupDistanceKm,
-      dropoffDistanceKm,
-      routeDistanceKm: roundMetric(pickupDistanceKm + dropoffDistanceKm),
-      pickupEtaMinutes,
-      dropoffEtaMinutes,
-      totalEtaMinutes: pickupEtaMinutes + dropoffEtaMinutes,
-      provider: 'google_maps',
-    }
-  } catch {
-    return null
-  }
-}
-
 const buildFallbackRouteMetrics = ({ origin, restaurant, customer }) => {
   const pickupDistanceKm = roundMetric(haversineDistanceKm(origin, restaurant) * 1.22)
   const dropoffDistanceKm = roundMetric(haversineDistanceKm(restaurant, customer) * 1.18)
@@ -178,7 +122,7 @@ const buildFallbackRouteMetrics = ({ origin, restaurant, customer }) => {
     pickupEtaMinutes,
     dropoffEtaMinutes,
     totalEtaMinutes: pickupEtaMinutes + dropoffEtaMinutes,
-    provider: 'fallback',
+    provider: 'openstreetmap_estimate',
   }
 }
 
@@ -237,9 +181,7 @@ const buildDeliveryOfferMetrics = async ({
         }
       : TADEPALLIGUDEM_CENTER
 
-  const routeMetrics =
-    (await fetchGoogleRouteMetrics({ origin, restaurant, customer })) ||
-    buildFallbackRouteMetrics({ origin, restaurant, customer })
+  const routeMetrics = buildFallbackRouteMetrics({ origin, restaurant, customer })
 
   const pay = calculateDynamicDeliveryPay(routeMetrics.dropoffDistanceKm, paymentMethod)
 

@@ -10,12 +10,15 @@ import { API_BASE_URL } from '@/lib/api'
 import { useRestaurantOwnerAuthStore } from '@/store/restaurantOwnerAuthStore'
 import { ForgotPasswordModal } from '@/components/restaurant/ForgotPasswordModal'
 import { SUPPORT_PHONE_DISPLAY, SUPPORT_TEL } from '@/lib/support'
+import { RestaurantMap } from '@/components/maps/RestaurantMap'
+import type { GeocodeResult } from '@/lib/maps/types'
 
 // Animated tab switch component
 const TabSwitch = ({ isLogin, setIsLogin, loading }: any) => {
   return (
     <div className="relative inline-flex w-full gap-1 rounded-2xl bg-gradient-to-r from-slate-700/30 to-slate-600/20 p-1.5 backdrop-blur-sm border border-slate-600/40">
       <button
+        type="button"
         onClick={() => setIsLogin(true)}
         disabled={loading}
         className={`relative flex-1 py-3 px-4 rounded-xl font-semibold text-sm transition-all duration-300 ${
@@ -27,6 +30,7 @@ const TabSwitch = ({ isLogin, setIsLogin, loading }: any) => {
         <span className="relative z-10">Sign In</span>
       </button>
       <button
+        type="button"
         onClick={() => setIsLogin(false)}
         disabled={loading}
         className={`relative flex-1 py-3 px-4 rounded-xl font-semibold text-sm transition-all duration-300 ${
@@ -207,6 +211,37 @@ export default function RestaurantAuthPage() {
       delete next[field]
       return next
     })
+  }
+
+  const signupLatitude = Number(signupForm.latitude)
+  const signupLongitude = Number(signupForm.longitude)
+  const signupLocation =
+    Number.isFinite(signupLatitude) &&
+    Number.isFinite(signupLongitude) &&
+    !(signupLatitude === 0 && signupLongitude === 0)
+      ? { lat: signupLatitude, lng: signupLongitude }
+      : null
+
+  const applySignupLocation = (selection: { lat: number; lng: number; address?: string }) => {
+    setSignupForm((current) => ({
+      ...current,
+      latitude: selection.lat.toFixed(6),
+      longitude: selection.lng.toFixed(6),
+      address: current.address || selection.address || current.address,
+    }))
+    clearSignupError('address')
+  }
+
+  const applySignupResolvedAddress = (result: GeocodeResult) => {
+    setSignupForm((current) => ({
+      ...current,
+      address: current.address || result.displayName,
+      city: current.city || result.address.city || result.address.town || result.address.village || '',
+      state: current.state || result.address.state || '',
+      pincode: current.pincode || result.address.postcode || '',
+      latitude: result.lat.toFixed(6),
+      longitude: result.lng.toFixed(6),
+    }))
   }
 
   const validateSignup = () => {
@@ -479,6 +514,7 @@ export default function RestaurantAuthPage() {
             {/* CTA Button for Mobile */}
             <div className="lg:hidden">
               <button
+                type="button"
                 onClick={() => setIsLogin(!isLogin)}
                 className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white font-semibold py-4 rounded-xl transition shadow-lg shadow-orange-500/20"
               >
@@ -501,7 +537,7 @@ export default function RestaurantAuthPage() {
 
               <TabSwitch isLogin={isLogin} setIsLogin={setIsLogin} loading={isLoading} />
 
-              <div className="bg-slate-800/40 backdrop-blur-xl border border-slate-700/50 rounded-2xl p-8 shadow-2xl">
+              <div className="bg-slate-800/40 backdrop-blur-xl border border-slate-700/50 rounded-2xl p-5 shadow-2xl sm:p-8">
                 {isLogin ? (
                   /* LOGIN FORM */
                   <form onSubmit={handleLogin} className="space-y-5">
@@ -804,6 +840,16 @@ export default function RestaurantAuthPage() {
                         {signupErrors.city || signupErrors.state || signupErrors.pincode}
                       </p>
                     )}
+
+                    <RestaurantMap
+                      value={signupLocation}
+                      address={signupForm.address}
+                      onChange={applySignupLocation}
+                      onAddressResolved={applySignupResolvedAddress}
+                      heightClassName="h-72"
+                      dark
+                      autoDetect
+                    />
 
                     {/* Business Hours & Type */}
                     <h3 className="text-sm font-semibold text-orange-400 pt-2">Operations</h3>

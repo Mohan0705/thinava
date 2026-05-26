@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { PauseCircle, Power, Save, Store } from 'lucide-react'
+import { MapPinned, PauseCircle, Power, Save, Store } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/Button'
 import { Card, CardContent } from '@/components/ui/Card'
@@ -15,6 +15,9 @@ import { StatusBadge } from '@/components/restaurant-panel/StatusBadge'
 import { restaurantPanelApi } from '@/lib/restaurant-panel-api'
 import { useRestaurantOwnerAuthStore } from '@/store/restaurantOwnerAuthStore'
 import { RestaurantPanelSettings } from '@/types/restaurant-panel'
+import { RestaurantMap } from '@/components/maps/RestaurantMap'
+import { openOsmLocation } from '@/lib/maps/geo'
+import type { GeocodeResult } from '@/lib/maps/types'
 
 function SettingsContent() {
   const token = useRestaurantOwnerAuthStore((state) => state.token)
@@ -107,6 +110,35 @@ function SettingsContent() {
       delivery_time: String(settings.delivery_time || ''),
       price_for_one: Number(settings.price_for_one || 0),
     }
+  }
+
+  const handleRestaurantLocationChange = (selection: {
+    lat: number
+    lng: number
+    address?: string
+  }) => {
+    setSettings((current) =>
+      current
+        ? {
+            ...current,
+            latitude: Number(selection.lat.toFixed(6)),
+            longitude: Number(selection.lng.toFixed(6)),
+            formatted_address: current.formatted_address || selection.address || '',
+          }
+        : current
+    )
+  }
+
+  const handleRestaurantAddressResolved = (result: GeocodeResult) => {
+    setSettings((current) =>
+      current
+        ? {
+            ...current,
+            place_id: result.placeId,
+            formatted_address: result.displayName,
+          }
+        : current
+    )
   }
 
   const saveSettings = async (manualOverride?: boolean, successMessage = 'Restaurant settings updated') => {
@@ -283,6 +315,23 @@ function SettingsContent() {
                   />
                 </div>
 
+                <div className="space-y-3 md:col-span-2">
+                  <RestaurantMap
+                    value={
+                      settings.latitude !== null &&
+                      settings.latitude !== undefined &&
+                      settings.longitude !== null &&
+                      settings.longitude !== undefined
+                        ? { lat: Number(settings.latitude), lng: Number(settings.longitude) }
+                        : null
+                    }
+                    address={settings.formatted_address || ''}
+                    onChange={handleRestaurantLocationChange}
+                    onAddressResolved={handleRestaurantAddressResolved}
+                    heightClassName="h-[420px]"
+                  />
+                </div>
+
                 <div className="space-y-2">
                   <label className="text-sm font-semibold text-slate-700">Latitude</label>
                   <Input
@@ -313,14 +362,19 @@ function SettingsContent() {
                       {locating ? 'Detecting location...' : 'Use Current Location'}
                     </Button>
                     {settings.latitude !== null && settings.latitude !== undefined && settings.longitude !== null && settings.longitude !== undefined ? (
-                      <a
-                        href={`https://www.google.com/maps/search/?api=1&query=${settings.latitude},${settings.longitude}`}
-                        target="_blank"
-                        rel="noreferrer"
+                      <button
+                        type="button"
+                        onClick={() =>
+                          openOsmLocation({
+                            lat: Number(settings.latitude),
+                            lng: Number(settings.longitude),
+                          })
+                        }
                         className="inline-flex items-center rounded-xl border-2 border-gray-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition-all duration-200 hover:bg-gray-50"
                       >
-                        Open in Google Maps
-                      </a>
+                        <MapPinned className="mr-2 h-4 w-4" />
+                        Open in OpenStreetMap
+                      </button>
                     ) : null}
                   </div>
                 </div>

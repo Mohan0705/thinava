@@ -25,6 +25,7 @@ export default function ProfileAddressesPage() {
     address_type: 'Home' | 'Office' | 'Other'
     address: string
     landmark?: string
+    notes?: string
     latitude?: number | null
     longitude?: number | null
     is_default: boolean
@@ -134,6 +135,9 @@ export default function ProfileAddressesPage() {
                       <p className="text-sm leading-6 text-[#4B5563]">{address.fullAddress}</p>
                       {address.landmark ? (
                         <p className="mt-2 text-sm text-[#6B7280]">Landmark: {address.landmark}</p>
+                      ) : null}
+                      {address.notes ? (
+                        <p className="mt-2 text-sm text-[#6B7280]">Notes: {address.notes}</p>
                       ) : null}
                       {address.receiverName || address.receiverPhone ? (
                         <p className="mt-2 text-sm font-medium text-[#374151]">

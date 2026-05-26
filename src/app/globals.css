@@ -92,6 +92,152 @@
 }
 
 @layer components {
+  .thinava-map-shell {
+    @apply relative overflow-hidden rounded-[1.5rem] bg-slate-950;
+    min-height: 240px;
+    isolation: isolate;
+  }
+
+  .thinava-map-container {
+    @apply h-full w-full;
+    min-height: inherit;
+    font-family: inherit;
+  }
+
+  .thinava-map-shell .leaflet-container {
+    @apply h-full w-full;
+    min-height: inherit;
+    background: #eef2f7;
+    font-family: inherit;
+    touch-action: pan-x pan-y;
+  }
+
+  .thinava-map-shell .leaflet-control-zoom {
+    border: 0;
+    box-shadow: 0 18px 36px -24px rgba(15, 23, 42, 0.55);
+  }
+
+  .thinava-map-shell .leaflet-control-zoom a {
+    border: 0;
+    color: #111827;
+    font-weight: 900;
+  }
+
+  .thinava-map-dark-controls .leaflet-control-zoom a {
+    background: rgba(15, 23, 42, 0.88);
+    color: #ffffff;
+  }
+
+  .thinava-map-shell .leaflet-popup-content-wrapper,
+  .thinava-map-shell .leaflet-popup-tip {
+    border-radius: 16px;
+    box-shadow: 0 20px 45px -28px rgba(15, 23, 42, 0.7);
+  }
+
+  .thinava-map-marker {
+    position: relative;
+    display: flex !important;
+    height: 36px !important;
+    width: 36px !important;
+    align-items: center;
+    justify-content: center;
+    border-radius: 9999px;
+    border: 3px solid #ffffff;
+    background: #111827;
+    color: #ffffff;
+    --thinava-marker-pulse: #111827;
+    box-shadow: 0 16px 28px -18px rgba(15, 23, 42, 0.9);
+  }
+
+  .thinava-map-marker span {
+    position: relative;
+    z-index: 1;
+    font-size: 11px;
+    font-weight: 900;
+    line-height: 1;
+  }
+
+  .thinava-map-marker-pulse::after {
+    content: '';
+    position: absolute;
+    inset: -9px;
+    border-radius: 9999px;
+    background: var(--thinava-marker-pulse);
+    opacity: 0.16;
+    animation: thinava-map-pulse 1.8s ease-out infinite;
+  }
+
+  .thinava-map-marker-pin,
+  .thinava-map-marker-restaurant,
+  .thinava-map-marker-pickup {
+    background: #ff6b35;
+    --thinava-marker-pulse: #ff6b35;
+  }
+
+  .thinava-map-marker-rider {
+    background: #10b981;
+    --thinava-marker-pulse: #10b981;
+  }
+
+  .thinava-map-marker-customer,
+  .thinava-map-marker-dropoff {
+    background: #2563eb;
+    --thinava-marker-pulse: #2563eb;
+  }
+
+  .thinava-map-marker-admin {
+    background: #111827;
+    --thinava-marker-pulse: #111827;
+  }
+
+  .thinava-map-marker-hotspot {
+    background: #f59e0b;
+    --thinava-marker-pulse: #f59e0b;
+  }
+
+  .thinava-location-picker {
+    @apply relative overflow-hidden rounded-[1.65rem] border border-orange-100 bg-slate-100 shadow-[0_24px_60px_-42px_rgba(15,23,42,0.55)];
+    min-height: 340px;
+    isolation: isolate;
+  }
+
+  .thinava-location-picker .leaflet-container {
+    @apply h-full w-full;
+    min-height: inherit;
+    font-family: inherit;
+    touch-action: pan-x pan-y;
+  }
+
+  .thinava-location-picker-dark {
+    @apply border-white/10 bg-slate-950;
+  }
+
+  .thinava-center-pin {
+    @apply absolute left-1/2 top-1/2 z-[405] -translate-x-1/2 -translate-y-full text-[#FF6B35];
+  }
+
+  .thinava-center-pin-head {
+    @apply relative flex h-14 w-14 items-center justify-center rounded-full border-[4px] border-white bg-[#FF6B35] text-white shadow-[0_22px_34px_-20px_rgba(15,23,42,0.9)];
+  }
+
+  .thinava-center-pin-head::after {
+    content: '';
+    position: absolute;
+    bottom: -10px;
+    left: 50%;
+    height: 17px;
+    width: 17px;
+    transform: translateX(-50%) rotate(45deg);
+    border-bottom-right-radius: 5px;
+    background: #ff6b35;
+    box-shadow: 5px 5px 0 -2px #ffffff;
+  }
+
+  .thinava-center-pin-pulse {
+    @apply absolute left-1/2 top-[calc(100%+0.35rem)] h-8 w-8 -translate-x-1/2 rounded-full bg-[#FF6B35]/20;
+    animation: thinava-map-pulse 1.55s ease-out infinite;
+  }
+
   .thinava-page {
     @apply min-h-screen bg-thinava-bg;
   }
@@ -129,6 +275,21 @@
 
   .thinava-touch {
     @apply active:scale-[0.98] transition-transform duration-150;
+  }
+}
+
+@keyframes thinava-map-pulse {
+  0% {
+    transform: scale(0.72);
+    opacity: 0.32;
+  }
+  70% {
+    transform: scale(1.35);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(1.35);
+    opacity: 0;
   }
 }
 

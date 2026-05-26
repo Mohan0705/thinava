@@ -28,6 +28,7 @@ export const mapAddressResponse = (address: Record<string, any>): Address => ({
   address: address.address || address.full_address || address.fullAddress,
   fullAddress: address.address || address.full_address || address.fullAddress,
   landmark: address.landmark || undefined,
+  notes: address.notes || undefined,
   latitude:
     address.latitude === null || address.latitude === undefined ? null : Number(address.latitude),
   longitude:

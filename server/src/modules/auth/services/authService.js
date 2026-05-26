@@ -41,6 +41,7 @@ const mapAddress = (row) => ({
   address: row.address,
   full_address: row.address,
   landmark: row.landmark,
+  notes: row.notes,
   latitude: row.latitude !== null ? Number(row.latitude) : null,
   longitude: row.longitude !== null ? Number(row.longitude) : null,
   is_default: Boolean(row.is_default),
@@ -75,7 +76,7 @@ const normalizeAddressType = (value, fallback = 'Other') => {
 
 const getUserAddresses = async (userId) => {
   const result = await pool.query(
-    `SELECT id, user_id, label, address_type, address, landmark, latitude, longitude, is_default, receiver_name, receiver_phone, use_account_details, legacy_address_id, created_at, updated_at
+    `SELECT id, user_id, label, address_type, address, landmark, notes, latitude, longitude, is_default, receiver_name, receiver_phone, use_account_details, legacy_address_id, created_at, updated_at
      FROM user_addresses
      WHERE user_id = $1
      ORDER BY is_default DESC, updated_at DESC, created_at DESC`,
@@ -435,19 +436,21 @@ const upsertAddress = async (userId, payload, addressId = null) => {
                address_type = $2,
                full_address = $3,
                landmark = $4,
-               latitude = $5,
-               longitude = $6,
-               is_default = $7,
-               receiver_name = $8,
-               receiver_phone = $9,
-               use_account_details = $10,
+               notes = $5,
+               latitude = $6,
+               longitude = $7,
+               is_default = $8,
+               receiver_name = $9,
+               receiver_phone = $10,
+               use_account_details = $11,
                updated_at = CURRENT_TIMESTAMP
-           WHERE id = $11`,
+           WHERE id = $12`,
           [
             payload.label,
             addressType,
             payload.address,
             payload.landmark || null,
+            payload.notes || null,
             payload.latitude ?? null,
             payload.longitude ?? null,
             Boolean(payload.is_default),
@@ -459,8 +462,8 @@ const upsertAddress = async (userId, payload, addressId = null) => {
         )
       } else {
         const newLegacyAddress = await client.query(
-          `INSERT INTO addresses (user_id, label, address_type, full_address, landmark, latitude, longitude, is_default, receiver_name, receiver_phone, use_account_details)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+          `INSERT INTO addresses (user_id, label, address_type, full_address, landmark, notes, latitude, longitude, is_default, receiver_name, receiver_phone, use_account_details)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
            RETURNING id`,
           [
             userId,
@@ -468,6 +471,7 @@ const upsertAddress = async (userId, payload, addressId = null) => {
             addressType,
             payload.address,
             payload.landmark || null,
+            payload.notes || null,
             payload.latitude ?? null,
             payload.longitude ?? null,
             Boolean(payload.is_default),
@@ -485,21 +489,23 @@ const upsertAddress = async (userId, payload, addressId = null) => {
              address_type = $2,
              address = $3,
              landmark = $4,
-             latitude = $5,
-             longitude = $6,
-             is_default = $7,
-             receiver_name = $8,
-             receiver_phone = $9,
-             use_account_details = $10,
-             legacy_address_id = $11,
+             notes = $5,
+             latitude = $6,
+             longitude = $7,
+             is_default = $8,
+             receiver_name = $9,
+             receiver_phone = $10,
+             use_account_details = $11,
+             legacy_address_id = $12,
              updated_at = CURRENT_TIMESTAMP
-         WHERE id = $12 AND user_id = $13
+         WHERE id = $13 AND user_id = $14
          RETURNING *`,
         [
           payload.label,
           addressType,
           payload.address,
           payload.landmark || null,
+          payload.notes || null,
           payload.latitude ?? null,
           payload.longitude ?? null,
           Boolean(payload.is_default),
@@ -514,8 +520,8 @@ const upsertAddress = async (userId, payload, addressId = null) => {
       userAddress = updatedAddressResult.rows[0]
     } else {
       const newLegacyAddress = await client.query(
-        `INSERT INTO addresses (user_id, label, address_type, full_address, landmark, latitude, longitude, is_default, receiver_name, receiver_phone, use_account_details)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        `INSERT INTO addresses (user_id, label, address_type, full_address, landmark, notes, latitude, longitude, is_default, receiver_name, receiver_phone, use_account_details)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
          RETURNING id`,
         [
           userId,
@@ -523,6 +529,7 @@ const upsertAddress = async (userId, payload, addressId = null) => {
           addressType,
           payload.address,
           payload.landmark || null,
+          payload.notes || null,
           payload.latitude ?? null,
           payload.longitude ?? null,
           Boolean(payload.is_default),
@@ -535,8 +542,8 @@ const upsertAddress = async (userId, payload, addressId = null) => {
       legacyAddressId = newLegacyAddress.rows[0].id
 
       const newUserAddress = await client.query(
-        `INSERT INTO user_addresses (user_id, label, address_type, address, landmark, latitude, longitude, is_default, receiver_name, receiver_phone, use_account_details, legacy_address_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+        `INSERT INTO user_addresses (user_id, label, address_type, address, landmark, notes, latitude, longitude, is_default, receiver_name, receiver_phone, use_account_details, legacy_address_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
          RETURNING *`,
         [
           userId,
@@ -544,6 +551,7 @@ const upsertAddress = async (userId, payload, addressId = null) => {
           addressType,
           payload.address,
           payload.landmark || null,
+          payload.notes || null,
           payload.latitude ?? null,
           payload.longitude ?? null,
           Boolean(payload.is_default),

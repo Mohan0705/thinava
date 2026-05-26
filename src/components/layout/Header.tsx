@@ -1,5 +1,6 @@
 'use client'
 
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { ChevronDown, MapPin, ShoppingCart, User } from 'lucide-react'
@@ -8,6 +9,7 @@ import { useAuthStore } from '@/store/authStore'
 import LiveSearchBar from '@/components/customer/LiveSearchBar'
 import { cn } from '@/lib/utils'
 import { BackButton } from '@/components/layout/BackButton'
+import { reverseGeocode } from '@/lib/maps/nominatim'
 
 type HeaderProps = {
   immersive?: boolean
@@ -18,14 +20,56 @@ export default function Header({ immersive = false }: HeaderProps) {
   const itemCount = useCartStore((state) => state.getItemCount())
   const token = useAuthStore((state) => state.token)
   const user = useAuthStore((state) => state.user)
+  const [detectedLocation, setDetectedLocation] = useState<string | null>(null)
 
   const defaultAddress = user?.addresses?.find((address) => address.isDefault) || user?.addresses?.[0]
   const locationPreview =
     defaultAddress?.fullAddress ||
     defaultAddress?.address ||
+    detectedLocation ||
     'Tadepalligudem, Andhra Pradesh'
-  const locationLabel = defaultAddress?.addressType || defaultAddress?.label || 'Home'
+  const locationLabel = defaultAddress?.addressType || defaultAddress?.label || (detectedLocation ? 'Nearby' : 'Home')
   const showBackButton = Boolean(pathname && pathname !== '/')
+
+  useEffect(() => {
+    if (defaultAddress || typeof window === 'undefined') {
+      return
+    }
+
+    const cached = window.localStorage.getItem('thinava_detected_location_preview')
+    if (cached) {
+      setDetectedLocation(cached)
+      return
+    }
+
+    if (!navigator.geolocation || window.sessionStorage.getItem('thinava_location_prompted') === 'true') {
+      return
+    }
+
+    window.sessionStorage.setItem('thinava_location_prompted', 'true')
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        reverseGeocode({
+          lat: position.coords.latitude,
+          lng: position.coords.longitude,
+        })
+          .then((result) => {
+            setDetectedLocation(result.shortName || result.displayName)
+            window.localStorage.setItem(
+              'thinava_detected_location_preview',
+              result.shortName || result.displayName
+            )
+          })
+          .catch(() => {
+            const fallback = 'Current location detected'
+            setDetectedLocation(fallback)
+            window.localStorage.setItem('thinava_detected_location_preview', fallback)
+          })
+      },
+      () => undefined,
+      { enableHighAccuracy: true, maximumAge: 30000, timeout: 12000 }
+    )
+  }, [defaultAddress])
 
   const renderLocationBlock = (dark: boolean) => (
     <Link

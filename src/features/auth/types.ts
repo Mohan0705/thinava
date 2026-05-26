@@ -47,6 +47,7 @@ export interface AddressPayload {
   address_type?: 'Home' | 'Office' | 'Other'
   address: string
   landmark?: string
+  notes?: string
   latitude?: number | null
   longitude?: number | null
   is_default: boolean

@@ -14,7 +14,7 @@ if (typeof window !== 'undefined') {
 export const env = {
   NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL || '',
   NEXT_PUBLIC_SOCKET_URL: process.env.NEXT_PUBLIC_SOCKET_URL || '',
-  NEXT_PUBLIC_GOOGLE_MAPS_API_KEY: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || '',
+  NEXT_PUBLIC_OSM_TILE_URL: process.env.NEXT_PUBLIC_OSM_TILE_URL || '',
+  NEXT_PUBLIC_NOMINATIM_BASE_URL: process.env.NEXT_PUBLIC_NOMINATIM_BASE_URL || '',
   NODE_ENV: process.env.NODE_ENV || 'development',
 }
-

@@ -222,14 +222,17 @@ router.post('/', authenticateCustomer, asyncHandler(async (req, res) => {
 
     if (!resolvedAddressId) {
       const createdAddress = await client.query(
-        `INSERT INTO addresses (user_id, label, full_address, landmark, is_default)
-         VALUES ($1, $2, $3, $4, $5)
+        `INSERT INTO addresses (user_id, label, full_address, landmark, notes, latitude, longitude, is_default)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
          RETURNING id`,
         [
           resolvedUserId,
           delivery_address?.label || 'Delivery Address',
           delivery_address?.full_address,
           delivery_address?.landmark || null,
+          delivery_address?.notes || null,
+          delivery_address?.latitude ?? null,
+          delivery_address?.longitude ?? null,
           false,
         ]
       )

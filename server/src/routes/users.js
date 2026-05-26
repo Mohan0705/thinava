@@ -25,7 +25,7 @@ router.get('/:userId/addresses', asyncHandler(async (req, res) => {
 }))
 
 router.post('/:userId/addresses', asyncHandler(async (req, res) => {
-  const { label, full_address, landmark, is_default } = req.body
+  const { label, full_address, landmark, notes, latitude, longitude, is_default } = req.body
 
   if (is_default) {
     await pool.query(
@@ -35,15 +35,15 @@ router.post('/:userId/addresses', asyncHandler(async (req, res) => {
   }
 
   const result = await pool.query(
-    'INSERT INTO addresses (user_id, label, full_address, landmark, is_default) VALUES ($1, $2, $3, $4, $5) RETURNING *',
-    [req.params.userId, label, full_address, landmark, is_default || false]
+    'INSERT INTO addresses (user_id, label, full_address, landmark, notes, latitude, longitude, is_default) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *',
+    [req.params.userId, label, full_address, landmark, notes || null, latitude ?? null, longitude ?? null, is_default || false]
   )
 
   res.status(201).json({ success: true, address: result.rows[0] })
 }))
 
 router.put('/:userId/addresses/:addressId', asyncHandler(async (req, res) => {
-  const { label, full_address, landmark, is_default } = req.body
+  const { label, full_address, landmark, notes, latitude, longitude, is_default } = req.body
 
   if (is_default) {
     await pool.query(
@@ -53,8 +53,8 @@ router.put('/:userId/addresses/:addressId', asyncHandler(async (req, res) => {
   }
 
   const result = await pool.query(
-    'UPDATE addresses SET label = $1, full_address = $2, landmark = $3, is_default = $4, updated_at = CURRENT_TIMESTAMP WHERE id = $5 AND user_id = $6 RETURNING *',
-    [label, full_address, landmark, is_default || false, req.params.addressId, req.params.userId]
+    'UPDATE addresses SET label = $1, full_address = $2, landmark = $3, notes = $4, latitude = $5, longitude = $6, is_default = $7, updated_at = CURRENT_TIMESTAMP WHERE id = $8 AND user_id = $9 RETURNING *',
+    [label, full_address, landmark, notes || null, latitude ?? null, longitude ?? null, is_default || false, req.params.addressId, req.params.userId]
   )
 
   if (result.rows.length === 0) {

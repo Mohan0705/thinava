@@ -28,6 +28,7 @@ import { deliveryApi } from '@/lib/delivery-api'
 import { getRealtimeSocket, releaseRealtimeSocket } from '@/lib/realtime'
 import { DeliveryRealtimeEvent } from '@/types/delivery'
 import { SUPPORT_TEL, getWhatsAppLink } from '@/lib/support'
+import { openOsmDirections } from '@/lib/maps/geo'
 
 const statusTimeline = [
   {
@@ -304,10 +305,9 @@ export default function DeliveryActiveOrderPage() {
       return
     }
 
-    const origin = currentLocation ? `&origin=${currentLocation.lat},${currentLocation.lng}` : ''
-    window.open(
-      `https://www.google.com/maps/dir/?api=1${origin}&destination=${latitude},${longitude}&travelmode=driving`,
-      '_blank'
+    openOsmDirections(
+      { lat: latitude, lng: longitude },
+      currentLocation ? { lat: currentLocation.lat, lng: currentLocation.lng } : null
     )
   }
 

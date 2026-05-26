@@ -2,8 +2,9 @@
 
 import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { MapPin, Phone, User, Truck, Clock, Navigation } from 'lucide-react'
+import { Phone, User, Truck, Navigation } from 'lucide-react'
 import { getOptimizedCloudinaryImageUrl } from '@/lib/cloudinary-image'
+import { RiderTrackingMap } from '@/components/maps/RiderTrackingMap'
 
 interface RiderLocation {
   latitude: number
@@ -135,29 +136,12 @@ export function RiderTrackingCard({
           </motion.button>
         </div>
 
-        {/* Live Tracking Map Placeholder */}
-        <div className="w-full h-48 bg-gray-100 rounded-lg overflow-hidden relative">
-          <div className="absolute inset-0 flex items-center justify-center">
-            <div className="text-center">
-              <MapPin className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-              <p className="text-sm text-gray-500">Live Map</p>
-              <p className="text-xs text-gray-400 mt-1">
-                {riderLocation ? `${distance?.toFixed(2)} km away` : 'Loading location...'}
-              </p>
-            </div>
-          </div>
-
-          {/* Animated rider marker */}
-          {riderLocation && (
-            <motion.div
-              animate={{ opacity: [0.6, 1, 0.6] }}
-              transition={{ duration: 1.5, repeat: Infinity }}
-              className="absolute w-6 h-6 bg-orange-500 rounded-full left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2 shadow-lg"
-            >
-              <div className="absolute inset-0 bg-orange-500 rounded-full animate-pulse" />
-            </motion.div>
-          )}
-        </div>
+        <RiderTrackingMap
+          rider={riderLocation}
+          pickup={{ latitude: pickupLocation.lat, longitude: pickupLocation.lon }}
+          delivery={{ latitude: deliveryLocation.lat, longitude: deliveryLocation.lon }}
+          className="h-48 rounded-lg"
+        />
 
         {/* Tracking Details */}
         <div className="grid grid-cols-2 gap-3">
