@@ -398,7 +398,7 @@ app.use((req, res) => {
 // ============================================================
 // STARTUP
 // ============================================================
-const PORT = env.PORT
+const PORT = process.env.PORT || 5000
 const pool = require('./database/connection')
 const { testConnection } = require('./database/connection')
 
@@ -450,7 +450,8 @@ testConnection()
   .then(() => addOrderLifecycleColumns())
   .then(() => {
     startRestaurantAvailabilityBroadcaster()
-    server.listen(PORT, () => {
+    server.listen(PORT, '0.0.0.0', () => {
+      console.log(`Server running on port ${PORT}`)
       console.log(`
 ╔══════════════════════════════════════════════╗
 ║           THINAVA SERVER STARTED             ║
