@@ -830,8 +830,10 @@ const reassignRider = async (orderId, riderId, adminUser) => {
            surge_bonus = $10,
            rain_bonus = $11,
            night_bonus = $12,
+           cod_handling_bonus = $13,
+           estimated_earning = $14,
            updated_at = CURRENT_TIMESTAMP
-       WHERE id = $13
+       WHERE id = $15
        RETURNING id`,
       [
         riderId,
@@ -846,6 +848,8 @@ const reassignRider = async (orderId, riderId, adminUser) => {
         offerMetrics.pay.surgeBonus,
         offerMetrics.pay.rainBonus,
         offerMetrics.pay.nightBonus,
+        offerMetrics.pay.codHandlingBonus,
+        offerMetrics.pay.total,
         orderId,
       ]
     )

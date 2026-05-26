@@ -267,11 +267,17 @@ export interface DeliveryRealtimeOrderSnapshot {
   customer_name?: string
   restaurant_name?: string
   rider_name?: string
+  rider_phone?: string
+  rider_profile_image?: string
+  rider_vehicle_type?: string
+  rider_vehicle_number?: string
   customer_address?: string
   customer_latitude?: number | null
   customer_longitude?: number | null
   restaurant_latitude?: number | null
   restaurant_longitude?: number | null
+  rider_latitude?: number | null
+  rider_longitude?: number | null
 }
 
 export interface DeliveryRealtimeEvent {

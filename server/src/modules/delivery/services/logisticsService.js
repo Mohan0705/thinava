@@ -11,6 +11,8 @@ const DELIVERY_PAY_DEFAULTS = {
   nightPerKmRate: env.DELIVERY_NIGHT_PER_KM_RATE,
   surgeBonus: env.DELIVERY_SURGE_BONUS,
   rainBonus: env.DELIVERY_RAIN_BONUS,
+  codHandlingBonus: env.DELIVERY_COD_HANDLING_BONUS || 4,
+  baseDistanceKm: 2,
 }
 
 const DEFAULT_GPS_RADIUS_METERS = env.DELIVERY_GPS_RADIUS_METERS
@@ -126,32 +128,55 @@ const buildFallbackRouteMetrics = ({ origin, restaurant, customer }) => {
   }
 }
 
-const calculateDynamicDeliveryPay = (deliveryDistanceKm, paymentMethod = 'cod', now = new Date()) => {
+const computeRiderPayout = (deliveryDistanceKm, options = {}) => {
+  const {
+    paymentMethod = 'cod',
+    now = new Date(),
+    surgeBonus,
+    rainBonus,
+    codHandlingBonus,
+    tipAmount = 0,
+  } = options
   const distanceKm = roundMetric(deliveryDistanceKm)
-  const basePay = DELIVERY_PAY_DEFAULTS.basePay
+  const billableDistanceKm = Math.max(0, Math.ceil(distanceKm) - DELIVERY_PAY_DEFAULTS.baseDistanceKm)
+  const basePay = DELIVERY_PAY_DEFAULTS.basePay > 0 ? DELIVERY_PAY_DEFAULTS.basePay : 25
   const nightRateActive = isNightWindow(now)
+  const regularPerKmRate = DELIVERY_PAY_DEFAULTS.perKmRate > 0 ? DELIVERY_PAY_DEFAULTS.perKmRate : 10
   const effectivePerKmRate = nightRateActive
-    ? DELIVERY_PAY_DEFAULTS.nightPerKmRate
-    : DELIVERY_PAY_DEFAULTS.perKmRate
-  const distancePay = roundMetric(distanceKm * effectivePerKmRate)
-  const regularDistancePay = roundMetric(distanceKm * DELIVERY_PAY_DEFAULTS.perKmRate)
-  const surgeBonus = isPeakWindow(now) ? DELIVERY_PAY_DEFAULTS.surgeBonus : 0
-  const rainBonus = shouldApplyRainBonus() ? DELIVERY_PAY_DEFAULTS.rainBonus : 0
+    ? Math.max(DELIVERY_PAY_DEFAULTS.nightPerKmRate, regularPerKmRate)
+    : regularPerKmRate
+  const distancePay = roundMetric(billableDistanceKm * effectivePerKmRate)
+  const regularDistancePay = roundMetric(billableDistanceKm * regularPerKmRate)
+  const resolvedSurgeBonus =
+    surgeBonus !== undefined ? Number(surgeBonus || 0) : isPeakWindow(now) ? DELIVERY_PAY_DEFAULTS.surgeBonus : 0
+  const resolvedRainBonus =
+    rainBonus !== undefined ? Number(rainBonus || 0) : shouldApplyRainBonus() ? DELIVERY_PAY_DEFAULTS.rainBonus : 0
   const nightBonus = nightRateActive ? roundMetric(distancePay - regularDistancePay) : 0
-  const codHandlingBonus = String(paymentMethod || '').toLowerCase() === 'cod' ? 4 : 0
-  const total = roundMetric(basePay + distancePay + surgeBonus + rainBonus + codHandlingBonus)
+  const resolvedCodHandlingBonus =
+    codHandlingBonus !== undefined
+      ? Number(codHandlingBonus || 0)
+      : String(paymentMethod || '').toLowerCase() === 'cod'
+        ? DELIVERY_PAY_DEFAULTS.codHandlingBonus
+        : 0
+  const total = roundMetric(basePay + distancePay + resolvedSurgeBonus + resolvedRainBonus + resolvedCodHandlingBonus + Number(tipAmount || 0))
 
   return {
     basePay: roundMetric(basePay),
     perKmRate: effectivePerKmRate,
+    baseDistanceKm: DELIVERY_PAY_DEFAULTS.baseDistanceKm,
+    billableDistanceKm,
     distancePay,
-    surgeBonus: roundMetric(surgeBonus),
-    rainBonus: roundMetric(rainBonus),
+    surgeBonus: roundMetric(resolvedSurgeBonus),
+    rainBonus: roundMetric(resolvedRainBonus),
     nightBonus,
-    codHandlingBonus: roundMetric(codHandlingBonus),
+    codHandlingBonus: roundMetric(resolvedCodHandlingBonus),
+    tipAmount: roundMetric(tipAmount),
     total,
   }
 }
+
+const calculateDynamicDeliveryPay = (deliveryDistanceKm, paymentMethod = 'cod', now = new Date()) =>
+  computeRiderPayout(deliveryDistanceKm, { paymentMethod, now })
 
 const buildDeliveryOfferMetrics = async ({
   orderId,
@@ -183,7 +208,7 @@ const buildDeliveryOfferMetrics = async ({
 
   const routeMetrics = buildFallbackRouteMetrics({ origin, restaurant, customer })
 
-  const pay = calculateDynamicDeliveryPay(routeMetrics.dropoffDistanceKm, paymentMethod)
+  const pay = computeRiderPayout(routeMetrics.dropoffDistanceKm, { paymentMethod })
 
   return {
     coordinates: {
@@ -202,6 +227,7 @@ module.exports = {
   buildDeliveryOfferMetrics,
   calculateDistanceMeters,
   calculateDynamicDeliveryPay,
+  computeRiderPayout,
   coerceCoordinate,
   getEffectivePerKmRate,
   haversineDistanceKm,

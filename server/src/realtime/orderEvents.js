@@ -12,6 +12,58 @@ const EVENTS = {
   DELIVERY_LOCATION_UPDATED: 'delivery:location_updated',
 }
 
+const LIFECYCLE_EVENTS = {
+  ORDER_ASSIGNED: 'ORDER_ASSIGNED',
+  ORDER_PREPARING: 'ORDER_PREPARING',
+  ORDER_READY: 'ORDER_READY',
+  RIDER_ACCEPTED: 'RIDER_ACCEPTED',
+  RIDER_ARRIVED: 'RIDER_ARRIVED',
+  PICKED_UP: 'PICKED_UP',
+  ARRIVING: 'ARRIVING',
+  DELIVERED: 'DELIVERED',
+  CANCELLED: 'CANCELLED',
+}
+
+const normalizeUpper = (value) => String(value || '').trim().toUpperCase()
+
+const resolveLifecycleEventName = (event, payload) => {
+  const orderStatus = normalizeUpper(payload?.normalized_status || payload?.order?.status)
+  const deliveryStatus = normalizeUpper(payload?.status || payload?.delivery_status || payload?.order?.delivery_status)
+
+  if (event === 'order_assigned') return LIFECYCLE_EVENTS.ORDER_ASSIGNED
+  if (event === 'order_ready_for_dispatch') return LIFECYCLE_EVENTS.ORDER_READY
+
+  if (orderStatus === 'PREPARING') return LIFECYCLE_EVENTS.ORDER_PREPARING
+  if (orderStatus === 'READY_FOR_PICKUP' || orderStatus === 'READY_FOR_DELIVERY') return LIFECYCLE_EVENTS.ORDER_READY
+  if (orderStatus === 'DELIVERED' || deliveryStatus === 'DELIVERED') return LIFECYCLE_EVENTS.DELIVERED
+  if (orderStatus === 'CANCELLED' || deliveryStatus === 'CANCELLED') return LIFECYCLE_EVENTS.CANCELLED
+
+  if (deliveryStatus === 'ASSIGNED') return LIFECYCLE_EVENTS.RIDER_ACCEPTED
+  if (deliveryStatus === 'ARRIVED_AT_RESTAURANT' || deliveryStatus === 'AT_RESTAURANT') return LIFECYCLE_EVENTS.RIDER_ARRIVED
+  if (deliveryStatus === 'PICKED_UP') return LIFECYCLE_EVENTS.PICKED_UP
+  if (deliveryStatus === 'REACHED_CUSTOMER' || deliveryStatus === 'AT_CUSTOMER') return LIFECYCLE_EVENTS.ARRIVING
+
+  return null
+}
+
+const emitLifecycleAlias = (order, eventName, payload) => {
+  if (!eventName) return
+
+  const aliasPayload = {
+    ...payload,
+    lifecycle_event: eventName,
+    order_id: order.id,
+  }
+
+  emitToRoom(ROOMS.ADMIN_GLOBAL, eventName, aliasPayload)
+  emitToRoom(ROOMS.customer(order.user_id), eventName, aliasPayload)
+  emitToRoom(ROOMS.restaurant(order.restaurant_id), eventName, aliasPayload)
+
+  if (order.delivery_partner_id) {
+    emitToRoom(ROOMS.deliveryPartner(order.delivery_partner_id), eventName, aliasPayload)
+  }
+}
+
 const getOrderRealtimeSnapshot = async (orderId) => {
   const result = await pool.query(
     `SELECT
@@ -30,16 +82,29 @@ const getOrderRealtimeSnapshot = async (orderId) => {
        u.name AS customer_name,
        r.name AS restaurant_name,
        dp.full_name AS rider_name,
+       dp.phone AS rider_phone,
+       dp.profile_image AS rider_profile_image,
+       dp.vehicle_type AS rider_vehicle_type,
+       dp.vehicle_number AS rider_vehicle_number,
        a.full_address AS customer_address,
        a.latitude AS customer_latitude,
        a.longitude AS customer_longitude,
        r.latitude AS restaurant_latitude,
-       r.longitude AS restaurant_longitude
+       r.longitude AS restaurant_longitude,
+       loc.latitude AS rider_latitude,
+       loc.longitude AS rider_longitude
      FROM orders o
      JOIN users u ON u.id = o.user_id
      JOIN restaurants r ON r.id = o.restaurant_id
      LEFT JOIN delivery_partners dp ON dp.id = o.delivery_partner_id
      LEFT JOIN addresses a ON a.id = o.address_id
+     LEFT JOIN LATERAL (
+       SELECT latitude, longitude
+       FROM delivery_locations dl
+       WHERE dl.delivery_partner_id = o.delivery_partner_id
+       ORDER BY timestamp DESC
+       LIMIT 1
+     ) loc ON TRUE
      WHERE o.id = $1`,
     [orderId]
   )
@@ -66,11 +131,17 @@ const getOrderRealtimeSnapshot = async (orderId) => {
     customer_name: row.customer_name,
     restaurant_name: row.restaurant_name,
     rider_name: row.rider_name,
+    rider_phone: row.rider_phone,
+    rider_profile_image: row.rider_profile_image,
+    rider_vehicle_type: row.rider_vehicle_type,
+    rider_vehicle_number: row.rider_vehicle_number,
     customer_address: row.customer_address,
     customer_latitude: row.customer_latitude !== null ? Number(row.customer_latitude) : null,
     customer_longitude: row.customer_longitude !== null ? Number(row.customer_longitude) : null,
     restaurant_latitude: row.restaurant_latitude !== null ? Number(row.restaurant_latitude) : null,
     restaurant_longitude: row.restaurant_longitude !== null ? Number(row.restaurant_longitude) : null,
+    rider_latitude: row.rider_latitude !== null ? Number(row.rider_latitude) : null,
+    rider_longitude: row.rider_longitude !== null ? Number(row.rider_longitude) : null,
   }
 }
 
@@ -98,6 +169,8 @@ const emitOrderScopedUpdate = async (orderId, event, extraPayload = {}) => {
       payload
     )
   }
+
+  emitLifecycleAlias(order, resolveLifecycleEventName(event, payload), payload)
 
   return payload
 }
@@ -168,6 +241,7 @@ const emitDeliveryLocationUpdated = async (orderId, extraPayload = {}) => {
 
 module.exports = {
   EVENTS,
+  LIFECYCLE_EVENTS,
   emitDeliveryLocationUpdated,
   emitDeliveryStatusUpdated,
   emitOrderAssigned,

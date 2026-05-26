@@ -182,11 +182,14 @@ const updateRestaurantOrderStatus = async (restaurantId, orderId, nextStatusValu
     throw error
   }
 
-  if (nextStatus === ORDER_STATUS.PREPARING) {
+  if (nextStatus === ORDER_STATUS.PREPARING || nextStatus === ORDER_STATUS.READY_FOR_PICKUP) {
     try {
       await autoAssignOrder(orderId, {
-        source: 'restaurant_preparing',
-        dispatchNote: 'Auto-assigned when restaurant marked order as preparing',
+        source: nextStatus === ORDER_STATUS.PREPARING ? 'restaurant_preparing' : 'restaurant_ready_for_pickup',
+        dispatchNote:
+          nextStatus === ORDER_STATUS.PREPARING
+            ? 'Auto-assigned when restaurant marked order as preparing'
+            : 'Auto-assigned when restaurant marked order ready for pickup',
       })
     } catch (error) {
       console.error('Failed to auto-assign delivery partner', error)

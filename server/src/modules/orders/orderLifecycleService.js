@@ -193,6 +193,7 @@ const updateOrderLifecycleState = async (orderId, newStatus, options = {}) => {
     const orderResult = await client.query(
       `SELECT
          o.id, o.status, o.delivery_status, o.payment_method, o.total,
+         o.payment_status,
          o.delivery_partner_id, o.restaurant_id, o.user_id,
          o.route_distance_km, o.dropoff_distance_km,
          o.base_delivery_pay, o.distance_delivery_pay,
@@ -259,8 +260,8 @@ const updateOrderLifecycleState = async (orderId, newStatus, options = {}) => {
     // 5. Update orders table
     const updateResult = await client.query(
       `UPDATE orders
-       SET status = $1,
-           delivery_status = $2,
+       SET status = $1::text,
+           delivery_status = $2::text,
            updated_at = CURRENT_TIMESTAMP${timestampClause}
        WHERE id = $3::uuid
        RETURNING id, status, delivery_status`,
@@ -316,32 +317,69 @@ const updateOrderLifecycleState = async (orderId, newStatus, options = {}) => {
           `UPDATE delivery_partners
            SET current_order_id = NULL,
                current_status = 'AVAILABLE',
-               total_deliveries = CASE WHEN $1::text = 'DELIVERED' THEN total_deliveries + 1 ELSE total_deliveries END,
                updated_at = CURRENT_TIMESTAMP
-           WHERE id = $2::uuid`,
-          [normalizedStatus, riderId]
+           WHERE id = $1::uuid`,
+          [riderId]
         )
       }
     }
 
+    let payoutAmount = 0
+    let finalDistance = Number(order.dropoff_distance_km || order.route_distance_km || 0)
+    let durationMinutes = 0
+
     // 10. Record earnings if delivered
     if (isDelivered && riderId) {
       const earningsService = require('../delivery/services/earningsService')
+      const { computeRiderPayout } = require('../delivery/services/logisticsService')
       const assignedAt = order.delivery_assigned_at ? new Date(order.delivery_assigned_at) : new Date()
       const completedAt = new Date()
-      const durationMinutes = Math.round((completedAt - assignedAt) / 60000)
-      const finalDistance = Number(order.dropoff_distance_km || order.route_distance_km || 0)
-      const payoutAmount =
-        Number(order.estimated_earning || 0) ||
-        Number(order.base_delivery_pay || 0) +
-          Number(order.distance_delivery_pay || 0) +
-          Number(order.surge_bonus || 0) +
-          Number(order.rain_bonus || 0) +
-          Number(order.night_bonus || 0) +
-          Number(order.cod_handling_bonus || 0) +
-          Number(order.tip_amount || 0)
+      durationMinutes = Math.max(0, Math.round((completedAt - assignedAt) / 60000))
+      const payout = computeRiderPayout(finalDistance, {
+        paymentMethod: order.payment_method,
+        surgeBonus: Number(order.surge_bonus || 0),
+        rainBonus: Number(order.rain_bonus || 0),
+        codHandlingBonus: Number(order.cod_handling_bonus || 0),
+        tipAmount: Number(order.tip_amount || 0),
+      })
+      payoutAmount = payout.total
+
+      await client.query(
+        `UPDATE orders
+         SET base_delivery_pay = $1::numeric,
+             distance_delivery_pay = $2::numeric,
+             surge_bonus = $3::numeric,
+             rain_bonus = $4::numeric,
+             night_bonus = $5::numeric,
+             cod_handling_bonus = $6::numeric,
+             estimated_earning = $7::numeric,
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = $8::uuid`,
+        [
+          payout.basePay,
+          payout.distancePay,
+          payout.surgeBonus,
+          payout.rainBonus,
+          payout.nightBonus,
+          payout.codHandlingBonus,
+          payout.total,
+          orderId,
+        ]
+      )
 
       await earningsService.recordEarning(riderId, orderId, finalDistance, durationMinutes, payoutAmount, 0, client)
+
+      if (String(order.payment_method || '').toLowerCase() === 'cod') {
+        await client.query(
+          `INSERT INTO rider_wallets (delivery_partner_id, floating_cash, floating_cash_limit)
+           VALUES ($1::uuid, $2::numeric, 1500)
+           ON CONFLICT (delivery_partner_id)
+           DO UPDATE SET
+             floating_cash = rider_wallets.floating_cash + EXCLUDED.floating_cash,
+             updated_at = CURRENT_TIMESTAMP`,
+          [riderId, Number(order.total || 0)]
+        )
+      }
     }
 
     // 11. Update payment status for cancelled orders
@@ -377,6 +415,9 @@ const updateOrderLifecycleState = async (orderId, newStatus, options = {}) => {
       customer_name: order.customer_name,
       status: normalizedStatus,
       delivery_status: newDeliveryStatus,
+      payout_amount: payoutAmount,
+      distance_km: finalDistance,
+      duration_minutes: durationMinutes,
       source: options.source || 'lifecycle_update',
       timestamp: new Date().toISOString(),
     }
@@ -385,12 +426,18 @@ const updateOrderLifecycleState = async (orderId, newStatus, options = {}) => {
       source: options.source || 'lifecycle_update',
       normalized_status: normalizedStatus,
       delivery_status: newDeliveryStatus,
+      payout_amount: payoutAmount,
+      distance_km: finalDistance,
+      duration_minutes: durationMinutes,
     }).catch((err) => console.error('Failed to emit order status update:', err))
 
     emitDeliveryStatusUpdated(orderId, {
       source: options.source || 'lifecycle_update',
       status: newDeliveryStatus,
       order_status: normalizedStatus.toLowerCase(),
+      payout_amount: payoutAmount,
+      distance_km: finalDistance,
+      duration_minutes: durationMinutes,
     }).catch((err) => console.error('Failed to emit delivery status update:', err))
 
     // Emit granular events
@@ -406,13 +453,71 @@ const updateOrderLifecycleState = async (orderId, newStatus, options = {}) => {
     // Emit to rider room
     if (io && riderId && isTerminal) {
       const eventName = isDelivered ? 'delivery_completed' : 'order_cancelled'
-      io.to(`delivery_partner:${riderId}`).emit(eventName, {
+      const riderRoom = `delivery_partner:${riderId}`
+      io.to(riderRoom).emit(eventName, {
         order_id: orderId,
+        payout_amount: payoutAmount,
+        distance_km: finalDistance,
+        duration_minutes: durationMinutes,
         message: isDelivered
           ? 'Delivery completed! Earnings added to your wallet.'
           : 'This delivery has been cancelled. You are now available for new orders.',
         timestamp: eventPayload.timestamp,
       })
+
+      if (isDelivered) {
+        try {
+          const statsResult = await pool.query(
+            `SELECT
+               dp.total_deliveries,
+               dp.average_rating,
+               dp.is_online,
+               COALESCE(rw.floating_cash, 0) AS floating_cash,
+               COALESCE(SUM(de.amount) FILTER (WHERE DATE(de.earned_at) = CURRENT_DATE), 0) AS today_earnings,
+               COUNT(de.id) FILTER (WHERE DATE(de.earned_at) = CURRENT_DATE)::int AS today_deliveries
+             FROM delivery_partners dp
+             LEFT JOIN rider_wallets rw ON rw.delivery_partner_id = dp.id
+             LEFT JOIN delivery_earnings de ON de.delivery_partner_id = dp.id
+             WHERE dp.id = $1::uuid
+             GROUP BY dp.id, rw.id`,
+            [riderId]
+          )
+
+          const stats = statsResult.rows[0]
+          if (stats) {
+            io.to(riderRoom).emit('delivery:earnings_updated', {
+              earnings: {
+                total_amount: Number(stats.today_earnings || 0),
+                deliveries: Number(stats.today_deliveries || 0),
+                payout_amount: payoutAmount,
+                latest_order_id: orderId,
+              },
+              changed_at: eventPayload.timestamp,
+            })
+
+            io.to(riderRoom).emit('delivery:wallet_updated', {
+              wallet: {
+                floating_cash: Number(stats.floating_cash || 0),
+                latest_order_id: orderId,
+              },
+              changed_at: eventPayload.timestamp,
+            })
+
+            io.to(riderRoom).emit('delivery:stats_updated', {
+              stats: {
+                total_deliveries: Number(stats.total_deliveries || 0),
+                average_rating: Number(stats.average_rating || 0),
+                is_online: Boolean(stats.is_online),
+                floating_cash: Number(stats.floating_cash || 0),
+                total_earned: Number(stats.today_earnings || 0),
+              },
+              changed_at: eventPayload.timestamp,
+            })
+          }
+        } catch (error) {
+          console.error('Failed to emit lifecycle rider stats update:', error.message)
+        }
+      }
     }
 
     // Emit to admin global

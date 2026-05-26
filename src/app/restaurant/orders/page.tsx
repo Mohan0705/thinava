@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { BellRing, Check, Clock3, MessageCircle, PackageCheck, RefreshCw, X, User, Phone, Truck } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/Button'
@@ -12,6 +12,7 @@ import { RestaurantPanelShell } from '@/components/restaurant-panel/RestaurantPa
 import { RestaurantRouteGuard } from '@/components/restaurant-panel/RestaurantRouteGuard'
 import { restaurantPanelApi } from '@/lib/restaurant-panel-api'
 import { useRestaurantOwnerAuthStore } from '@/store/restaurantOwnerAuthStore'
+import { getRealtimeSocket, releaseRealtimeSocket } from '@/lib/realtime'
 
 type OrderStatus = 'PLACED' | 'ACCEPTED' | 'PREPARING' | 'READY_FOR_PICKUP' | 'OUT_FOR_DELIVERY' | 'DELIVERED' | 'CANCELLED'
 
@@ -99,6 +100,9 @@ function OrdersContent() {
   const [loading, setLoading] = useState(true)
   const [updatingOrderId, setUpdatingOrderId] = useState<string | null>(null)
   const [highlightedIds, setHighlightedIds] = useState<string[]>([])
+  const [statusFilter, setStatusFilter] = useState<OrderStatus | 'ALL'>('ALL')
+  const [paymentFilter, setPaymentFilter] = useState<'ALL' | 'COD' | 'ONLINE'>('ALL')
+  const [searchTerm, setSearchTerm] = useState('')
   const knownOrderIds = useRef<Set<string>>(new Set())
 
   useEffect(() => {
@@ -147,6 +151,39 @@ function OrdersContent() {
     }
   }, [token])
 
+  useEffect(() => {
+    if (!token) return
+
+    const socket = getRealtimeSocket('restaurant', token)
+    if (!socket) return
+
+    const refreshOrders = () => {
+      void restaurantPanelApi.getOrders(token).then((response) => {
+        setOrders(response.orders)
+        knownOrderIds.current = new Set(response.orders.map((order: Order) => order.id))
+      }).catch(() => undefined)
+    }
+
+    socket.on('restaurant:order_updated', refreshOrders)
+    socket.on('ORDER_PREPARING', refreshOrders)
+    socket.on('ORDER_READY', refreshOrders)
+    socket.on('ORDER_ASSIGNED', refreshOrders)
+    socket.on('PICKED_UP', refreshOrders)
+    socket.on('DELIVERED', refreshOrders)
+    socket.on('CANCELLED', refreshOrders)
+
+    return () => {
+      socket.off('restaurant:order_updated', refreshOrders)
+      socket.off('ORDER_PREPARING', refreshOrders)
+      socket.off('ORDER_READY', refreshOrders)
+      socket.off('ORDER_ASSIGNED', refreshOrders)
+      socket.off('PICKED_UP', refreshOrders)
+      socket.off('DELIVERED', refreshOrders)
+      socket.off('CANCELLED', refreshOrders)
+      releaseRealtimeSocket('restaurant', token)
+    }
+  }, [token])
+
   const handleStatusUpdate = async (orderId: string, status: OrderStatus) => {
     if (!token) return
 
@@ -164,6 +201,27 @@ function OrdersContent() {
       setUpdatingOrderId(null)
     }
   }
+
+  const filteredOrders = useMemo(() => {
+    const normalizedSearch = searchTerm.trim().toLowerCase()
+
+    return orders.filter((order) => {
+      if (statusFilter !== 'ALL' && order.status !== statusFilter) return false
+      if (paymentFilter === 'COD' && order.payment_method.toLowerCase() !== 'cod') return false
+      if (paymentFilter === 'ONLINE' && order.payment_method.toLowerCase() === 'cod') return false
+      if (!normalizedSearch) return true
+
+      const searchable = [
+        order.id,
+        order.customer.name,
+        order.customer.phone,
+        order.rider?.name,
+        order.items.map((item) => item.name).join(' '),
+      ].join(' ').toLowerCase()
+
+      return searchable.includes(normalizedSearch)
+    })
+  }, [orders, paymentFilter, searchTerm, statusFilter])
 
   if (loading) {
     return (
@@ -188,6 +246,36 @@ function OrdersContent() {
       }
     >
       <div className="space-y-4">
+        <Card className="border border-white/70 bg-white/90">
+          <CardContent className="grid gap-3 p-4 md:grid-cols-[1fr_180px_180px]">
+            <input
+              value={searchTerm}
+              onChange={(event) => setSearchTerm(event.target.value)}
+              placeholder="Search order, customer, rider, or item"
+              className="h-12 rounded-xl border-2 border-slate-200 bg-white px-4 text-sm font-medium outline-none transition focus:border-orange-400"
+            />
+            <select
+              value={statusFilter}
+              onChange={(event) => setStatusFilter(event.target.value as OrderStatus | 'ALL')}
+              className="h-12 rounded-xl border-2 border-slate-200 bg-white px-4 text-sm font-medium outline-none transition focus:border-orange-400"
+            >
+              <option value="ALL">All statuses</option>
+              {Object.keys(statusConfig).map((status) => (
+                <option key={status} value={status}>{statusConfig[status as OrderStatus].label}</option>
+              ))}
+            </select>
+            <select
+              value={paymentFilter}
+              onChange={(event) => setPaymentFilter(event.target.value as 'ALL' | 'COD' | 'ONLINE')}
+              className="h-12 rounded-xl border-2 border-slate-200 bg-white px-4 text-sm font-medium outline-none transition focus:border-orange-400"
+            >
+              <option value="ALL">All payments</option>
+              <option value="COD">COD</option>
+              <option value="ONLINE">Online</option>
+            </select>
+          </CardContent>
+        </Card>
+
         {orders.length === 0 ? (
           <EmptyState
             title="No live orders yet"
@@ -195,7 +283,14 @@ function OrdersContent() {
           />
         ) : null}
 
-        {orders.map((order) => {
+        {orders.length > 0 && filteredOrders.length === 0 ? (
+          <EmptyState
+            title="No matching orders"
+            description="Adjust filters or search to see more orders."
+          />
+        ) : null}
+
+        {filteredOrders.map((order) => {
           const actions = workflowActions[order.status] || []
           const isHighlighted = highlightedIds.includes(order.id)
           const isTerminal = order.status === 'DELIVERED' || order.status === 'CANCELLED'

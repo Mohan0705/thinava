@@ -22,7 +22,7 @@ const REQUIRED = {
   OTP_RESEND_COOLDOWN_SECONDS: { default: '30', parse: Number },
   OTP_MAX_ATTEMPTS: { default: '5', parse: Number },
 
-  DELIVERY_BASE_PAY: { default: '0', parse: Number },
+  DELIVERY_BASE_PAY: { default: '25', parse: Number },
   DELIVERY_PER_KM_RATE: { default: '10', parse: Number },
   DELIVERY_NIGHT_PER_KM_RATE: { default: '13', parse: Number },
   DELIVERY_SURGE_BONUS: { default: '10', parse: Number },

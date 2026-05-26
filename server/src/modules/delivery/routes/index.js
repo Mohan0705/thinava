@@ -8,6 +8,7 @@ const shiftsController = require('../controllers/shiftsController')
 const walletController = require('../controllers/walletController')
 const { authenticateDeliveryPartner } = require('../middleware/auth')
 const { logger } = require('../../../lib/logger')
+const { DELIVERY_STATUS_ALIASES, ORDER_DELIVERY_STATUSES } = require('../constants')
 
 const router = express.Router()
 
@@ -61,7 +62,26 @@ router.post('/orders/accept', ordersController.acceptOrder)
 router.post('/orders/confirm-assignment', ordersController.confirmAssignedOrder)
 router.post('/orders/reject', ordersController.rejectOrder)
 router.get('/orders/active', ordersController.getActiveOrder)
-router.post('/orders/status', ordersController.updateDeliveryStatus)
+router.post('/orders/status',
+  body('order_id').isUUID().withMessage('order_id must be a valid order id'),
+  body('status')
+    .isString()
+    .trim()
+    .notEmpty()
+    .custom((value) => {
+      const normalized = String(value || '').trim().toUpperCase()
+      const resolved = DELIVERY_STATUS_ALIASES[normalized] || normalized
+      if (!Object.values(ORDER_DELIVERY_STATUSES).includes(resolved)) {
+        throw new Error('Unsupported delivery status')
+      }
+      return true
+    }),
+  body('latitude').optional({ nullable: true }).isFloat({ min: -90, max: 90 }).withMessage('latitude must be valid'),
+  body('longitude').optional({ nullable: true }).isFloat({ min: -180, max: 180 }).withMessage('longitude must be valid'),
+  body('notes').optional({ nullable: true }).isString().trim().isLength({ max: 500 }).withMessage('notes is too long'),
+  handleValidation,
+  ordersController.updateDeliveryStatus
+)
 
 // Location routes
 router.post('/location', locationController.updateLocation)

@@ -18,7 +18,7 @@ export function DeliveryBottomNav() {
 
   return (
     <nav className="fixed bottom-4 left-1/2 z-50 w-[calc(100%-1.5rem)] max-w-xl -translate-x-1/2 md:hidden">
-      <div className="grid grid-cols-5 rounded-[28px] border border-white/60 bg-slate-950/92 p-2 shadow-[0_30px_80px_-40px_rgba(15,23,42,0.85)] backdrop-blur-xl">
+      <div className="grid grid-cols-5 rounded-[28px] border border-slate-200 bg-white/96 p-2 shadow-[0_30px_90px_-42px_rgba(15,23,42,0.9)] ring-1 ring-slate-950/5 backdrop-blur-xl">
         {navItems.map((item) => {
           const Icon = item.icon
           const isActive = pathname === item.href
@@ -28,8 +28,8 @@ export function DeliveryBottomNav() {
               key={item.href}
               href={item.href}
               className={cn(
-                'flex flex-col items-center gap-1 rounded-[20px] px-2 py-2.5 text-[11px] font-medium transition-all',
-                isActive ? 'bg-white text-slate-950 shadow-sm' : 'text-white/65 hover:text-white'
+                'flex flex-col items-center gap-1 rounded-[20px] px-2 py-2.5 text-[11px] font-semibold transition-all',
+                isActive ? 'bg-orange-500 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-950'
               )}
             >
               <Icon className="h-4 w-4" />

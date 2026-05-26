@@ -15,6 +15,7 @@ const {
   emitDeliveryLocationUpdated,
   emitDeliveryStatusUpdated,
 } = require('../../../realtime/orderEvents')
+const { getIO } = require('../../../realtime/socketServer')
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
@@ -24,6 +25,15 @@ const GPS_TARGET_SCOPE = {
   [ORDER_DELIVERY_STATUSES.PICKED_UP]: 'restaurant',
   [ORDER_DELIVERY_STATUSES.REACHED_CUSTOMER]: 'customer',
   [ORDER_DELIVERY_STATUSES.DELIVERED]: 'customer',
+}
+
+const DELIVERY_TO_ORDER_STATUS = {
+  [ORDER_DELIVERY_STATUSES.ASSIGNED]: 'out_for_delivery',
+  [ORDER_DELIVERY_STATUSES.ARRIVED_AT_RESTAURANT]: 'out_for_delivery',
+  [ORDER_DELIVERY_STATUSES.PICKED_UP]: 'out_for_delivery',
+  [ORDER_DELIVERY_STATUSES.REACHED_CUSTOMER]: 'out_for_delivery',
+  [ORDER_DELIVERY_STATUSES.DELIVERED]: 'delivered',
+  [ORDER_DELIVERY_STATUSES.CANCELLED]: 'cancelled',
 }
 
 const normalizeDeliveryStatus = (status) => {
@@ -283,6 +293,12 @@ const updateDeliveryStatus = async (
   const status = normalizeDeliveryStatus(requestedStatus)
   const client = await pool.connect()
 
+  if (!Object.values(ORDER_DELIVERY_STATUSES).includes(status)) {
+    const error = new Error(`Unsupported delivery status: ${requestedStatus}`)
+    error.status = 400
+    throw error
+  }
+
   try {
     await client.query('BEGIN')
 
@@ -302,6 +318,8 @@ const updateDeliveryStatus = async (
          o.cod_handling_bonus,
          o.estimated_earning,
          o.tip_amount,
+         o.total,
+         o.delivery_assigned_at,
          r.latitude AS restaurant_latitude,
          r.longitude AS restaurant_longitude,
          a.latitude AS customer_latitude,
@@ -324,7 +342,21 @@ const updateDeliveryStatus = async (
     const currentDeliveryStatus = normalizeDeliveryStatus(order.delivery_status || ORDER_DELIVERY_STATUSES.ASSIGNED)
     const allowedTransitions = DELIVERY_STATUS_TRANSITIONS[currentDeliveryStatus] || []
 
-    if (currentDeliveryStatus !== status && !allowedTransitions.includes(status)) {
+    if (currentDeliveryStatus === status) {
+      await client.query('COMMIT')
+      return {
+        success: true,
+        status,
+        order_status: DELIVERY_TO_ORDER_STATUS[status] || order.status,
+        already_applied: true,
+        earnings_total: Number(order.estimated_earning || 0),
+        distance_km: Number(order.dropoff_distance_km || 0),
+        duration_minutes: Number(order.estimated_total_eta_minutes || 0),
+        gps_validation: null,
+      }
+    }
+
+    if (!allowedTransitions.includes(status)) {
       const error = new Error(`Cannot move delivery from ${currentDeliveryStatus} to ${status}`)
       error.status = 400
       throw error
@@ -370,18 +402,12 @@ const updateDeliveryStatus = async (
     const shouldMarkDeliveredAt = status === ORDER_DELIVERY_STATUSES.DELIVERED
     const shouldMarkPickedUpAt = status === ORDER_DELIVERY_STATUSES.PICKED_UP
 
-    if (status === ORDER_DELIVERY_STATUSES.PICKED_UP || status === ORDER_DELIVERY_STATUSES.REACHED_CUSTOMER) {
-      orderStatus = 'out_for_delivery'
-    } else if (status === ORDER_DELIVERY_STATUSES.DELIVERED) {
-      orderStatus = 'delivered'
-    } else if (status === ORDER_DELIVERY_STATUSES.CANCELLED) {
-      orderStatus = 'cancelled'
-    }
+    orderStatus = DELIVERY_TO_ORDER_STATUS[status] || orderStatus
 
     const updateResult = await client.query(
       `UPDATE orders
-       SET delivery_status = $1,
-           status = $2,
+       SET delivery_status = $1::text,
+           status = $2::text,
            picked_up_at = CASE
              WHEN $5::boolean THEN COALESCE(picked_up_at, CURRENT_TIMESTAMP)
              ELSE picked_up_at
@@ -423,7 +449,7 @@ const updateDeliveryStatus = async (
     if (riderLocation) {
       await client.query(
         `INSERT INTO delivery_locations (delivery_partner_id, order_id, latitude, longitude, accuracy)
-         VALUES ($1, $2, $3, $4, NULL)`,
+         VALUES ($1::uuid, $2::uuid, $3::numeric, $4::numeric, NULL)`,
         [
           normalizedPartnerId,
           normalizedOrderId,
@@ -446,7 +472,7 @@ const updateDeliveryStatus = async (
 
     await client.query(
       `INSERT INTO delivery_status_logs (order_id, delivery_partner_id, status, latitude, longitude, notes)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
+       VALUES ($1::uuid, $2::uuid, $3::text, $4::numeric, $5::numeric, $6::text)`,
       [
         normalizedOrderId,
         normalizedPartnerId,
@@ -512,9 +538,9 @@ const updateDeliveryStatus = async (
          delivered_at
        )
        VALUES (
-         $1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18::jsonb, CURRENT_TIMESTAMP,
-         CASE WHEN $3 = 'PICKED_UP' THEN CURRENT_TIMESTAMP ELSE NULL END,
-         CASE WHEN $3 = 'DELIVERED' THEN CURRENT_TIMESTAMP ELSE NULL END
+         $1::uuid, $2::uuid, $3::text, $4::numeric, $5::numeric, $6::numeric, $7::numeric, $8::numeric, $9::numeric, $10::numeric, $11::int, $12::int, $13::int, $14::numeric, $15::numeric, $16::numeric, $17::numeric, $18::jsonb, CURRENT_TIMESTAMP,
+         CASE WHEN $3::text = 'PICKED_UP' THEN CURRENT_TIMESTAMP ELSE NULL END,
+         CASE WHEN $3::text = 'DELIVERED' THEN CURRENT_TIMESTAMP ELSE NULL END
        )
        ON CONFLICT (order_id)
        DO UPDATE SET
@@ -530,8 +556,8 @@ const updateDeliveryStatus = async (
          rain_bonus = EXCLUDED.rain_bonus,
          night_bonus = EXCLUDED.night_bonus,
          gps_validation_status = EXCLUDED.gps_validation_status,
-         picked_up_at = CASE WHEN EXCLUDED.status = 'PICKED_UP' THEN CURRENT_TIMESTAMP ELSE active_deliveries.picked_up_at END,
-         delivered_at = CASE WHEN EXCLUDED.status = 'DELIVERED' THEN CURRENT_TIMESTAMP ELSE active_deliveries.delivered_at END,
+         picked_up_at = CASE WHEN EXCLUDED.status::text = 'PICKED_UP' THEN CURRENT_TIMESTAMP ELSE active_deliveries.picked_up_at END,
+         delivered_at = CASE WHEN EXCLUDED.status::text = 'DELIVERED' THEN CURRENT_TIMESTAMP ELSE active_deliveries.delivered_at END,
          updated_at = CURRENT_TIMESTAMP`,
       [
         normalizedOrderId,
@@ -547,12 +573,13 @@ const updateDeliveryStatus = async (
         offerMetrics.route.pickupEtaMinutes,
         offerMetrics.route.dropoffEtaMinutes,
         offerMetrics.route.totalEtaMinutes,
-        updateResult.rows[0].base_delivery_pay +
-        updateResult.rows[0].distance_delivery_pay +
-          updateResult.rows[0].surge_bonus +
-          updateResult.rows[0].rain_bonus +
-          updateResult.rows[0].cod_handling_bonus +
-          updateResult.rows[0].tip_amount,
+        Number(updateResult.rows[0].estimated_earning || 0) ||
+          Number(updateResult.rows[0].base_delivery_pay || 0) +
+            Number(updateResult.rows[0].distance_delivery_pay || 0) +
+            Number(updateResult.rows[0].surge_bonus || 0) +
+            Number(updateResult.rows[0].rain_bonus || 0) +
+            Number(updateResult.rows[0].cod_handling_bonus || 0) +
+            Number(updateResult.rows[0].tip_amount || 0),
         updateResult.rows[0].surge_bonus,
         updateResult.rows[0].rain_bonus,
         updateResult.rows[0].night_bonus,
@@ -572,7 +599,7 @@ const updateDeliveryStatus = async (
          last_location_at,
          updated_at
        )
-       VALUES ($1::uuid, $2::uuid, $3, $4, NULL, $5, $6, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+       VALUES ($1::uuid, $2::uuid, $3::numeric, $4::numeric, NULL, $5::int, $6::text, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
        ON CONFLICT (order_id)
        DO UPDATE SET
          current_latitude = COALESCE(EXCLUDED.current_latitude, delivery_tracking.current_latitude),
@@ -591,6 +618,43 @@ const updateDeliveryStatus = async (
       ]
     )
 
+    const assignedAt = order.delivery_assigned_at ? new Date(order.delivery_assigned_at) : new Date()
+    const durationMinutes = Math.max(0, Math.round((Date.now() - assignedAt.getTime()) / 60000))
+    const totalEarning =
+      Number(updateResult.rows[0].estimated_earning || 0) ||
+      Number(updateResult.rows[0].base_delivery_pay || 0) +
+        Number(updateResult.rows[0].distance_delivery_pay || 0) +
+        Number(updateResult.rows[0].surge_bonus || 0) +
+        Number(updateResult.rows[0].rain_bonus || 0) +
+        Number(updateResult.rows[0].cod_handling_bonus || 0) +
+        Number(updateResult.rows[0].tip_amount || 0)
+    const distanceKm = Number(updateResult.rows[0].dropoff_distance_km || offerMetrics.route.dropoffDistanceKm || 0)
+
+    if (status === ORDER_DELIVERY_STATUSES.DELIVERED) {
+      const earningsService = require('./earningsService')
+      await earningsService.recordEarning(
+        normalizedPartnerId,
+        normalizedOrderId,
+        distanceKm,
+        durationMinutes,
+        totalEarning,
+        0,
+        client
+      )
+
+      if (String(order.payment_method || '').toLowerCase() === 'cod') {
+        await client.query(
+          `INSERT INTO rider_wallets (delivery_partner_id, floating_cash, floating_cash_limit)
+           VALUES ($1::uuid, $2::numeric, 1500)
+           ON CONFLICT (delivery_partner_id)
+           DO UPDATE SET
+             floating_cash = rider_wallets.floating_cash + EXCLUDED.floating_cash,
+             updated_at = CURRENT_TIMESTAMP`,
+          [normalizedPartnerId, Number(order.total || 0)]
+        )
+      }
+    }
+
     if ([ORDER_DELIVERY_STATUSES.DELIVERED, ORDER_DELIVERY_STATUSES.CANCELLED].includes(status)) {
       await client.query(
         `UPDATE delivery_partners
@@ -603,7 +667,7 @@ const updateDeliveryStatus = async (
     } else {
       await client.query(
         `UPDATE delivery_partners
-         SET current_status = $1,
+         SET current_status = $1::text,
              updated_at = CURRENT_TIMESTAMP
          WHERE id = $2::uuid`,
         [status, normalizedPartnerId]
@@ -623,26 +687,41 @@ const updateDeliveryStatus = async (
               longitude: riderLocation.longitude,
             }
           : null,
+      payout_amount: status === ORDER_DELIVERY_STATUSES.DELIVERED ? totalEarning : undefined,
+      distance_km: distanceKm,
+      duration_minutes: durationMinutes || offerMetrics.route.totalEtaMinutes,
     }).catch((error) => {
       console.error('Failed to emit realtime delivery status update', error)
     })
 
-    const totalEarning =
-      Number(updateResult.rows[0].estimated_earning || 0) ||
-      Number(updateResult.rows[0].base_delivery_pay || 0) +
-        Number(updateResult.rows[0].distance_delivery_pay || 0) +
-        Number(updateResult.rows[0].surge_bonus || 0) +
-        Number(updateResult.rows[0].rain_bonus || 0) +
-        Number(updateResult.rows[0].cod_handling_bonus || 0) +
-        Number(updateResult.rows[0].tip_amount || 0)
+    const io = getIO()
+    if (io && status === ORDER_DELIVERY_STATUSES.DELIVERED) {
+      io.to(`delivery_partner:${normalizedPartnerId}`).emit('delivery_completed', {
+        order_id: normalizedOrderId,
+        payout_amount: totalEarning,
+        distance_km: distanceKm,
+        duration_minutes: durationMinutes || offerMetrics.route.totalEtaMinutes,
+        message: 'Delivery completed! Earnings added to your wallet.',
+        timestamp: new Date().toISOString(),
+      })
+      io.to('admin:global').emit('delivery_completed', {
+        order_id: normalizedOrderId,
+        rider_id: normalizedPartnerId,
+        payout_amount: totalEarning,
+        distance_km: distanceKm,
+        duration_minutes: durationMinutes || offerMetrics.route.totalEtaMinutes,
+        source: 'delivery_status_update',
+        timestamp: new Date().toISOString(),
+      })
+    }
 
     return {
       success: true,
       status,
       order_status: orderStatus,
       earnings_total: totalEarning,
-      distance_km: Number(updateResult.rows[0].dropoff_distance_km || offerMetrics.route.dropoffDistanceKm || 0),
-      duration_minutes: offerMetrics.route.totalEtaMinutes,
+      distance_km: distanceKm,
+      duration_minutes: durationMinutes || offerMetrics.route.totalEtaMinutes,
       gps_validation: gpsValidationSnapshot,
     }
   } catch (error) {

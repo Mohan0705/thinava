@@ -180,6 +180,25 @@ export default function OrdersPage() {
     const handleOrderUpdated = (payload: any) => {
       if (payload.order && (!currentOrderIdRef.current || payload.order.id === currentOrderIdRef.current)) {
         const order = payload.order
+        const nextStatus = normalizeStatus(order.status || '')
+        setOrders((current) =>
+          current.map((existing) =>
+            existing.id === order.id
+              ? {
+                  ...existing,
+                  ...order,
+                  status: order.status || existing.status,
+                  delivery_status: order.delivery_status || existing.delivery_status,
+                }
+              : existing
+          )
+        )
+
+        if (terminalStatuses.has(nextStatus)) {
+          setCurrentOrder(null)
+          return
+        }
+
         setCurrentOrder((prev) => {
           if (!prev) return order
           return {
@@ -231,13 +250,15 @@ export default function OrdersPage() {
 
     const handleOrderDelivered = (data: any) => {
       if (data.orderId === currentOrderIdRef.current) {
-        setCurrentOrder((prev) => (prev ? { ...prev, status: 'delivered' } : null))
+        setOrders((current) => current.map((order) => order.id === data.orderId ? { ...order, status: 'delivered' } : order))
+        setCurrentOrder(null)
       }
     }
 
     const handleOrderRejected = (data: any) => {
       if (data.orderId === currentOrderIdRef.current) {
-        setCurrentOrder((prev) => (prev ? { ...prev, status: 'cancelled' } : null))
+        setOrders((current) => current.map((order) => order.id === data.orderId ? { ...order, status: 'cancelled' } : order))
+        setCurrentOrder(null)
         setRejectionDetails({
           title: data.title || 'Order Cancelled',
           message: data.message || 'Sorry! Your order was cancelled by the restaurant.',
@@ -265,13 +286,15 @@ export default function OrdersPage() {
 
     const handleDeliveryCompleted = (payload: any) => {
       if (payload.order_id === currentOrderIdRef.current) {
-        setCurrentOrder((prev) => (prev ? { ...prev, status: 'delivered' } : null))
+        setOrders((current) => current.map((order) => order.id === payload.order_id ? { ...order, status: 'delivered' } : order))
+        setCurrentOrder(null)
       }
     }
 
     const handleOrderCancelled = (payload: any) => {
       if (payload.order_id === currentOrderIdRef.current) {
-        setCurrentOrder((prev) => (prev ? { ...prev, status: 'cancelled' } : null))
+        setOrders((current) => current.map((order) => order.id === payload.order_id ? { ...order, status: 'cancelled' } : order))
+        setCurrentOrder(null)
         setRejectionDetails({
           title: 'Order Cancelled',
           message: payload.reason || 'Your order was cancelled',
@@ -739,6 +762,36 @@ export default function OrdersPage() {
                 </div>
               </CardContent>
             </Card>
+
+            {currentOrder.items && currentOrder.items.length > 0 ? (
+              <Card className="mb-6 border-slate-200 bg-white text-slate-950 shadow-[0_18px_44px_-34px_rgba(15,23,42,0.35)]">
+                <CardContent className="p-4 sm:p-5">
+                  <div className="mb-4 flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-bold uppercase tracking-[0.22em] text-orange-600">Order items</p>
+                      <h3 className="mt-1 text-xl font-black text-slate-950">Packed for delivery</h3>
+                    </div>
+                    <Badge variant="secondary">{currentOrder.items.length} items</Badge>
+                  </div>
+                  <div className="divide-y divide-slate-100 rounded-2xl border border-slate-100 bg-slate-50">
+                    {currentOrder.items.map((item) => (
+                      <div key={item.id} className="flex items-center justify-between gap-3 p-3 sm:p-4">
+                        <div className="flex min-w-0 items-center gap-3">
+                          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-orange-100 text-sm font-black text-orange-700">
+                            x{item.quantity}
+                          </div>
+                          <div className="min-w-0">
+                            <p className="truncate font-bold text-slate-950">{item.name || 'Menu item'}</p>
+                            <p className="text-xs font-medium text-slate-500">Quantity {item.quantity}</p>
+                          </div>
+                        </div>
+                        <p className="shrink-0 font-black text-slate-950">{formatPrice(Number(item.price) * Number(item.quantity || 1))}</p>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            ) : null}
 
             <Card className="mb-8 border-slate-800 bg-[#000A22] text-white">
               <CardContent className="p-4 sm:p-5">

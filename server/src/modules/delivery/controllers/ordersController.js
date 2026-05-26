@@ -1,6 +1,5 @@
 const orderService = require('../services/orderService')
 const locationService = require('../services/locationService')
-const { updateOrderLifecycleState, ORDER_STATUS } = require('../../orders/orderLifecycleService')
 
 const getAvailableOrders = async (req, res, next) => {
   try {
@@ -71,33 +70,6 @@ const updateDeliveryStatus = async (req, res, next) => {
     const { order_id, status, latitude, longitude, notes } = req.body
     const partnerId = req.deliveryPartner.id
 
-    // If marking as delivered or cancelled, use the centralized lifecycle service
-    if (status === 'DELIVERED' || status === 'delivered') {
-      const result = await updateOrderLifecycleState(order_id, ORDER_STATUS.DELIVERED, {
-        source: 'rider_app',
-      })
-
-      return res.json({
-        success: true,
-        message: 'Delivery completed successfully',
-        ...result,
-      })
-    }
-
-    if (status === 'CANCELLED' || status === 'cancelled') {
-      const result = await updateOrderLifecycleState(order_id, ORDER_STATUS.CANCELLED, {
-        source: 'rider_app',
-        reason: notes || 'Cancelled by rider',
-      })
-
-      return res.json({
-        success: true,
-        message: 'Delivery cancelled',
-        ...result,
-      })
-    }
-
-    // For intermediate status updates, use the existing location service
     const result = await locationService.updateDeliveryStatus(
       order_id,
       partnerId,

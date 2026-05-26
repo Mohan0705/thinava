@@ -22,6 +22,7 @@ const { authenticateCustomer } = require('../modules/auth/middleware/auth')
 const { authenticateAdmin } = require('../modules/admin/middleware/auth')
 const { authenticateRestaurantOwner } = require('../modules/restaurantPanel/middleware/auth')
 const { authenticateDeliveryPartner } = require('../modules/delivery/middleware/auth')
+const locationService = require('../modules/delivery/services/locationService')
 
 const asyncHandler = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next)
 
@@ -525,88 +526,44 @@ router.post('/:id/ready-for-pickup', authenticateRestaurantOwner, asyncHandler(a
 // ============================================================
 router.post('/:id/picked-up', authenticateDeliveryPartner, asyncHandler(async (req, res) => {
   const { id: orderId } = req.params
+  const partnerId = req.deliveryPartner.id
+  const { latitude, longitude, notes } = req.body || {}
 
-  const client = await pool.connect()
-  try {
-    await client.query('BEGIN')
+  const result = await locationService.updateDeliveryStatus(orderId, partnerId, 'PICKED_UP', latitude, longitude, notes)
 
-    // Get order details
-    const orderResult = await client.query(
-      'SELECT user_id, delivery_partner_id, status FROM orders WHERE id = $1',
-      [orderId]
-    )
-
-    if (orderResult.rows.length === 0) {
-      await client.query('ROLLBACK')
-      return res.status(404).json({ success: false, error: 'Order not found' })
-    }
-
-    const order = orderResult.rows[0]
-
-    // Validate transition
-    try {
-      validateOrderTransition(order.status, 'OUT_FOR_DELIVERY')
-    } catch (transitionError) {
-      await client.query('ROLLBACK')
-      return res.status(transitionError.statusCode || 400).json({
-        success: false,
-        error: transitionError.message,
-      })
-    }
-
-    // Update order
-    await client.query(
-      `UPDATE orders SET status = 'PICKED_UP', picked_up_at = NOW() WHERE id = $1`,
-      [orderId]
-    )
-
-    // Log status
-    await client.query(
-      `INSERT INTO order_status_history (order_id, previous_status, new_status, updated_by)
-       VALUES ($1, $2, $3, $4)`,
-      [orderId, order.status, 'PICKED_UP', 'delivery_partner']
-    )
-
-    await client.query('COMMIT')
-
-    // Emit socket events
-    const io = req.app.get('io')
-    if (io) {
-      io.to(`customer:${order.user_id}`).emit('orderPickedUp', {
-        orderId,
-        message: 'Your order has been picked up! It\'s on the way.',
-        status: 'ON_THE_WAY',
-        timestamp: new Date()
-      })
-
-      if (order.delivery_partner_id) {
-        io.to(`delivery_partner:${order.delivery_partner_id}`).emit('orderPickedUp', {
-          orderId,
-          message: 'Order picked up. Head to delivery location.',
-          timestamp: new Date()
-        })
-      }
-    }
-
-    return res.json({
-      success: true,
-      message: 'Order picked up',
-      orderId,
-      status: 'PICKED_UP'
-    })
-
-  } catch (error) {
-    await client.query('ROLLBACK')
-    throw error
-  } finally {
-    client.release()
-  }
+  return res.json({
+    success: true,
+    message: 'Order picked up',
+    orderId,
+    status: 'PICKED_UP',
+    ...result,
+  })
 }))
 
 // ============================================================
 // RIDER DELIVERS ORDER
 // ============================================================
 router.post('/:id/delivered', authenticateDeliveryPartner, asyncHandler(async (req, res) => {
+  const { id: orderId } = req.params
+  const partnerId = req.deliveryPartner.id
+  const { latitude, longitude, notes } = req.body || {}
+  const result = await locationService.updateDeliveryStatus(orderId, partnerId, 'DELIVERED', latitude, longitude, notes)
+
+  return res.json({
+    success: true,
+    message: 'Order delivered',
+    orderId,
+    status: 'DELIVERED',
+    ...result,
+  })
+}))
+
+router.post('/:id/delivered-legacy-disabled', authenticateDeliveryPartner, asyncHandler(async (req, res) => {
+  return res.status(410).json({
+    success: false,
+    error: 'Legacy delivery completion route is disabled. Use the centralized delivery status endpoint.',
+  })
+
   const { id: orderId } = req.params
 
   const client = await pool.connect()

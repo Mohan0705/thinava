@@ -4,6 +4,7 @@ const { emitOrderStatusUpdated, emitDeliveryStatusUpdated } = require('../../../
 const SocketEventsHandler = require('../../../realtime/socketEventsHandler')
 const { getIO } = require('../../../realtime/socketServer')
 const { validateOrderTransition } = require('../../orders/orderLifecycleService')
+const { computeRiderPayout } = require('./logisticsService')
 
 const ACTIVE_TERMINAL_STATUSES = [
   ORDER_DELIVERY_STATUSES.DELIVERED,
@@ -37,7 +38,7 @@ const completeDelivery = async (orderId, partnerId, options = {}) => {
     // 1. Lock and validate order
     const orderResult = await client.query(
       `SELECT
-         o.id, o.status, o.delivery_status, o.payment_method, o.total,
+         o.id, o.status, o.delivery_status, o.payment_method, o.payment_status, o.total,
          o.delivery_partner_id, o.restaurant_id, o.user_id,
          o.route_distance_km, o.dropoff_distance_km,
          o.base_delivery_pay, o.distance_delivery_pay,
@@ -97,27 +98,42 @@ const completeDelivery = async (orderId, partnerId, options = {}) => {
     const durationMinutes = Math.round((completedAt - assignedAt) / 60000)
 
     // 3. Calculate final payout
-    const payoutAmount =
-      toNumber(order.estimated_earning) ||
-      toNumber(order.base_delivery_pay) +
-        toNumber(order.distance_delivery_pay) +
-        toNumber(order.surge_bonus) +
-        toNumber(order.rain_bonus) +
-        toNumber(order.night_bonus) +
-        toNumber(order.cod_handling_bonus) +
-        toNumber(order.tip_amount)
-
     const finalDistance = toNumber(order.dropoff_distance_km || order.route_distance_km)
+    const payout = computeRiderPayout(finalDistance, {
+      paymentMethod: order.payment_method,
+      surgeBonus: toNumber(order.surge_bonus),
+      rainBonus: toNumber(order.rain_bonus),
+      codHandlingBonus: toNumber(order.cod_handling_bonus),
+      tipAmount: toNumber(order.tip_amount),
+    })
+    const payoutAmount = payout.total
 
     // 4. Update order to delivered
     await client.query(
       `UPDATE orders
        SET status = 'delivered',
            delivery_status = $1,
+           base_delivery_pay = $2::numeric,
+           distance_delivery_pay = $3::numeric,
+           surge_bonus = $4::numeric,
+           rain_bonus = $5::numeric,
+           night_bonus = $6::numeric,
+           cod_handling_bonus = $7::numeric,
+           estimated_earning = $8::numeric,
            delivered_at = CURRENT_TIMESTAMP,
            updated_at = CURRENT_TIMESTAMP
-       WHERE id = $2::uuid`,
-      [ORDER_DELIVERY_STATUSES.DELIVERED, orderId]
+       WHERE id = $9::uuid`,
+      [
+        ORDER_DELIVERY_STATUSES.DELIVERED,
+        payout.basePay,
+        payout.distancePay,
+        payout.surgeBonus,
+        payout.rainBonus,
+        payout.nightBonus,
+        payout.codHandlingBonus,
+        payout.total,
+        orderId,
+      ]
     )
 
     // 5. Update delivery assignment
@@ -154,7 +170,6 @@ const completeDelivery = async (orderId, partnerId, options = {}) => {
       `UPDATE delivery_partners
        SET current_order_id = NULL,
            current_status = 'AVAILABLE',
-           total_deliveries = total_deliveries + 1,
            updated_at = CURRENT_TIMESTAMP
        WHERE id = $1::uuid`,
       [resolvedPartnerId]
@@ -177,10 +192,12 @@ const completeDelivery = async (orderId, partnerId, options = {}) => {
     // 9b. Update floating cash for COD orders
     if (resolvedPartnerId && order.payment_method === 'cod') {
       await client.query(
-        `UPDATE rider_wallets
-         SET floating_cash = floating_cash + $2,
-             updated_at = CURRENT_TIMESTAMP
-         WHERE delivery_partner_id = $1`,
+        `INSERT INTO rider_wallets (delivery_partner_id, floating_cash, floating_cash_limit)
+         VALUES ($1::uuid, $2::numeric, 1500)
+         ON CONFLICT (delivery_partner_id)
+         DO UPDATE SET
+           floating_cash = rider_wallets.floating_cash + EXCLUDED.floating_cash,
+           updated_at = CURRENT_TIMESTAMP`,
         [resolvedPartnerId, order.total]
       )
     }
@@ -254,10 +271,13 @@ const completeDelivery = async (orderId, partnerId, options = {}) => {
              dp.average_rating,
              dp.is_online,
              COALESCE(rw.floating_cash, 0) AS floating_cash,
-             COALESCE(rw.total_earned, 0) AS total_earned
+             COALESCE(SUM(de.amount) FILTER (WHERE DATE(de.earned_at) = CURRENT_DATE), 0) AS total_earned,
+             COUNT(de.id) FILTER (WHERE DATE(de.earned_at) = CURRENT_DATE)::int AS today_deliveries
            FROM delivery_partners dp
            LEFT JOIN rider_wallets rw ON rw.delivery_partner_id = dp.id
-           WHERE dp.id = $1::uuid`,
+           LEFT JOIN delivery_earnings de ON de.delivery_partner_id = dp.id
+           WHERE dp.id = $1::uuid
+           GROUP BY dp.id, rw.id`,
           [resolvedPartnerId]
         )
 
@@ -276,7 +296,7 @@ const completeDelivery = async (orderId, partnerId, options = {}) => {
           io.to(riderRoom).emit('delivery:earnings_updated', {
             earnings: {
               total_amount: Number(riderStats.total_earned || 0),
-              deliveries: Number(riderStats.total_deliveries || 0),
+                deliveries: Number(riderStats.today_deliveries || 0),
               payout_amount: payoutAmount,
               latest_order_id: orderId,
             },
@@ -380,7 +400,7 @@ const cancelDelivery = async (orderId, reason, cancelledBy, options = {}) => {
     // 1. Lock and validate order
     const orderResult = await client.query(
       `SELECT
-         o.id, o.status, o.delivery_status, o.payment_method, o.total,
+         o.id, o.status, o.delivery_status, o.payment_method, o.payment_status, o.total,
          o.delivery_partner_id, o.restaurant_id, o.user_id,
          o.cancellation_reason, o.delivered_at,
          r.name AS restaurant_name,

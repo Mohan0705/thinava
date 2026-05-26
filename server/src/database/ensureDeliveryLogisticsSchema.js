@@ -38,7 +38,7 @@ const ensureDeliveryLogisticsSchema = async () => {
       ADD COLUMN IF NOT EXISTS estimated_pickup_eta_minutes INTEGER,
       ADD COLUMN IF NOT EXISTS estimated_dropoff_eta_minutes INTEGER,
       ADD COLUMN IF NOT EXISTS estimated_total_eta_minutes INTEGER,
-      ADD COLUMN IF NOT EXISTS base_delivery_pay DECIMAL(10, 2) DEFAULT 0,
+      ADD COLUMN IF NOT EXISTS base_delivery_pay DECIMAL(10, 2) DEFAULT 25,
       ADD COLUMN IF NOT EXISTS distance_delivery_pay DECIMAL(10, 2) DEFAULT 0,
       ADD COLUMN IF NOT EXISTS surge_bonus DECIMAL(10, 2) DEFAULT 0,
       ADD COLUMN IF NOT EXISTS rain_bonus DECIMAL(10, 2) DEFAULT 0,

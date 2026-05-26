@@ -28,7 +28,7 @@ import { deliveryApi } from '@/lib/delivery-api'
 import { getRealtimeSocket, releaseRealtimeSocket } from '@/lib/realtime'
 import { DeliveryRealtimeEvent } from '@/types/delivery'
 import { SUPPORT_TEL, getWhatsAppLink } from '@/lib/support'
-import { openOsmDirections } from '@/lib/maps/geo'
+import { calculateDistanceKm, openOsmDirections } from '@/lib/maps/geo'
 
 const statusTimeline = [
   {
@@ -78,6 +78,7 @@ export default function DeliveryActiveOrderPage() {
   const [updatingStatus, setUpdatingStatus] = useState(false)
   const [currentLocation, setCurrentLocation] = useState<{ lat: number; lng: number } | null>(null)
   const [status, setStatus] = useState<string>('ASSIGNED')
+  const lastLocationSyncRef = useRef<{ lat: number; lng: number; syncedAt: number } | null>(null)
 
   useEffect(() => {
     if (!token) {
@@ -151,6 +152,11 @@ export default function DeliveryActiveOrderPage() {
 
     socket.on('delivery:active_order_updated', handleActiveOrderUpdate)
     socket.on('delivery:status_updated', handleActiveOrderUpdate)
+    socket.on('RIDER_ARRIVED', handleActiveOrderUpdate)
+    socket.on('PICKED_UP', handleActiveOrderUpdate)
+    socket.on('ARRIVING', handleActiveOrderUpdate)
+    socket.on('DELIVERED', handleActiveOrderUpdate)
+    socket.on('CANCELLED', handleActiveOrderUpdate)
     socket.on('delivery:location_updated', handleLocationUpdate)
     socket.on('delivery_completed', handleDeliveryCompleted)
     socket.on('order_cancelled', handleOrderCancelled)
@@ -158,6 +164,11 @@ export default function DeliveryActiveOrderPage() {
     return () => {
       socket.off('delivery:active_order_updated', handleActiveOrderUpdate)
       socket.off('delivery:status_updated', handleActiveOrderUpdate)
+      socket.off('RIDER_ARRIVED', handleActiveOrderUpdate)
+      socket.off('PICKED_UP', handleActiveOrderUpdate)
+      socket.off('ARRIVING', handleActiveOrderUpdate)
+      socket.off('DELIVERED', handleActiveOrderUpdate)
+      socket.off('CANCELLED', handleActiveOrderUpdate)
       socket.off('delivery:location_updated', handleLocationUpdate)
       socket.off('delivery_completed', handleDeliveryCompleted)
       socket.off('order_cancelled', handleOrderCancelled)
@@ -165,12 +176,25 @@ export default function DeliveryActiveOrderPage() {
     }
   }, [token])
 
+  const shouldSyncLocation = (nextLocation: { lat: number; lng: number }) => {
+    const previous = lastLocationSyncRef.current
+    if (!previous) return true
+
+    const distanceMeters =
+      calculateDistanceKm(
+        { lat: previous.lat, lng: previous.lng },
+        { lat: nextLocation.lat, lng: nextLocation.lng }
+      ) * 1000
+
+    return distanceMeters >= 12 || Date.now() - previous.syncedAt >= 5000
+  }
+
   useEffect(() => {
-    if (!token || !activeOrderIdRef.current || !navigator.geolocation) {
+    if (!token || !activeOrder?.id || !navigator.geolocation) {
       return
     }
 
-    const currentId = activeOrderIdRef.current
+    const currentId = activeOrder.id
 
     const watchId = navigator.geolocation.watchPosition(
       (position) => {
@@ -179,20 +203,26 @@ export default function DeliveryActiveOrderPage() {
           lng: position.coords.longitude,
         }
         setCurrentLocation(nextLocation)
-        void deliveryApi.updateLocation(
-          token,
-          currentId,
-          nextLocation.lat,
-          nextLocation.lng,
-          position.coords.accuracy
-        )
+
+        if (shouldSyncLocation(nextLocation)) {
+          lastLocationSyncRef.current = { ...nextLocation, syncedAt: Date.now() }
+          void deliveryApi.updateLocation(
+            token,
+            currentId,
+            nextLocation.lat,
+            nextLocation.lng,
+            position.coords.accuracy
+          ).then(() => {
+            void loadActiveOrder(true)
+          })
+        }
       },
       () => undefined,
-      { enableHighAccuracy: true, maximumAge: 8000, timeout: 12000 }
+      { enableHighAccuracy: true, maximumAge: 10000, timeout: 12000 }
     )
 
     return () => navigator.geolocation.clearWatch(watchId)
-  }, [token])
+  }, [activeOrder?.id, token])
 
   const loadActiveOrder = async (background = false) => {
     try {
@@ -250,18 +280,51 @@ export default function DeliveryActiveOrderPage() {
   const nextAction = useMemo(() => statusTimeline[currentIndex + 1] || null, [currentIndex])
   const nextActionState = activeOrder?.action_state
   const nextTarget = activeOrder?.gps_validation?.next_target || null
+  const localNextTarget = useMemo(() => {
+    if (!activeOrder || !nextActionState?.target_scope || !currentLocation) return null
+
+    const target =
+      nextActionState.target_scope === 'customer'
+        ? activeOrder.customer_latitude && activeOrder.customer_longitude
+          ? { lat: activeOrder.customer_latitude, lng: activeOrder.customer_longitude }
+          : null
+        : activeOrder.restaurant_latitude && activeOrder.restaurant_longitude
+          ? { lat: activeOrder.restaurant_latitude, lng: activeOrder.restaurant_longitude }
+          : null
+
+    if (!target) return null
+
+    const distanceMeters =
+      calculateDistanceKm({ lat: currentLocation.lat, lng: currentLocation.lng }, target) * 1000
+    const requiredRadius = activeOrder.gps_validation?.required_radius_meters || 75
+
+    return {
+      distance_meters: distanceMeters,
+      inside_range: distanceMeters <= requiredRadius,
+      required_radius_meters: requiredRadius,
+    }
+  }, [activeOrder, currentLocation, nextActionState?.target_scope])
+  const canRunNextAction = Boolean(nextActionState?.next_action_enabled || localNextTarget?.inside_range)
+  const visibleDistanceMeters = localNextTarget?.distance_meters ?? nextTarget?.distance_meters
+  const visibleInsideRange = Boolean(localNextTarget?.inside_range || nextTarget?.inside_range)
+  const visibleRequiredRadius =
+    localNextTarget?.required_radius_meters || activeOrder?.gps_validation?.required_radius_meters || 75
 
   const handleStatusUpdate = async (newStatus: string) => {
     if (!activeOrder) {
       return
     }
 
-    if (!activeOrder.action_state?.next_action_enabled) {
+    if (!canRunNextAction) {
       toast.error(activeOrder.action_state?.disabled_reason || 'Reach the location checkpoint first')
       return
     }
 
     setUpdatingStatus(true)
+    const previousStatus = status
+    const previousOrder = activeOrder
+    setStatus(newStatus)
+    updateActiveOrderStatus(newStatus)
 
     try {
       let lat: number | undefined
@@ -280,8 +343,6 @@ export default function DeliveryActiveOrderPage() {
       }
 
       await deliveryApi.updateDeliveryStatus(token!, activeOrder.id, newStatus, lat, lng)
-      setStatus(newStatus)
-      updateActiveOrderStatus(newStatus)
       void loadActiveOrder(true)
 
       if (newStatus === 'DELIVERED') {
@@ -293,6 +354,8 @@ export default function DeliveryActiveOrderPage() {
         toast.success(`Updated to ${newStatus.replace(/_/g, ' ').toLowerCase()}`)
       }
     } catch (error) {
+      setStatus(previousStatus)
+      setActiveOrder(previousOrder)
       toast.error(error instanceof Error ? error.message : 'Failed to update delivery status')
     } finally {
       setUpdatingStatus(false)
@@ -441,18 +504,18 @@ export default function DeliveryActiveOrderPage() {
                           {nextTarget?.label || 'Waiting for next step'}
                         </p>
                         <p className="mt-1 text-sm text-white/60">
-                          Distance: {formatMeters(nextTarget?.distance_meters)} / allowed {activeOrder.gps_validation?.required_radius_meters || 75} m
+                          Distance: {formatMeters(visibleDistanceMeters)} / allowed {visibleRequiredRadius} m
                         </p>
                       </div>
                       <div className={`rounded-full px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] ${
-                        nextTarget?.inside_range
+                        visibleInsideRange
                           ? 'bg-emerald-400/20 text-emerald-200'
                           : 'bg-amber-400/20 text-amber-100'
                       }`}>
-                        {nextTarget?.inside_range ? 'Inside range' : 'Move closer'}
+                        {visibleInsideRange ? 'Inside range' : 'Move closer'}
                       </div>
                     </div>
-                    {!nextActionState?.next_action_enabled && nextActionState?.disabled_reason ? (
+                    {!canRunNextAction && nextActionState?.disabled_reason ? (
                       <div className="mt-3 rounded-2xl border border-amber-400/20 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
                         {nextActionState.disabled_reason}
                       </div>
@@ -565,7 +628,7 @@ export default function DeliveryActiveOrderPage() {
                   {nextAction ? (
                     <Button
                       type="button"
-                      disabled={updatingStatus || !nextActionState?.next_action_enabled}
+                      disabled={updatingStatus || !canRunNextAction}
                       onClick={() => handleStatusUpdate(nextActionState?.next_status || nextAction.status)}
                       className="mt-6 w-full bg-gradient-to-r from-orange-500 to-red-500 py-6 text-base"
                     >

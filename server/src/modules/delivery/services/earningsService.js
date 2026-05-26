@@ -1,9 +1,9 @@
 const pool = require('../../../database/connection')
 
-const { calculateDynamicDeliveryPay, getEffectivePerKmRate } = require('./logisticsService')
+const { computeRiderPayout } = require('./logisticsService')
 
 const calculateEarnings = (distanceKm, durationMinutes, orderTotal) => {
-  const pay = calculateDynamicDeliveryPay(distanceKm, 'cod')
+  const pay = computeRiderPayout(distanceKm, { paymentMethod: 'cod' })
 
   return {
     base_fee: pay.basePay,
@@ -28,7 +28,7 @@ const recordEarning = async (partnerId, orderId, distanceKm, durationMinutes, am
     const existingEarning = await client.query(
       `SELECT id, amount, incentive, earned_at
        FROM delivery_earnings
-       WHERE order_id = $1
+       WHERE order_id = $1::uuid
        FOR UPDATE`,
       [orderId]
     )
@@ -76,17 +76,15 @@ const recordEarning = async (partnerId, orderId, distanceKm, durationMinutes, am
         Number(order.rain_bonus || 0) +
         Number(order.cod_handling_bonus || 0) +
         Number(order.tip_amount || 0)
-    const baselineDistancePay = resolvedDistanceKm * getEffectivePerKmRate(new Date())
     const resolvedIncentive =
       Number(order.surge_bonus || 0) +
       Number(order.rain_bonus || 0) +
       Number(order.cod_handling_bonus || 0) +
-      Number(order.tip_amount || 0) +
-      Math.max(0, resolvedAmount - baselineDistancePay - Number(order.base_delivery_pay || 0))
+      Number(order.tip_amount || 0)
 
     const result = await client.query(
       `INSERT INTO delivery_earnings (delivery_partner_id, order_id, amount, incentive, distance_km, duration_minutes)
-       VALUES ($1, $2, $3, $4, $5, $6)
+       VALUES ($1::uuid, $2::uuid, $3::numeric, $4::numeric, $5::numeric, $6::int)
        RETURNING id, amount, incentive, earned_at`,
       [partnerId, orderId, resolvedAmount, resolvedIncentive, resolvedDistanceKm, resolvedDurationMinutes]
     )
@@ -95,11 +93,11 @@ const recordEarning = async (partnerId, orderId, distanceKm, durationMinutes, am
       `UPDATE delivery_partners
        SET total_deliveries = total_deliveries + 1,
            cash_in_hand = cash_in_hand + CASE
-             WHEN EXISTS (SELECT 1 FROM orders WHERE id = $2 AND LOWER(payment_method) = 'cod') THEN COALESCE((SELECT total FROM orders WHERE id = $2), 0)
+             WHEN EXISTS (SELECT 1 FROM orders WHERE id = $2::uuid AND LOWER(payment_method) = 'cod') THEN COALESCE((SELECT total FROM orders WHERE id = $2::uuid), 0)
              ELSE 0
            END,
            updated_at = CURRENT_TIMESTAMP
-       WHERE id = $1`,
+       WHERE id = $1::uuid`,
       [partnerId, orderId]
     )
 
@@ -107,11 +105,11 @@ const recordEarning = async (partnerId, orderId, distanceKm, durationMinutes, am
       `UPDATE delivery_wallets
        SET available_balance = available_balance + $2,
            cod_collected = cod_collected + CASE
-             WHEN EXISTS (SELECT 1 FROM orders WHERE id = $3 AND LOWER(payment_method) = 'cod') THEN COALESCE((SELECT total FROM orders WHERE id = $3), 0)
+             WHEN EXISTS (SELECT 1 FROM orders WHERE id = $3::uuid AND LOWER(payment_method) = 'cod') THEN COALESCE((SELECT total FROM orders WHERE id = $3::uuid), 0)
              ELSE 0
            END,
            updated_at = CURRENT_TIMESTAMP
-       WHERE delivery_partner_id = $1`,
+       WHERE delivery_partner_id = $1::uuid`,
       [partnerId, resolvedAmount, orderId]
     )
 

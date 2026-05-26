@@ -66,7 +66,31 @@ router.get('/user/:userId', authenticateCustomer, asyncHandler(async (req, res) 
     [req.params.userId]
   )
   
-  res.json({ success: true, orders: result.rows.map(mapOrderResponse) })
+  const orders = result.rows.map(mapOrderResponse)
+  const orderIds = orders.map((order) => order.id)
+
+  if (orderIds.length > 0) {
+    const itemsResult = await pool.query(
+      `SELECT oi.order_id, oi.id, oi.menu_item_id, oi.quantity, oi.price, mi.name, mi.image
+       FROM order_items oi
+       LEFT JOIN menu_items mi ON mi.id = oi.menu_item_id
+       WHERE oi.order_id = ANY($1::uuid[])
+       ORDER BY oi.created_at ASC`,
+      [orderIds]
+    )
+    const itemsByOrderId = new Map()
+    for (const item of itemsResult.rows) {
+      const list = itemsByOrderId.get(item.order_id) || []
+      list.push(item)
+      itemsByOrderId.set(item.order_id, list)
+    }
+
+    orders.forEach((order) => {
+      order.items = itemsByOrderId.get(order.id) || []
+    })
+  }
+
+  res.json({ success: true, orders })
 }))
 
 // Get order by ID

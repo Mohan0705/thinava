@@ -79,6 +79,7 @@ export function DeliveryMap({
         polylines={polylines}
         className="h-full w-full"
         darkControls={darkControls}
+        fitBounds={false}
         fallbackMessage="Live route coordinates are still available, but map tiles could not be loaded."
       />
       <div className="pointer-events-none absolute left-4 top-4 rounded-full border border-white/15 bg-slate-950/75 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.2em] text-white shadow-lg backdrop-blur">
@@ -95,4 +96,3 @@ export function DeliveryMap({
     </div>
   )
 }
-

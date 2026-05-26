@@ -115,7 +115,21 @@ function Recenter({ center, zoom }: { center: LatLng; zoom: number }) {
   const map = useMap()
 
   useEffect(() => {
-    map.setView([center.lat, center.lng], zoom, { animate: true })
+    const currentCenter = map.getCenter()
+    const nextCenter = L.latLng(center.lat, center.lng)
+    const movedMeters = currentCenter.distanceTo(nextCenter)
+    const zoomChanged = map.getZoom() !== zoom
+
+    if (movedMeters < 35 && !zoomChanged) {
+      return
+    }
+
+    if (zoomChanged) {
+      map.setView(nextCenter, zoom, { animate: true, duration: 0.35 })
+      return
+    }
+
+    map.panTo(nextCenter, { animate: true, duration: 0.35 })
   }, [center.lat, center.lng, map, zoom])
 
   return null
@@ -162,10 +176,15 @@ export function LeafletMapClient({
         zoomControl={false}
         scrollWheelZoom
         preferCanvas
+        wheelDebounceTime={80}
+        wheelPxPerZoomLevel={80}
       >
         <TileLayer
           attribution={OSM_ATTRIBUTION}
           url={OSM_TILE_URL}
+          updateWhenIdle
+          updateWhenZooming={false}
+          keepBuffer={2}
           eventHandlers={{
             tileerror: () => onTileError?.(),
           }}

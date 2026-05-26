@@ -11,6 +11,7 @@ import { deliveryApi } from '@/lib/delivery-api'
 import { getRealtimeSocket, releaseRealtimeSocket } from '@/lib/realtime'
 import { useDeliveryAuthStore } from '@/store/deliveryAuthStore'
 import { useDeliveryOrderStore } from '@/store/deliveryOrderStore'
+import { calculateDistanceKm } from '@/lib/maps/geo'
 
 const formatCurrency = (value: number | undefined) => `Rs. ${Number(value || 0).toFixed(0)}`
 const OFFER_TIMEOUT_SECONDS = 25
@@ -27,6 +28,7 @@ export function DeliveryAssignedOrderPopup() {
   const [rejecting, setRejecting] = useState(false)
   const [secondsLeft, setSecondsLeft] = useState(OFFER_TIMEOUT_SECONDS)
   const autoRejectTriggeredRef = useRef(false)
+  const lastLocationSyncRef = useRef<{ latitude: number; longitude: number; syncedAt: number } | null>(null)
   const shouldShow =
     Boolean(token) &&
     Boolean(activeOrder) &&
@@ -64,10 +66,12 @@ export function DeliveryAssignedOrderPopup() {
     }
 
     socket.on('delivery:active_order_updated', handleAssignedOrder)
+    socket.on('ORDER_ASSIGNED', handleAssignedOrder)
     socket.on('delivery:offer_removed', handleAssignedOrder)
 
     return () => {
       socket.off('delivery:active_order_updated', handleAssignedOrder)
+      socket.off('ORDER_ASSIGNED', handleAssignedOrder)
       socket.off('delivery:offer_removed', handleAssignedOrder)
       releaseRealtimeSocket('delivery_partner', token)
     }
@@ -85,16 +89,27 @@ export function DeliveryAssignedOrderPopup() {
           longitude: position.coords.longitude,
         }
         setCurrentLocation(nextLocation)
-        void deliveryApi.updateLocation(
-          token!,
-          activeOrder.id,
-          nextLocation.latitude,
-          nextLocation.longitude,
-          position.coords.accuracy
-        )
+        const previous = lastLocationSyncRef.current
+        const distanceMeters = previous
+          ? calculateDistanceKm(
+              { lat: previous.latitude, lng: previous.longitude },
+              { lat: nextLocation.latitude, lng: nextLocation.longitude }
+            ) * 1000
+          : Number.POSITIVE_INFINITY
+
+        if (!previous || distanceMeters >= 12 || Date.now() - previous.syncedAt >= 5000) {
+          lastLocationSyncRef.current = { ...nextLocation, syncedAt: Date.now() }
+          void deliveryApi.updateLocation(
+            token!,
+            activeOrder.id,
+            nextLocation.latitude,
+            nextLocation.longitude,
+            position.coords.accuracy
+          )
+        }
       },
       () => undefined,
-      { enableHighAccuracy: true, maximumAge: 8000, timeout: 12000 }
+      { enableHighAccuracy: true, maximumAge: 10000, timeout: 12000 }
     )
 
     return () => navigator.geolocation.clearWatch(watchId)

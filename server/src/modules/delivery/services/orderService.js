@@ -1,6 +1,7 @@
 const pool = require('../../../database/connection')
 const {
   ASSIGNMENT_STATUSES,
+  DELIVERY_STATUS_ALIASES,
   ORDER_DELIVERY_STATUSES,
 } = require('../constants')
 const {
@@ -10,7 +11,7 @@ const {
   coerceCoordinate,
   roundMetric,
 } = require('./logisticsService')
-const { emitOrderAssigned, emitOrderStatusUpdated } = require('../../../realtime/orderEvents')
+const { emitDeliveryStatusUpdated, emitOrderAssigned, emitOrderStatusUpdated } = require('../../../realtime/orderEvents')
 
 const ACTIVE_TERMINAL_STATUSES = [
   ORDER_DELIVERY_STATUSES.DELIVERED,
@@ -20,6 +21,11 @@ const ACTIVE_TERMINAL_STATUSES = [
 const toNumber = (value) => Number(value || 0)
 
 const toCurrency = (value) => roundMetric(value || 0)
+
+const normalizeDeliveryStatus = (status) => {
+  const upper = String(status || ORDER_DELIVERY_STATUSES.ASSIGNED).trim().toUpperCase()
+  return DELIVERY_STATUS_ALIASES[upper] || upper
+}
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
@@ -249,7 +255,7 @@ const getAvailableOrders = async (partnerId) => {
      LEFT JOIN order_items oi ON oi.order_id = o.id
      WHERE o.delivery_status = $1
        AND o.delivery_partner_id IS NULL
-       AND UPPER(o.status) NOT IN ('CANCELLED', 'DELIVERED')
+       AND UPPER(o.status) IN ('PREPARING', 'READY_FOR_PICKUP')
      GROUP BY o.id, r.id, a.id, u.id
      ORDER BY o.created_at DESC
      LIMIT 20`,
@@ -278,6 +284,7 @@ const getAvailableOrders = async (partnerId) => {
 }
 
 const buildOrderPayload = async (row, riderLocation) => {
+  const deliveryStatus = normalizeDeliveryStatus(row.delivery_status)
   const offerMetrics = await buildDeliveryOfferMetrics({
     orderId: row.id,
     paymentMethod: row.payment_method,
@@ -289,9 +296,12 @@ const buildOrderPayload = async (row, riderLocation) => {
     riderLongitude: riderLocation?.longitude || row.current_longitude,
   })
 
-  const basePay = coerceCoordinate(row.base_delivery_pay) !== null ? toCurrency(row.base_delivery_pay) : offerMetrics.pay.basePay
+  const basePay =
+    coerceCoordinate(row.base_delivery_pay) !== null && Number(row.base_delivery_pay) >= 25
+      ? toCurrency(row.base_delivery_pay)
+      : offerMetrics.pay.basePay
   const distancePay =
-    coerceCoordinate(row.distance_delivery_pay) !== null
+    coerceCoordinate(row.distance_delivery_pay) !== null && Number(row.base_delivery_pay) >= 25
       ? toCurrency(row.distance_delivery_pay)
       : offerMetrics.pay.distancePay
   const surgeBonus = coerceCoordinate(row.surge_bonus) !== null ? toCurrency(row.surge_bonus) : offerMetrics.pay.surgeBonus
@@ -317,7 +327,7 @@ const buildOrderPayload = async (row, riderLocation) => {
         : null
 
   const deliveryState = buildDeliveryActionState({
-    deliveryStatus: row.delivery_status,
+    deliveryStatus,
     riderLocation: resolvedRiderLocation,
     restaurant: restaurantCoordinates,
     customer: customerCoordinates,
@@ -333,7 +343,7 @@ const buildOrderPayload = async (row, riderLocation) => {
     payment_type: String(row.payment_method || '').toLowerCase() === 'cod' ? 'COD' : 'PREPAID',
     created_at: row.created_at,
     delivery_assigned_at: row.delivery_assigned_at,
-    delivery_status: row.delivery_status,
+    delivery_status: deliveryStatus,
     assignment_status: row.assignment_status || ASSIGNMENT_STATUSES.ACCEPTED,
     restaurant_id: row.restaurant_id,
     restaurant_name: row.restaurant_name,
@@ -738,6 +748,11 @@ const autoAssignOrder = async (orderId, options = {}) => {
       return { success: false, reason: 'closed' }
     }
 
+    if (!['PREPARING', 'READY_FOR_PICKUP'].includes(String(order.status || '').toUpperCase()) && !options.force) {
+      await client.query('ROLLBACK')
+      return { success: false, reason: 'restaurant_not_ready' }
+    }
+
     if (order.delivery_partner_id) {
       await client.query('COMMIT')
       return {
@@ -884,6 +899,13 @@ const assignOrderToPartner = async (orderId, partnerId) => {
       console.error('Failed to emit realtime assignment event', error)
     })
 
+    emitDeliveryStatusUpdated(normalizedOrderId, {
+      source: 'delivery_partner_accept',
+      status: ORDER_DELIVERY_STATUSES.ASSIGNED,
+    }).catch((error) => {
+      console.error('Failed to emit realtime rider acceptance event', error)
+    })
+
     return {
       success: true,
       order_id: normalizedOrderId,
@@ -973,6 +995,13 @@ const confirmAssignedOrder = async (orderId, partnerId) => {
       partner_id: normalizedPartnerId,
     }).catch((error) => {
       console.error('Failed to emit realtime assignment confirmation event', error)
+    })
+
+    emitDeliveryStatusUpdated(normalizedOrderId, {
+      source: 'rider_assignment_confirmed',
+      status: ORDER_DELIVERY_STATUSES.ASSIGNED,
+    }).catch((error) => {
+      console.error('Failed to emit realtime assignment acceptance event', error)
     })
 
     return {
@@ -1201,7 +1230,7 @@ const getActiveOrderForPartner = async (partnerId) => {
       `SELECT id
        FROM orders
        WHERE delivery_partner_id = $1::uuid
-         AND delivery_status NOT IN ($2, $3)
+         AND delivery_status NOT IN ($2::text, $3::text)
        ORDER BY delivery_assigned_at DESC NULLS LAST, created_at DESC
        LIMIT 1`,
       [normalizedPartnerId, ORDER_DELIVERY_STATUSES.DELIVERED, ORDER_DELIVERY_STATUSES.CANCELLED]

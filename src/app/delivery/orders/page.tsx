@@ -68,10 +68,12 @@ export default function DeliveryOrdersPage() {
     }
 
     socket.on('delivery:active_order_updated', handleAssignedOrder)
+    socket.on('ORDER_ASSIGNED', handleAssignedOrder)
     socket.on('delivery:offer_removed', handleAssignedOrder)
 
     return () => {
       socket.off('delivery:active_order_updated', handleAssignedOrder)
+      socket.off('ORDER_ASSIGNED', handleAssignedOrder)
       socket.off('delivery:offer_removed', handleAssignedOrder)
       releaseRealtimeSocket('delivery_partner', token)
     }

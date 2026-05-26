@@ -201,6 +201,22 @@ export function useAdminRealtimeSync(token: string | null, onDashboardUpdate?: (
       onDashboardUpdate?.(payload)
     })
 
+    ;[
+      'ORDER_ASSIGNED',
+      'ORDER_PREPARING',
+      'ORDER_READY',
+      'RIDER_ACCEPTED',
+      'RIDER_ARRIVED',
+      'PICKED_UP',
+      'ARRIVING',
+      'DELIVERED',
+      'CANCELLED',
+    ].forEach((eventName) => {
+      mgr.subscribe(eventName, (payload: any) => {
+        onDashboardUpdate?.(payload)
+      })
+    })
+
     mgr.subscribe('restaurantStatusChanged', (payload: any) => {
       onDashboardUpdate?.(payload)
     })
