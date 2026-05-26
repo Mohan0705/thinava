@@ -170,7 +170,8 @@ export default function AdminOrdersPage() {
                       <h3 className="text-xl font-semibold text-slate-950">#{order.id.slice(0, 8)}</h3>
                       <Badge variant={order.is_delayed ? 'destructive' : 'outline'}>{order.status_label}</Badge>
                       <Badge variant="secondary">{order.delivery_status_label}</Badge>
-                      <Badge variant="outline">{order.payment_method}</Badge>
+                      <Badge variant={order.payment_method === 'COD' ? 'secondary' : 'success'}>{order.payment_method}</Badge>
+                      <Badge variant={order.cash_collected ? 'success' : 'outline'}>{order.payment_status || 'pending'}</Badge>
                     </div>
                     <div className="grid gap-2 text-sm text-slate-600 md:grid-cols-2 xl:grid-cols-4">
                       <p><span className="font-semibold text-slate-900">Restaurant:</span> {order.restaurant.name}</p>
@@ -184,11 +185,29 @@ export default function AdminOrdersPage() {
                       <span>{order.item_count} items</span>
                       <span>{order.elapsed_minutes} min elapsed</span>
                       <span>Commission {formatPrice(order.platform_commission_amount)}</span>
+                      <span>Placed {new Date(order.created_at).toLocaleString('en-IN')}</span>
+                      {order.delivery_assigned_at ? <span>Assigned {new Date(order.delivery_assigned_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</span> : null}
                     </div>
+                    {order.items?.length ? (
+                      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                        <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Ordered items</p>
+                        <div className="grid gap-2 md:grid-cols-2">
+                          {order.items.map((item) => (
+                            <div key={item.id} className="flex items-center justify-between rounded-xl bg-white px-3 py-2 text-sm">
+                              <span className="font-medium text-slate-900">{item.quantity} x {item.name}</span>
+                              <span className="font-bold text-slate-900">{formatPrice(item.price)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
                   </div>
 
                   <div className="flex flex-wrap gap-2 xl:max-w-[340px] xl:justify-end">
                     <Button variant="outline" disabled={isTerminal} className={isTerminal ? 'opacity-40 cursor-not-allowed' : ''} onClick={() => handleStatusUpdate(order.id, 'PREPARING')}>Mark Preparing</Button>
+                    <Button variant="outline" disabled={isTerminal} className={isTerminal ? 'opacity-40 cursor-not-allowed' : ''} onClick={() => handleStatusUpdate(order.id, 'READY_FOR_PICKUP')}>Ready Pickup</Button>
+                    <Button variant="outline" disabled={isTerminal} className={isTerminal ? 'opacity-40 cursor-not-allowed' : ''} onClick={() => handleStatusUpdate(order.id, 'PICKED_UP')}>Pickup Confirmed</Button>
+                    <Button variant="outline" disabled={isTerminal} className={isTerminal ? 'opacity-40 cursor-not-allowed' : ''} onClick={() => handleStatusUpdate(order.id, 'ARRIVING')}>Arriving</Button>
                     <Button variant="default" disabled={isTerminal} className={`bg-emerald-600 hover:bg-emerald-700 ${isTerminal ? 'opacity-40 cursor-not-allowed' : ''}`} onClick={() => handleMarkDelivered(order.id)}>Mark Delivered</Button>
                     <Button variant="outline" disabled={isTerminal} className={isTerminal ? 'opacity-40 cursor-not-allowed' : ''} onClick={() => handleReassign(order.id)}>Reassign Rider</Button>
                     <Button variant="destructive" disabled={isTerminal} className={isTerminal ? 'opacity-40 cursor-not-allowed' : ''} onClick={() => handleCancelOrder(order.id)}>Cancel</Button>

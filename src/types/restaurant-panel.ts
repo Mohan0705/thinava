@@ -46,6 +46,7 @@ export interface RestaurantPanelOrder {
   id: string
   restaurant_id: string
   status: RestaurantOrderStatus
+  total: number
   payment_method: string
   payment_status: string
   estimated_delivery: string

@@ -17,6 +17,7 @@ const buildOrderQuery = `
     o.id,
     o.restaurant_id,
     o.status,
+    o.total,
     o.payment_method,
     o.payment_status,
     o.estimated_delivery,
@@ -51,6 +52,7 @@ const mapOrder = (row) => ({
   id: row.id,
   restaurant_id: row.restaurant_id,
   status: normalizeOrderStatus(row.status) || ORDER_STATUSES.PLACED,
+  total: Number(row.total || 0),
   payment_method: row.payment_method,
   payment_status: row.payment_status || 'pending',
   estimated_delivery: row.estimated_delivery,
@@ -182,14 +184,11 @@ const updateRestaurantOrderStatus = async (restaurantId, orderId, nextStatusValu
     throw error
   }
 
-  if (nextStatus === ORDER_STATUS.PREPARING || nextStatus === ORDER_STATUS.READY_FOR_PICKUP) {
+  if (nextStatus === ORDER_STATUS.READY_FOR_PICKUP) {
     try {
       await autoAssignOrder(orderId, {
-        source: nextStatus === ORDER_STATUS.PREPARING ? 'restaurant_preparing' : 'restaurant_ready_for_pickup',
-        dispatchNote:
-          nextStatus === ORDER_STATUS.PREPARING
-            ? 'Auto-assigned when restaurant marked order as preparing'
-            : 'Auto-assigned when restaurant marked order ready for pickup',
+        source: 'restaurant_ready_for_pickup',
+        dispatchNote: 'Assignment requested when restaurant marked order ready for pickup',
       })
     } catch (error) {
       console.error('Failed to auto-assign delivery partner', error)

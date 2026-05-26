@@ -16,6 +16,7 @@ export const REALTIME_EVENTS = {
   RESTAURANT_ORDER_UPDATED: 'restaurant:order_updated',
   
   // Delivery Partner Events - Offers
+  DELIVERY_ASSIGNMENT_REQUEST: 'delivery:assignment_request',
   DELIVERY_OFFER_AVAILABLE: 'delivery:offer_available',
   DELIVERY_OFFER_REMOVED: 'delivery:offer_removed',
   

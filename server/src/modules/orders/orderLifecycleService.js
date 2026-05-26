@@ -22,6 +22,7 @@ const { getIO } = require('../../realtime/socketServer')
 const ORDER_STATUS = {
   PLACED: 'PLACED',
   ACCEPTED: 'ACCEPTED',
+  CONFIRMED: 'ACCEPTED',
   PREPARING: 'PREPARING',
   READY_FOR_PICKUP: 'READY_FOR_PICKUP',
   OUT_FOR_DELIVERY: 'OUT_FOR_DELIVERY',
@@ -31,10 +32,12 @@ const ORDER_STATUS = {
 
 const DELIVERY_STATUS = {
   PENDING: 'PENDING',
+  READY_FOR_ASSIGNMENT: 'READY_FOR_ASSIGNMENT',
   ASSIGNED: 'ASSIGNED',
   ARRIVED_AT_RESTAURANT: 'ARRIVED_AT_RESTAURANT',
   PICKED_UP: 'PICKED_UP',
   REACHED_CUSTOMER: 'REACHED_CUSTOMER',
+  CASH_COLLECTED: 'CASH_COLLECTED',
   DELIVERED: 'DELIVERED',
   CANCELLED: 'CANCELLED',
 }
@@ -61,19 +64,22 @@ const STATUS_ALIASES = {
   // Order status aliases
   placed: ORDER_STATUS.PLACED,
   accepted: ORDER_STATUS.ACCEPTED,
+  confirmed: ORDER_STATUS.ACCEPTED,
   preparing: ORDER_STATUS.PREPARING,
   ready_for_pickup: ORDER_STATUS.READY_FOR_PICKUP,
-  picked_up: ORDER_STATUS.READY_FOR_PICKUP,
+  picked_up: ORDER_STATUS.OUT_FOR_DELIVERY,
   out_for_delivery: ORDER_STATUS.OUT_FOR_DELIVERY,
   on_the_way: ORDER_STATUS.OUT_FOR_DELIVERY,
   delivered: ORDER_STATUS.DELIVERED,
   cancelled: ORDER_STATUS.CANCELLED,
   // Delivery status aliases
   pending: DELIVERY_STATUS.PENDING,
+  ready_for_assignment: DELIVERY_STATUS.READY_FOR_ASSIGNMENT,
   assigned: DELIVERY_STATUS.ASSIGNED,
   arrived_at_restaurant: DELIVERY_STATUS.ARRIVED_AT_RESTAURANT,
   reached_restaurant: DELIVERY_STATUS.ARRIVED_AT_RESTAURANT,
   reached_customer: DELIVERY_STATUS.REACHED_CUSTOMER,
+  cash_collected: DELIVERY_STATUS.CASH_COLLECTED,
 }
 
 const normalizeStatus = (value) => {
@@ -181,7 +187,11 @@ const updateOrderLifecycleState = async (orderId, newStatus, options = {}) => {
     throw error
   }
 
-  const newDeliveryStatus = ORDER_TO_DELIVERY_MAP[normalizedStatus] || DELIVERY_STATUS.PENDING
+  const requestedDeliveryStatus = options.deliveryStatus ? normalizeStatus(options.deliveryStatus) : null
+  const newDeliveryStatus =
+    requestedDeliveryStatus && Object.values(DELIVERY_STATUS).includes(requestedDeliveryStatus)
+      ? requestedDeliveryStatus
+      : ORDER_TO_DELIVERY_MAP[normalizedStatus] || DELIVERY_STATUS.PENDING
   const isTerminal = isTerminalStatus(normalizedStatus)
   const isDelivered = normalizedStatus === ORDER_STATUS.DELIVERED
   const isCancelled = normalizedStatus === ORDER_STATUS.CANCELLED
@@ -192,14 +202,14 @@ const updateOrderLifecycleState = async (orderId, newStatus, options = {}) => {
     // 1. Lock and fetch current order state
     const orderResult = await client.query(
       `SELECT
-         o.id, o.status, o.delivery_status, o.payment_method, o.total,
-         o.payment_status,
+         o.id, o.status, o.delivery_status, o.payment_method, o.payment_type, o.total,
+         o.payment_status, o.cash_collected, o.collected_cash_amount,
          o.delivery_partner_id, o.restaurant_id, o.user_id,
          o.route_distance_km, o.dropoff_distance_km,
          o.base_delivery_pay, o.distance_delivery_pay,
          o.surge_bonus, o.rain_bonus, o.night_bonus,
          o.cod_handling_bonus, o.tip_amount, o.estimated_earning,
-         o.delivery_assigned_at, o.delivered_at, o.cancelled_at,
+         o.delivery_assigned_at, o.delivered_at, o.delivery_completed_at, o.cancelled_at,
          r.name AS restaurant_name,
          u.name AS customer_name, u.id AS customer_id,
          dp.full_name AS rider_name, dp.id AS rider_id
@@ -249,8 +259,19 @@ const updateOrderLifecycleState = async (orderId, newStatus, options = {}) => {
     if (isDelivered && !order.delivered_at) {
       timestampUpdates.push(`delivered_at = CURRENT_TIMESTAMP`)
     }
+    if (isDelivered && !order.delivery_completed_at) {
+      timestampUpdates.push(`delivery_completed_at = CURRENT_TIMESTAMP`)
+    }
     if (isCancelled && !order.cancelled_at) {
       timestampUpdates.push(`cancelled_at = CURRENT_TIMESTAMP`)
+    }
+
+    const isCodOrder = String(order.payment_type || order.payment_method || '').toLowerCase() === 'cod'
+    if (isDelivered && isCodOrder && !order.cash_collected) {
+      timestampUpdates.push(`cash_collected = TRUE`)
+      timestampUpdates.push(`collected_cash_amount = COALESCE(NULLIF(collected_cash_amount, 0), total)`)
+      timestampUpdates.push(`cash_collected_at = COALESCE(cash_collected_at, CURRENT_TIMESTAMP)`)
+      timestampUpdates.push(`payment_status = 'cod_collected'`)
     }
 
     const timestampClause = timestampUpdates.length > 0
@@ -262,6 +283,12 @@ const updateOrderLifecycleState = async (orderId, newStatus, options = {}) => {
       `UPDATE orders
        SET status = $1::text,
            delivery_status = $2::text,
+           rider_assignment_status = CASE
+             WHEN $2::text = 'ASSIGNED' THEN 'ACCEPTED'
+             WHEN $2::text = 'DELIVERED' THEN 'DELIVERED'
+             WHEN $2::text = 'CANCELLED' THEN 'CANCELLED'
+             ELSE rider_assignment_status
+           END,
            updated_at = CURRENT_TIMESTAMP${timestampClause}
        WHERE id = $3::uuid
        RETURNING id, status, delivery_status`,

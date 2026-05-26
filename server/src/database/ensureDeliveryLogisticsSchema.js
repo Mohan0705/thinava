@@ -45,7 +45,20 @@ const ensureDeliveryLogisticsSchema = async () => {
       ADD COLUMN IF NOT EXISTS night_bonus DECIMAL(10, 2) DEFAULT 0,
       ADD COLUMN IF NOT EXISTS cod_handling_bonus DECIMAL(10, 2) DEFAULT 0,
       ADD COLUMN IF NOT EXISTS estimated_earning DECIMAL(10, 2) DEFAULT 0,
-      ADD COLUMN IF NOT EXISTS tip_amount DECIMAL(10, 2) DEFAULT 0;
+      ADD COLUMN IF NOT EXISTS tip_amount DECIMAL(10, 2) DEFAULT 0,
+      ADD COLUMN IF NOT EXISTS payment_type VARCHAR(50),
+      ADD COLUMN IF NOT EXISTS cash_collected BOOLEAN DEFAULT FALSE,
+      ADD COLUMN IF NOT EXISTS collected_cash_amount DECIMAL(10, 2) DEFAULT 0,
+      ADD COLUMN IF NOT EXISTS cash_collected_at TIMESTAMP,
+      ADD COLUMN IF NOT EXISTS rider_assignment_status VARCHAR(50) DEFAULT 'UNASSIGNED',
+      ADD COLUMN IF NOT EXISTS assignment_expires_at TIMESTAMP,
+      ADD COLUMN IF NOT EXISTS delivery_completed_at TIMESTAMP;
+    `)
+
+    await client.query(`
+      UPDATE orders
+      SET payment_type = payment_method
+      WHERE payment_type IS NULL;
     `)
 
     await client.query(`
@@ -159,6 +172,13 @@ const ensureDeliveryLogisticsSchema = async () => {
     await client.query(`
       ALTER TABLE active_deliveries
       ADD COLUMN IF NOT EXISTS gps_validation_status JSONB DEFAULT '{}'::jsonb;
+    `)
+
+    await client.query(`
+      ALTER TABLE delivery_assignments
+      ADD COLUMN IF NOT EXISTS expires_at TIMESTAMP,
+      ADD COLUMN IF NOT EXISTS responded_at TIMESTAMP,
+      ADD COLUMN IF NOT EXISTS rejection_reason TEXT;
     `)
 
     await client.query(`

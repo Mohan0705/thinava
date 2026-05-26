@@ -3,11 +3,13 @@ import { AvailableOrder, ActiveOrder, DeliveryLocation } from '@/types/delivery'
 
 interface DeliveryOrderStore {
   availableOrders: AvailableOrder[]
+  assignmentRequest: ActiveOrder | null
   activeOrder: ActiveOrder | null
   currentLocation: DeliveryLocation | null
   refreshing: boolean
 
   setAvailableOrders: (orders: AvailableOrder[]) => void
+  setAssignmentRequest: (order: ActiveOrder | null) => void
   upsertAvailableOrder: (order: AvailableOrder) => void
   removeAvailableOrder: (orderId: string) => void
   setActiveOrder: (order: ActiveOrder | null) => void
@@ -18,12 +20,17 @@ interface DeliveryOrderStore {
 
 export const useDeliveryOrderStore = create<DeliveryOrderStore>()((set) => ({
   availableOrders: [],
+  assignmentRequest: null,
   activeOrder: null,
   currentLocation: null,
   refreshing: false,
 
   setAvailableOrders: (orders) => {
     set({ availableOrders: orders })
+  },
+
+  setAssignmentRequest: (order) => {
+    set({ assignmentRequest: order })
   },
 
   upsertAvailableOrder: (order) => {

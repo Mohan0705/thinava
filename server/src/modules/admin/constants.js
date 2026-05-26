@@ -78,7 +78,9 @@ const ORDER_STATUS_ALIASES = {
   accepted: 'ACCEPTED',
   preparing: 'PREPARING',
   ready_for_pickup: 'READY_FOR_PICKUP',
+  picked_up: 'PICKED_UP',
   out_for_delivery: 'OUT_FOR_DELIVERY',
+  arriving: 'ARRIVING',
   delivered: 'DELIVERED',
   cancelled: 'CANCELLED',
 }
@@ -91,6 +93,7 @@ const DELIVERY_STATUS_ALIASES = {
   picked_up: 'PICKED_UP',
   on_the_way: 'ON_THE_WAY',
   reached_customer: 'REACHED_CUSTOMER',
+  cash_collected: 'CASH_COLLECTED',
   delivered: 'DELIVERED',
   cancelled: 'CANCELLED',
 }

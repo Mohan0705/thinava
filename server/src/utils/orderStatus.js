@@ -23,11 +23,13 @@ const ORDER_STATUS = {
 
 const DELIVERY_STATUS = {
   PENDING: 'pending',
+  READY_FOR_ASSIGNMENT: 'ready_for_assignment',
   ASSIGNED: 'assigned',
   ARRIVED_AT_RESTAURANT: 'arrived_at_restaurant',
   PICKED_UP: 'picked_up',
   ON_THE_WAY: 'on_the_way',
   REACHED_CUSTOMER: 'reached_customer',
+  CASH_COLLECTED: 'cash_collected',
   DELIVERED: 'delivered',
   CANCELLED: 'cancelled',
 }

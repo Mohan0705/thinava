@@ -26,16 +26,32 @@ async function addOrderLifecycleColumns() {
       { name: 'payment_status', sql: "ALTER TABLE orders ADD COLUMN payment_status VARCHAR(40) DEFAULT 'pending'" },
       { name: 'delivery_partner_id', sql: 'ALTER TABLE orders ADD COLUMN delivery_partner_id UUID REFERENCES delivery_partners(id) ON DELETE SET NULL' },
       { name: 'delivery_status', sql: "ALTER TABLE orders ADD COLUMN delivery_status VARCHAR(50) DEFAULT 'PENDING'" },
+      { name: 'payment_type', sql: 'ALTER TABLE orders ADD COLUMN payment_type VARCHAR(50)' },
+      { name: 'cash_collected', sql: 'ALTER TABLE orders ADD COLUMN cash_collected BOOLEAN DEFAULT FALSE' },
+      { name: 'collected_cash_amount', sql: 'ALTER TABLE orders ADD COLUMN collected_cash_amount DECIMAL(10, 2) DEFAULT 0' },
+      { name: 'cash_collected_at', sql: 'ALTER TABLE orders ADD COLUMN cash_collected_at TIMESTAMP NULL' },
+      { name: 'rider_assignment_status', sql: "ALTER TABLE orders ADD COLUMN rider_assignment_status VARCHAR(50) DEFAULT 'UNASSIGNED'" },
+      { name: 'assignment_expires_at', sql: 'ALTER TABLE orders ADD COLUMN assignment_expires_at TIMESTAMP NULL' },
+      { name: 'delivery_completed_at', sql: 'ALTER TABLE orders ADD COLUMN delivery_completed_at TIMESTAMP NULL' },
     ]
     for (const col of ordersCols) {
       await ensureColumn(client, 'orders', col.name, col.sql)
     }
+
+    await client.query(`
+      UPDATE orders
+      SET payment_type = payment_method
+      WHERE payment_type IS NULL
+    `)
 
     // delivery_assignments table columns
     const assignCols = [
       { name: 'cancelled_at', sql: 'ALTER TABLE delivery_assignments ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMP NULL' },
       { name: 'delivered_at', sql: 'ALTER TABLE delivery_assignments ADD COLUMN IF NOT EXISTS delivered_at TIMESTAMP NULL' },
       { name: 'delivery_assigned_at', sql: 'ALTER TABLE delivery_assignments ADD COLUMN IF NOT EXISTS delivery_assigned_at TIMESTAMP NULL' },
+      { name: 'expires_at', sql: 'ALTER TABLE delivery_assignments ADD COLUMN IF NOT EXISTS expires_at TIMESTAMP NULL' },
+      { name: 'responded_at', sql: 'ALTER TABLE delivery_assignments ADD COLUMN IF NOT EXISTS responded_at TIMESTAMP NULL' },
+      { name: 'rejection_reason', sql: 'ALTER TABLE delivery_assignments ADD COLUMN IF NOT EXISTS rejection_reason TEXT' },
     ]
     for (const col of assignCols) {
       await ensureColumn(client, 'delivery_assignments', col.name, col.sql)

@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { BellRing, Check, Clock3, MessageCircle, PackageCheck, RefreshCw, X, User, Phone, Truck } from 'lucide-react'
+import { BellRing, Check, Clock3, MessageCircle, PackageCheck, RefreshCw, X, User, Phone, Truck, Search } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/Button'
 import { Card, CardContent } from '@/components/ui/Card'
@@ -29,6 +29,7 @@ type OrderItem = {
 type Order = {
   id: string
   status: OrderStatus
+  total: number
   payment_method: string
   payment_status: string
   estimated_delivery: string
@@ -206,7 +207,8 @@ function OrdersContent() {
     const normalizedSearch = searchTerm.trim().toLowerCase()
 
     return orders.filter((order) => {
-      if (statusFilter !== 'ALL' && order.status !== statusFilter) return false
+      if (statusFilter === 'ACCEPTED' && !['PLACED', 'ACCEPTED'].includes(order.status)) return false
+      if (statusFilter !== 'ALL' && statusFilter !== 'ACCEPTED' && order.status !== statusFilter) return false
       if (paymentFilter === 'COD' && order.payment_method.toLowerCase() !== 'cod') return false
       if (paymentFilter === 'ONLINE' && order.payment_method.toLowerCase() === 'cod') return false
       if (!normalizedSearch) return true
@@ -222,6 +224,19 @@ function OrdersContent() {
       return searchable.includes(normalizedSearch)
     })
   }, [orders, paymentFilter, searchTerm, statusFilter])
+
+  const filterChips: Array<{ key: OrderStatus | 'ALL'; label: string; statuses?: OrderStatus[] }> = [
+    { key: 'ACCEPTED', label: 'Incoming / Accepted', statuses: ['PLACED', 'ACCEPTED'] },
+    { key: 'PREPARING', label: 'Preparing', statuses: ['PREPARING'] },
+    { key: 'READY_FOR_PICKUP', label: 'Ready for Pickup', statuses: ['READY_FOR_PICKUP'] },
+    { key: 'OUT_FOR_DELIVERY', label: 'Out for Delivery', statuses: ['OUT_FOR_DELIVERY'] },
+    { key: 'ALL', label: 'All Orders' },
+  ]
+
+  const getChipCount = (chip: typeof filterChips[number]) =>
+    chip.key === 'ALL'
+      ? orders.length
+      : orders.filter((order) => (chip.statuses || [chip.key as OrderStatus]).includes(order.status)).length
 
   if (loading) {
     return (
@@ -246,24 +261,39 @@ function OrdersContent() {
       }
     >
       <div className="space-y-4">
-        <Card className="border border-white/70 bg-white/90">
-          <CardContent className="grid gap-3 p-4 md:grid-cols-[1fr_180px_180px]">
-            <input
-              value={searchTerm}
-              onChange={(event) => setSearchTerm(event.target.value)}
-              placeholder="Search order, customer, rider, or item"
-              className="h-12 rounded-xl border-2 border-slate-200 bg-white px-4 text-sm font-medium outline-none transition focus:border-orange-400"
-            />
-            <select
-              value={statusFilter}
-              onChange={(event) => setStatusFilter(event.target.value as OrderStatus | 'ALL')}
-              className="h-12 rounded-xl border-2 border-slate-200 bg-white px-4 text-sm font-medium outline-none transition focus:border-orange-400"
-            >
-              <option value="ALL">All statuses</option>
-              {Object.keys(statusConfig).map((status) => (
-                <option key={status} value={status}>{statusConfig[status as OrderStatus].label}</option>
-              ))}
-            </select>
+        <div className="sticky top-0 z-20 -mx-4 border-y border-slate-200/70 bg-slate-50/95 px-4 py-3 backdrop-blur md:mx-0 md:rounded-2xl md:border">
+          <div className="flex gap-2 overflow-x-auto pb-1">
+            {filterChips.map((chip) => {
+              const active = statusFilter === chip.key
+              return (
+                <button
+                  key={chip.key}
+                  type="button"
+                  onClick={() => setStatusFilter(chip.key)}
+                  className={`shrink-0 rounded-full border px-4 py-2 text-sm font-semibold transition ${
+                    active
+                      ? 'border-orange-500 bg-orange-500 text-white shadow-lg shadow-orange-500/20'
+                      : 'border-slate-200 bg-white text-slate-700 hover:border-orange-200'
+                  }`}
+                >
+                  {chip.label}
+                  <span className={`ml-2 rounded-full px-2 py-0.5 text-xs ${active ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-500'}`}>
+                    {getChipCount(chip)}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+          <div className="mt-3 grid gap-3 md:grid-cols-[1fr_180px]">
+            <label className="relative block">
+              <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <input
+                value={searchTerm}
+                onChange={(event) => setSearchTerm(event.target.value)}
+                placeholder="Search order, customer, rider, or item"
+                className="h-12 w-full rounded-xl border-2 border-slate-200 bg-white pl-11 pr-4 text-sm font-medium outline-none transition focus:border-orange-400"
+              />
+            </label>
             <select
               value={paymentFilter}
               onChange={(event) => setPaymentFilter(event.target.value as 'ALL' | 'COD' | 'ONLINE')}
@@ -273,8 +303,8 @@ function OrdersContent() {
               <option value="COD">COD</option>
               <option value="ONLINE">Online</option>
             </select>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
 
         {orders.length === 0 ? (
           <EmptyState
@@ -325,7 +355,10 @@ function OrdersContent() {
                 <div className="grid gap-4 lg:grid-cols-3">
                   {/* Customer Info */}
                   <div className="rounded-2xl bg-slate-50 p-4">
-                    <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-3">Customer</h3>
+                    <div className="mb-3 flex items-center justify-between gap-3">
+                      <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400">Customer</h3>
+                      <span className="text-base font-black text-slate-950">Rs. {Number(order.total || 0).toFixed(0)}</span>
+                    </div>
                     <div className="space-y-2">
                       <div className="flex items-center gap-2">
                         <User className="h-4 w-4 text-slate-400" />
@@ -369,6 +402,9 @@ function OrdersContent() {
                             {item.notes && (
                               <div className="text-xs text-orange-600 mt-1 italic">"{item.notes}"</div>
                             )}
+                          </div>
+                          <div className="text-sm font-bold text-slate-900">
+                            Rs. {Number(item.price || 0).toFixed(0)}
                           </div>
                         </div>
                       ))}

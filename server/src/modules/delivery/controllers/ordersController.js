@@ -65,6 +65,20 @@ const getActiveOrder = async (req, res, next) => {
   }
 }
 
+const getAssignmentRequest = async (req, res, next) => {
+  try {
+    const partnerId = req.deliveryPartner.id
+    const order = await orderService.getAssignmentRequestForPartner(partnerId)
+
+    res.json({
+      success: true,
+      order,
+    })
+  } catch (error) {
+    next(error)
+  }
+}
+
 const updateDeliveryStatus = async (req, res, next) => {
   try {
     const { order_id, status, latitude, longitude, notes } = req.body
@@ -82,6 +96,22 @@ const updateDeliveryStatus = async (req, res, next) => {
     res.json({
       success: true,
       message: `Order status updated to ${status}`,
+      ...result,
+    })
+  } catch (error) {
+    next(error)
+  }
+}
+
+const reportFoodNotReady = async (req, res, next) => {
+  try {
+    const { order_id, reason } = req.body
+    const partnerId = req.deliveryPartner.id
+    const result = await orderService.reportFoodNotReady(order_id, partnerId, reason)
+
+    res.json({
+      success: true,
+      message: 'Restaurant has been notified that food is not ready',
       ...result,
     })
   } catch (error) {
@@ -108,7 +138,9 @@ module.exports = {
   getAvailableOrders,
   acceptOrder,
   confirmAssignedOrder,
+  getAssignmentRequest,
   getActiveOrder,
   updateDeliveryStatus,
+  reportFoodNotReady,
   rejectOrder,
 }

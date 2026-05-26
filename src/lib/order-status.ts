@@ -17,10 +17,12 @@ export const ORDER_STATUS = {
 
 export const DELIVERY_STATUS = {
   PENDING: 'PENDING',
+  READY_FOR_ASSIGNMENT: 'READY_FOR_ASSIGNMENT',
   ASSIGNED: 'ASSIGNED',
   ARRIVED_AT_RESTAURANT: 'ARRIVED_AT_RESTAURANT',
   PICKED_UP: 'PICKED_UP',
   REACHED_CUSTOMER: 'REACHED_CUSTOMER',
+  CASH_COLLECTED: 'CASH_COLLECTED',
   DELIVERED: 'DELIVERED',
   CANCELLED: 'CANCELLED',
 }
@@ -55,10 +57,12 @@ export const getStatusLabel = (status: string): string => {
 export const getDeliveryStatusLabel = (status: string): string => {
   const labels: Record<string, string> = {
     PENDING: 'Pending',
+    READY_FOR_ASSIGNMENT: 'Assignment requested',
     ASSIGNED: 'Assigned',
     ARRIVED_AT_RESTAURANT: 'At Restaurant',
     PICKED_UP: 'Picked Up',
     REACHED_CUSTOMER: 'Reached Customer',
+    CASH_COLLECTED: 'Cash Collected',
     DELIVERED: 'Delivered',
     CANCELLED: 'Cancelled',
   }

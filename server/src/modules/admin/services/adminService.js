@@ -7,7 +7,8 @@ const {
   emitOrderStatusUpdated,
 } = require('../../../realtime/orderEvents')
 const { buildDeliveryOfferMetrics } = require('../../delivery/services/logisticsService')
-const { updateOrderLifecycleState, ORDER_STATUS, normalizeStatus } = require('../../orders/orderLifecycleService')
+const { autoAssignOrder } = require('../../delivery/services/orderService')
+const { updateOrderLifecycleState, ORDER_STATUS, DELIVERY_STATUS, normalizeStatus } = require('../../orders/orderLifecycleService')
 const {
   ADMIN_ROLES,
   ROLE_PERMISSIONS,
@@ -363,6 +364,12 @@ const getOrderRows = async (limit = 150) => {
        o.tax,
        o.status,
        o.payment_method,
+       o.payment_status,
+       o.cash_collected,
+       o.collected_cash_amount,
+       o.rider_assignment_status,
+       o.assignment_expires_at,
+       o.delivery_completed_at,
        o.created_at,
        o.updated_at,
        o.delivery_status,
@@ -400,7 +407,20 @@ const getOrderRows = async (limit = 150) => {
        loc.latitude AS rider_latitude,
        loc.longitude AS rider_longitude,
        loc.timestamp AS rider_location_timestamp,
-       COUNT(oi.id)::int AS item_count
+       COUNT(oi.id)::int AS item_count,
+       COALESCE(
+         JSON_AGG(
+           JSON_BUILD_OBJECT(
+             'id', oi.id,
+             'menu_item_id', oi.menu_item_id,
+             'name', mi.name,
+             'quantity', oi.quantity,
+             'price', oi.price
+           )
+           ORDER BY oi.created_at ASC
+         ) FILTER (WHERE oi.id IS NOT NULL),
+         '[]'::json
+       ) AS items
      FROM orders o
      JOIN users u ON u.id = o.user_id
      JOIN addresses a ON a.id = o.address_id
@@ -414,6 +434,7 @@ const getOrderRows = async (limit = 150) => {
        LIMIT 1
      ) loc ON TRUE
      LEFT JOIN order_items oi ON oi.order_id = o.id
+     LEFT JOIN menu_items mi ON mi.id = oi.menu_item_id
      GROUP BY
        o.id, u.id, a.id, r.id, dp.id, loc.latitude, loc.longitude, loc.timestamp
      ORDER BY o.created_at DESC
@@ -439,11 +460,24 @@ const getOrderRows = async (limit = 150) => {
       delivery_fee: safeNumber(row.delivery_fee),
       tax: safeNumber(row.tax),
       item_count: Number(row.item_count || 0),
+      items: (row.items || []).map((item) => ({
+        id: item.id,
+        menu_item_id: item.menu_item_id,
+        name: item.name || 'Menu item',
+        quantity: Number(item.quantity || 0),
+        price: safeNumber(item.price),
+      })),
       payment_method: String(row.payment_method || 'cod').toUpperCase(),
+      payment_status: row.payment_status || 'pending',
+      cash_collected: Boolean(row.cash_collected),
+      collected_cash_amount: safeNumber(row.collected_cash_amount),
+      rider_assignment_status: row.rider_assignment_status || 'UNASSIGNED',
+      assignment_expires_at: row.assignment_expires_at,
       created_at: row.created_at,
       updated_at: row.updated_at,
       delivery_assigned_at: row.delivery_assigned_at,
       delivered_at: row.delivered_at,
+      delivery_completed_at: row.delivery_completed_at,
       elapsed_minutes: elapsedMinutes,
       delivered_minutes: deliveredMinutes,
       is_delayed:
@@ -687,10 +721,27 @@ const listOrders = async (filters = {}) => {
 }
 
 const updateOrderStatus = async (orderId, status, adminUser, metadata = {}) => {
-  const result = await updateOrderLifecycleState(orderId, status, {
+  const requestedStatus = String(status || '').trim().toUpperCase()
+  const lifecycleStatus =
+    requestedStatus === 'PICKED_UP' ||
+    requestedStatus === 'ARRIVING' ||
+    requestedStatus === 'CASH_COLLECTED'
+      ? ORDER_STATUS.OUT_FOR_DELIVERY
+      : status
+  const deliveryStatus =
+    requestedStatus === 'PICKED_UP'
+      ? DELIVERY_STATUS.PICKED_UP
+      : requestedStatus === 'ARRIVING'
+        ? DELIVERY_STATUS.REACHED_CUSTOMER
+        : requestedStatus === 'CASH_COLLECTED'
+          ? DELIVERY_STATUS.CASH_COLLECTED
+          : undefined
+
+  const result = await updateOrderLifecycleState(orderId, lifecycleStatus, {
     source: 'admin_panel',
     force: true,
     reason: metadata.reason,
+    deliveryStatus,
   })
 
   await recordActivity({
@@ -701,6 +752,15 @@ const updateOrderStatus = async (orderId, status, adminUser, metadata = {}) => {
     description: `Order moved to ${prettyLabel(result.status)}`,
     metadata,
   })
+
+  if (result.status === ORDER_STATUS.READY_FOR_PICKUP) {
+    autoAssignOrder(orderId, {
+      source: 'admin_ready_for_pickup',
+      dispatchNote: 'Assignment requested after admin marked order ready for pickup',
+    }).catch((error) => {
+      console.error('Failed to auto-assign after admin ready-for-pickup update', error)
+    })
+  }
 
   return {
     id: result.order_id,

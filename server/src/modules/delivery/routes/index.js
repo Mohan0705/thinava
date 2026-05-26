@@ -61,6 +61,7 @@ router.get('/orders', ordersController.getAvailableOrders)
 router.post('/orders/accept', ordersController.acceptOrder)
 router.post('/orders/confirm-assignment', ordersController.confirmAssignedOrder)
 router.post('/orders/reject', ordersController.rejectOrder)
+router.get('/orders/assignment-request', ordersController.getAssignmentRequest)
 router.get('/orders/active', ordersController.getActiveOrder)
 router.post('/orders/status',
   body('order_id').isUUID().withMessage('order_id must be a valid order id'),
@@ -81,6 +82,12 @@ router.post('/orders/status',
   body('notes').optional({ nullable: true }).isString().trim().isLength({ max: 500 }).withMessage('notes is too long'),
   handleValidation,
   ordersController.updateDeliveryStatus
+)
+router.post('/orders/food-not-ready',
+  body('order_id').isUUID().withMessage('order_id must be a valid order id'),
+  body('reason').optional({ nullable: true }).isString().trim().isLength({ max: 300 }).withMessage('reason is too long'),
+  handleValidation,
+  ordersController.reportFoodNotReady
 )
 
 // Location routes

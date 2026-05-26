@@ -9,6 +9,7 @@ import {
   CheckCircle2,
   Clock3,
   Coins,
+  IndianRupee,
   Loader,
   MapPin,
   MessageCircle,
@@ -55,6 +56,12 @@ const statusTimeline = [
     label: 'At customer',
     helper: 'You reached dropoff point.',
     actionLabel: 'Mark at customer',
+  },
+  {
+    status: 'CASH_COLLECTED',
+    label: 'Cash collected',
+    helper: 'COD payment confirmed.',
+    actionLabel: 'Collect cash',
   },
   {
     status: 'DELIVERED',
@@ -384,6 +391,26 @@ export default function DeliveryActiveOrderPage() {
     }
   }
 
+  const handleFoodNotReady = async () => {
+    if (!activeOrder || !token) return
+
+    const confirmed = window.confirm('Report food not ready and move the restaurant order back to preparing?')
+    if (!confirmed) return
+
+    const reason = window.prompt('Optional reason for the restaurant/admin', 'Food not ready at pickup counter') || ''
+
+    setUpdatingStatus(true)
+    try {
+      await deliveryApi.reportFoodNotReady(token, activeOrder.id, reason)
+      toast.success('Food not ready reported. Restaurant and admin have been notified.')
+      void loadActiveOrder(true)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Unable to report food not ready')
+    } finally {
+      setUpdatingStatus(false)
+    }
+  }
+
   const openMaps = (latitude?: number, longitude?: number) => {
     if (!latitude || !longitude) {
       toast.error('Live coordinates are unavailable for this stop')
@@ -406,7 +433,7 @@ export default function DeliveryActiveOrderPage() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-white">
-      <div className="px-4 pb-36 pt-4 md:px-8">
+      <div className="px-4 pb-[calc(9rem+env(safe-area-inset-bottom))] pt-4 md:px-8">
         <div className="mx-auto max-w-6xl">
           <div className="mb-5 flex items-center justify-between">
             <button
@@ -449,7 +476,7 @@ export default function DeliveryActiveOrderPage() {
                   }
                 : null
             }
-            heightClassName="h-[58vh]"
+            heightClassName="h-[42vh] min-h-[280px] md:h-[58vh]"
           />
 
           <div className="mt-6 grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
@@ -569,6 +596,18 @@ export default function DeliveryActiveOrderPage() {
                         Call store
                       </Button>
                     </div>
+                    {['ASSIGNED', 'ARRIVED_AT_RESTAURANT'].includes(status) ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        disabled={updatingStatus}
+                        className="mt-3 w-full border-amber-400/25 bg-amber-500/10 text-amber-100 hover:bg-amber-500/20"
+                        onClick={handleFoodNotReady}
+                      >
+                        <ShieldAlert className="mr-2 h-4 w-4" />
+                        Food Not Ready
+                      </Button>
+                    ) : null}
                   </div>
 
                   <div className="rounded-[28px] border border-white/10 bg-white/5 p-4">
@@ -623,6 +662,37 @@ export default function DeliveryActiveOrderPage() {
                   </div>
 
                   <div className="mt-6 space-y-3">
+                    {activeOrder.payment_type === 'COD' ? (
+                      <div className={`rounded-2xl border px-4 py-3 ${
+                        activeOrder.cash_collected
+                          ? 'border-emerald-100 bg-emerald-50'
+                          : status === 'REACHED_CUSTOMER'
+                            ? 'border-amber-200 bg-amber-50'
+                            : 'border-slate-100 bg-slate-50'
+                      }`}>
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="flex items-start gap-3">
+                            <div className="rounded-full bg-white p-2 text-amber-700">
+                              <IndianRupee className="h-4 w-4" />
+                            </div>
+                            <div>
+                              <p className="font-semibold text-slate-950">
+                                {activeOrder.cash_collected ? 'Cash collected' : 'Collect cash'}
+                              </p>
+                              <p className="mt-1 text-sm text-slate-600">
+                                Amount to collect: {formatCurrency(activeOrder.amount_to_collect || activeOrder.total)}
+                              </p>
+                            </div>
+                          </div>
+                          <span className={`rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] ${
+                            activeOrder.cash_collected ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
+                          }`}>
+                            {activeOrder.cash_collected ? 'Done' : 'Required'}
+                          </span>
+                        </div>
+                      </div>
+                    ) : null}
+
                     {statusTimeline.map((step, index) => (
                       <div
                         key={step.status}
@@ -652,7 +722,7 @@ export default function DeliveryActiveOrderPage() {
                       type="button"
                       disabled={updatingStatus || !canRunNextAction}
                       onClick={() => handleStatusUpdate(nextActionState?.next_status || nextAction.status)}
-                      className="mt-6 w-full bg-gradient-to-r from-orange-500 to-red-500 py-6 text-base"
+                      className="sticky bottom-[calc(1rem+env(safe-area-inset-bottom))] z-20 mt-6 min-h-[56px] w-full rounded-2xl bg-gradient-to-r from-orange-500 to-red-500 py-6 text-base shadow-[0_18px_45px_-20px_rgba(249,115,22,0.8)]"
                     >
                       {updatingStatus ? (
                         <>

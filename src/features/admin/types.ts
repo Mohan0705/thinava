@@ -52,7 +52,19 @@ export interface AdminOrder {
   delivery_fee: number
   tax: number
   item_count: number
+  items: Array<{
+    id: string
+    menu_item_id?: string
+    name: string
+    quantity: number
+    price: number
+  }>
   payment_method: string
+  payment_status?: string
+  cash_collected?: boolean
+  collected_cash_amount?: number
+  rider_assignment_status?: string
+  assignment_expires_at?: string | null
   created_at: string
   updated_at: string
   delivery_assigned_at?: string | null

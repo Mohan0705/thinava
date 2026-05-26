@@ -2,9 +2,11 @@ export type DeliveryStatus =
   | 'AVAILABLE'
   | 'OFFLINE'
   | 'ASSIGNED'
+  | 'READY_FOR_ASSIGNMENT'
   | 'ARRIVED_AT_RESTAURANT'
   | 'PICKED_UP'
   | 'REACHED_CUSTOMER'
+  | 'CASH_COLLECTED'
   | 'DELIVERED'
   | 'CANCELLED'
 
@@ -114,6 +116,8 @@ export interface AvailableOrder {
   estimated_total_eta_minutes?: number
   estimated_earnings?: number
   payout_breakdown?: DeliveryPayoutBreakdown
+  assignment_status?: string
+  assignment_expires_at?: string
   surge_badge?: boolean
   rain_badge?: boolean
   night_badge?: boolean
@@ -147,6 +151,11 @@ export interface ActiveOrder {
   total: number
   payment_method: string
   payment_type?: 'COD' | 'PREPAID'
+  payment_status?: string
+  cash_collected?: boolean
+  collected_cash_amount?: number
+  amount_to_collect?: number
+  assignment_expires_at?: string
   delivery_assigned_at?: string
   delivery_status: string
   assignment_status?: string
@@ -259,6 +268,13 @@ export interface DeliveryRealtimeOrderSnapshot {
   status: string
   delivery_status: string
   payment_method?: string
+  payment_type?: string
+  payment_status?: string
+  cash_collected?: boolean
+  collected_cash_amount?: number
+  rider_assignment_status?: string
+  assignment_expires_at?: string | null
+  delivery_completed_at?: string | null
   total: number
   route_distance_km?: number | null
   estimated_total_eta_minutes?: number | null

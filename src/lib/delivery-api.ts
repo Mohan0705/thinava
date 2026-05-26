@@ -112,6 +112,13 @@ export const deliveryApi = {
     )
   },
 
+  getAssignmentRequest(token: string) {
+    return apiRequest<{ success: boolean; order: ActiveOrder | null }>(
+      '/delivery/orders/assignment-request',
+      { token }
+    )
+  },
+
   rejectOrder(token: string, orderId: string) {
     return apiRequest<{ success: boolean; message: string }>(
       '/delivery/orders/reject',
@@ -148,6 +155,17 @@ export const deliveryApi = {
           latitude,
           longitude,
         }),
+      }
+    )
+  },
+
+  reportFoodNotReady(token: string, orderId: string, reason?: string) {
+    return apiRequest<{ success: boolean; message: string }>(
+      '/delivery/orders/food-not-ready',
+      {
+        method: 'POST',
+        token,
+        body: JSON.stringify({ order_id: orderId, reason }),
       }
     )
   },

@@ -276,9 +276,13 @@ router.post('/', authenticateCustomer, asyncHandler(async (req, res) => {
       paymentMethod: payment_method
     })
     
+    const paymentStatus = String(payment_method || '').toLowerCase() === 'cod' ? 'cod_pending' : 'pending'
     const orderResult = await client.query(
-      `INSERT INTO orders (user_id, restaurant_id, address_id, subtotal, delivery_fee, tax, total, payment_method, status, estimated_delivery)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, '25-35 mins')
+      `INSERT INTO orders (
+         user_id, restaurant_id, address_id, subtotal, delivery_fee, tax, total,
+         payment_method, payment_type, payment_status, status, estimated_delivery
+       )
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8, $9, $10, '25-35 mins')
        RETURNING *`,
       [
         resolvedUserId,
@@ -289,6 +293,7 @@ router.post('/', authenticateCustomer, asyncHandler(async (req, res) => {
         tax,
         resolvedTotal,
         payment_method,
+        paymentStatus,
         normalizedStatus,
       ]
     )

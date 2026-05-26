@@ -6,6 +6,7 @@ const EVENTS = {
   CUSTOMER_ORDER_UPDATED: 'customer:order_updated',
   RESTAURANT_ORDER_UPDATED: 'restaurant:order_updated',
   DELIVERY_ACTIVE_ORDER_UPDATED: 'delivery:active_order_updated',
+  DELIVERY_ASSIGNMENT_REQUEST: 'delivery:assignment_request',
   DELIVERY_OFFER_AVAILABLE: 'delivery:offer_available',
   DELIVERY_OFFER_REMOVED: 'delivery:offer_removed',
   DELIVERY_STATUS_UPDATED: 'delivery:status_updated',
@@ -13,15 +14,21 @@ const EVENTS = {
 }
 
 const LIFECYCLE_EVENTS = {
-  ORDER_ASSIGNED: 'ORDER_ASSIGNED',
+  ORDER_CREATED: 'ORDER_CREATED',
+  ORDER_CONFIRMED: 'ORDER_CONFIRMED',
   ORDER_PREPARING: 'ORDER_PREPARING',
   ORDER_READY: 'ORDER_READY',
+  RIDER_ASSIGNMENT_REQUEST: 'RIDER_ASSIGNMENT_REQUEST',
+  ORDER_ASSIGNED: 'ORDER_ASSIGNED',
   RIDER_ACCEPTED: 'RIDER_ACCEPTED',
+  RIDER_REJECTED: 'RIDER_REJECTED',
   RIDER_ARRIVED: 'RIDER_ARRIVED',
   PICKED_UP: 'PICKED_UP',
   ARRIVING: 'ARRIVING',
+  CASH_COLLECTED: 'CASH_COLLECTED',
   DELIVERED: 'DELIVERED',
   CANCELLED: 'CANCELLED',
+  ORDER_MOVED_TO_HISTORY: 'ORDER_MOVED_TO_HISTORY',
 }
 
 const normalizeUpper = (value) => String(value || '').trim().toUpperCase()
@@ -32,7 +39,11 @@ const resolveLifecycleEventName = (event, payload) => {
 
   if (event === 'order_assigned') return LIFECYCLE_EVENTS.ORDER_ASSIGNED
   if (event === 'order_ready_for_dispatch') return LIFECYCLE_EVENTS.ORDER_READY
+  if (event === 'order_created') return LIFECYCLE_EVENTS.ORDER_CREATED
+  if (event === 'rider_assignment_request') return LIFECYCLE_EVENTS.RIDER_ASSIGNMENT_REQUEST
+  if (event === 'rider_rejected') return LIFECYCLE_EVENTS.RIDER_REJECTED
 
+  if (orderStatus === 'ACCEPTED' || orderStatus === 'CONFIRMED') return LIFECYCLE_EVENTS.ORDER_CONFIRMED
   if (orderStatus === 'PREPARING') return LIFECYCLE_EVENTS.ORDER_PREPARING
   if (orderStatus === 'READY_FOR_PICKUP' || orderStatus === 'READY_FOR_DELIVERY') return LIFECYCLE_EVENTS.ORDER_READY
   if (orderStatus === 'DELIVERED' || deliveryStatus === 'DELIVERED') return LIFECYCLE_EVENTS.DELIVERED
@@ -42,6 +53,7 @@ const resolveLifecycleEventName = (event, payload) => {
   if (deliveryStatus === 'ARRIVED_AT_RESTAURANT' || deliveryStatus === 'AT_RESTAURANT') return LIFECYCLE_EVENTS.RIDER_ARRIVED
   if (deliveryStatus === 'PICKED_UP') return LIFECYCLE_EVENTS.PICKED_UP
   if (deliveryStatus === 'REACHED_CUSTOMER' || deliveryStatus === 'AT_CUSTOMER') return LIFECYCLE_EVENTS.ARRIVING
+  if (deliveryStatus === 'CASH_COLLECTED') return LIFECYCLE_EVENTS.CASH_COLLECTED
 
   return null
 }
@@ -74,6 +86,13 @@ const getOrderRealtimeSnapshot = async (orderId) => {
        o.status,
        o.delivery_status,
        o.payment_method,
+       o.payment_type,
+       o.payment_status,
+       o.cash_collected,
+       o.collected_cash_amount,
+       o.rider_assignment_status,
+       o.assignment_expires_at,
+       o.delivery_completed_at,
        o.total,
        o.route_distance_km,
        o.estimated_total_eta_minutes,
@@ -122,6 +141,13 @@ const getOrderRealtimeSnapshot = async (orderId) => {
     status: row.status,
     delivery_status: row.delivery_status,
     payment_method: row.payment_method,
+    payment_type: row.payment_type || row.payment_method,
+    payment_status: row.payment_status,
+    cash_collected: Boolean(row.cash_collected),
+    collected_cash_amount: Number(row.collected_cash_amount || 0),
+    rider_assignment_status: row.rider_assignment_status,
+    assignment_expires_at: row.assignment_expires_at,
+    delivery_completed_at: row.delivery_completed_at,
     total: Number(row.total || 0),
     route_distance_km: row.route_distance_km !== null ? Number(row.route_distance_km) : null,
     estimated_total_eta_minutes:
@@ -162,7 +188,11 @@ const emitOrderScopedUpdate = async (orderId, event, extraPayload = {}) => {
   emitToRoom(ROOMS.customer(order.user_id), EVENTS.CUSTOMER_ORDER_UPDATED, payload)
   emitToRoom(ROOMS.restaurant(order.restaurant_id), EVENTS.RESTAURANT_ORDER_UPDATED, payload)
 
-  if (order.delivery_partner_id) {
+  if (
+    order.delivery_partner_id &&
+    !['READY_FOR_ASSIGNMENT', 'PENDING'].includes(normalizeUpper(order.delivery_status)) &&
+    !['REQUESTED', 'ASSIGNED'].includes(normalizeUpper(order.rider_assignment_status))
+  ) {
     emitToRoom(
       ROOMS.deliveryPartner(order.delivery_partner_id),
       EVENTS.DELIVERY_ACTIVE_ORDER_UPDATED,
@@ -171,6 +201,14 @@ const emitOrderScopedUpdate = async (orderId, event, extraPayload = {}) => {
   }
 
   emitLifecycleAlias(order, resolveLifecycleEventName(event, payload), payload)
+  if (
+    normalizeUpper(order.status) === 'DELIVERED' ||
+    normalizeUpper(order.status) === 'CANCELLED' ||
+    normalizeUpper(order.delivery_status) === 'DELIVERED' ||
+    normalizeUpper(order.delivery_status) === 'CANCELLED'
+  ) {
+    emitLifecycleAlias(order, LIFECYCLE_EVENTS.ORDER_MOVED_TO_HISTORY, payload)
+  }
 
   return payload
 }
@@ -214,6 +252,33 @@ const emitOrderAssigned = async (orderId, extraPayload = {}) => {
   return payload
 }
 
+const emitRiderAssignmentRequest = async (orderId, deliveryPartnerId, extraPayload = {}) => {
+  const payload = await emitOrderScopedUpdate(orderId, 'rider_assignment_request', extraPayload)
+
+  if (payload) {
+    emitToRoom(ROOMS.deliveryPartner(deliveryPartnerId), EVENTS.DELIVERY_ASSIGNMENT_REQUEST, payload)
+    emitToRoom(ROOMS.deliveryPartner(deliveryPartnerId), LIFECYCLE_EVENTS.RIDER_ASSIGNMENT_REQUEST, {
+      ...payload,
+      lifecycle_event: LIFECYCLE_EVENTS.RIDER_ASSIGNMENT_REQUEST,
+    })
+  }
+
+  return payload
+}
+
+const emitRiderAssignmentRemoved = (orderId, deliveryPartnerId, reason = 'removed') => {
+  const payload = {
+    order_id: orderId,
+    reason,
+    changed_at: new Date().toISOString(),
+  }
+  emitToRoom(ROOMS.deliveryPartner(deliveryPartnerId), EVENTS.DELIVERY_OFFER_REMOVED, payload)
+  emitToRoom(ROOMS.deliveryPartner(deliveryPartnerId), LIFECYCLE_EVENTS.RIDER_REJECTED, {
+    ...payload,
+    lifecycle_event: LIFECYCLE_EVENTS.RIDER_REJECTED,
+  })
+}
+
 const emitOrderStatusUpdated = async (orderId, extraPayload = {}) =>
   emitOrderScopedUpdate(orderId, 'order_status_updated', extraPayload)
 
@@ -248,5 +313,7 @@ module.exports = {
   emitOrderCreated,
   emitOrderReadyForDispatch,
   emitOrderStatusUpdated,
+  emitRiderAssignmentRemoved,
+  emitRiderAssignmentRequest,
   getOrderRealtimeSnapshot,
 }

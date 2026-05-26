@@ -100,6 +100,14 @@ export function useRealtimeStoreSync(config: StoreSyncConfig) {
       mgr.subscribe('delivery:active_order_updated', (payload: DeliveryRealtimeEvent) => {
         if (payload?.order) {
           const { order } = payload
+          if (
+            order.delivery_status === 'READY_FOR_ASSIGNMENT' ||
+            order.rider_assignment_status === 'REQUESTED' ||
+            order.rider_assignment_status === 'ASSIGNED'
+          ) {
+            onEvent?.('delivery:active_order_updated', payload)
+            return
+          }
           const activeOrder: ActiveOrder = {
             id: order.id,
             restaurant_id: order.restaurant_id,
@@ -114,6 +122,10 @@ export function useRealtimeStoreSync(config: StoreSyncConfig) {
             tax: 0,
             total: order.total,
             payment_method: order.payment_method || 'cod',
+            payment_status: order.payment_status,
+            cash_collected: order.cash_collected,
+            collected_cash_amount: order.collected_cash_amount,
+            amount_to_collect: String(order.payment_type || order.payment_method || '').toLowerCase() === 'cod' ? order.total : 0,
             delivery_status: order.delivery_status,
             route_distance_km: order.route_distance_km ?? undefined,
             estimated_total_eta_minutes: order.estimated_total_eta_minutes ?? undefined,
@@ -127,6 +139,44 @@ export function useRealtimeStoreSync(config: StoreSyncConfig) {
           deliveryOrderActions.setActiveOrder(activeOrder)
         }
         onEvent?.('delivery:active_order_updated', payload)
+      })
+
+      mgr.subscribe('delivery:assignment_request', (payload: DeliveryRealtimeEvent) => {
+        if (payload?.order) {
+          const { order } = payload
+          deliveryOrderActions.setAssignmentRequest({
+            id: order.id,
+            restaurant_id: order.restaurant_id,
+            restaurant_name: order.restaurant_name || '',
+            restaurant_image: '',
+            customer_id: order.user_id,
+            customer_name: order.customer_name || '',
+            customer_phone: '',
+            customer_address: order.customer_address || '',
+            subtotal: order.total,
+            delivery_fee: 0,
+            tax: 0,
+            total: order.total,
+            payment_method: order.payment_method || 'cod',
+            payment_type: String(order.payment_type || order.payment_method || '').toLowerCase() === 'cod' ? 'COD' : 'PREPAID',
+            payment_status: order.payment_status,
+            cash_collected: order.cash_collected,
+            collected_cash_amount: order.collected_cash_amount,
+            amount_to_collect: String(order.payment_type || order.payment_method || '').toLowerCase() === 'cod' ? order.total : 0,
+            delivery_status: order.delivery_status,
+            assignment_status: order.rider_assignment_status,
+            assignment_expires_at: order.assignment_expires_at || undefined,
+            route_distance_km: order.route_distance_km ?? undefined,
+            estimated_total_eta_minutes: order.estimated_total_eta_minutes ?? undefined,
+            restaurant_latitude: order.restaurant_latitude ?? undefined,
+            restaurant_longitude: order.restaurant_longitude ?? undefined,
+            customer_latitude: order.customer_latitude ?? undefined,
+            customer_longitude: order.customer_longitude ?? undefined,
+            items: [],
+            created_at: order.created_at,
+          })
+        }
+        onEvent?.('delivery:assignment_request', payload)
       })
 
       mgr.subscribe('delivery:offer_available', (payload: any) => {
@@ -160,6 +210,9 @@ export function useRealtimeStoreSync(config: StoreSyncConfig) {
         const orderId = payload.order_id || payload.order?.id
         if (orderId) {
           deliveryOrderActions.removeAvailableOrder(orderId)
+          if (useDeliveryOrderStore.getState().assignmentRequest?.id === orderId) {
+            useDeliveryOrderStore.getState().setAssignmentRequest(null)
+          }
         }
         onEvent?.('delivery:offer_removed', payload)
       })

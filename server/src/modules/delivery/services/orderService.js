@@ -11,12 +11,21 @@ const {
   coerceCoordinate,
   roundMetric,
 } = require('./logisticsService')
-const { emitDeliveryStatusUpdated, emitOrderAssigned, emitOrderStatusUpdated } = require('../../../realtime/orderEvents')
+const {
+  emitDeliveryStatusUpdated,
+  emitOrderAssigned,
+  emitOrderStatusUpdated,
+  emitRiderAssignmentRemoved,
+  emitRiderAssignmentRequest,
+} = require('../../../realtime/orderEvents')
 
 const ACTIVE_TERMINAL_STATUSES = [
   ORDER_DELIVERY_STATUSES.DELIVERED,
   ORDER_DELIVERY_STATUSES.CANCELLED,
 ]
+
+const ASSIGNMENT_REQUEST_TIMEOUT_MS = 60 * 1000
+const scheduledAssignmentTimers = new Map()
 
 const toNumber = (value) => Number(value || 0)
 
@@ -67,6 +76,12 @@ const DELIVERY_ACTIONS = {
     target: 'customer',
     helper: 'Delivery completes only after you reach the customer.',
   },
+  [ORDER_DELIVERY_STATUSES.CASH_COLLECTED]: {
+    next_status: ORDER_DELIVERY_STATUSES.DELIVERED,
+    label: 'Complete delivery',
+    target: 'customer',
+    helper: 'Cash collected. Confirm handover to complete the delivery.',
+  },
 }
 
 const buildDeliveryActionState = ({
@@ -74,8 +89,19 @@ const buildDeliveryActionState = ({
   riderLocation,
   restaurant,
   customer,
+  paymentMethod,
+  cashCollected,
 }) => {
-  const action = DELIVERY_ACTIONS[deliveryStatus] || null
+  const isCod = String(paymentMethod || '').toLowerCase() === 'cod'
+  const action =
+    deliveryStatus === ORDER_DELIVERY_STATUSES.REACHED_CUSTOMER && isCod && !cashCollected
+      ? {
+          next_status: ORDER_DELIVERY_STATUSES.CASH_COLLECTED,
+          label: 'Collect cash',
+          target: 'customer',
+          helper: 'Collect cash from the customer before delivery completion unlocks.',
+        }
+      : DELIVERY_ACTIONS[deliveryStatus] || null
   const target = action?.target === 'customer' ? customer : restaurant
   const distanceMeters = action ? calculateDistanceMeters(riderLocation, target) : null
   const nextActionEnabled = action ? distanceMeters !== null && distanceMeters <= DEFAULT_GPS_RADIUS_METERS : false
@@ -331,6 +357,8 @@ const buildOrderPayload = async (row, riderLocation) => {
     riderLocation: resolvedRiderLocation,
     restaurant: restaurantCoordinates,
     customer: customerCoordinates,
+    paymentMethod: row.payment_method,
+    cashCollected: Boolean(row.cash_collected),
   })
 
   return {
@@ -341,6 +369,10 @@ const buildOrderPayload = async (row, riderLocation) => {
     total: toCurrency(row.total),
     payment_method: row.payment_method,
     payment_type: String(row.payment_method || '').toLowerCase() === 'cod' ? 'COD' : 'PREPAID',
+    payment_status: row.payment_status || 'pending',
+    cash_collected: Boolean(row.cash_collected),
+    collected_cash_amount: toCurrency(row.collected_cash_amount || 0),
+    amount_to_collect: String(row.payment_method || '').toLowerCase() === 'cod' ? toCurrency(row.total) : 0,
     created_at: row.created_at,
     delivery_assigned_at: row.delivery_assigned_at,
     delivery_status: deliveryStatus,
@@ -415,6 +447,8 @@ const getOrderDispatchSnapshot = async (client, orderId) => {
        o.delivery_partner_id,
        o.delivery_status,
        o.payment_method,
+       o.rider_assignment_status,
+       o.assignment_expires_at,
        o.status,
        o.tip_amount,
        r.formatted_address AS restaurant_address,
@@ -431,6 +465,178 @@ const getOrderDispatchSnapshot = async (client, orderId) => {
   )
 
   return result.rows[0] || null
+}
+
+const scheduleAssignmentExpiry = (orderId, partnerId, excludedPartnerIds = []) => {
+  const key = `${orderId}:${partnerId}`
+  const existingTimer = scheduledAssignmentTimers.get(key)
+  if (existingTimer) {
+    clearTimeout(existingTimer)
+  }
+
+  const timer = setTimeout(async () => {
+    scheduledAssignmentTimers.delete(key)
+    const client = await pool.connect()
+
+    try {
+      await client.query('BEGIN')
+
+      const assignmentResult = await client.query(
+        `SELECT id
+         FROM delivery_assignments
+         WHERE order_id = $1::uuid
+           AND delivery_partner_id = $2::uuid
+           AND assignment_status IN ($3::text, $4::text)
+           AND COALESCE(expires_at, CURRENT_TIMESTAMP) <= CURRENT_TIMESTAMP
+         ORDER BY assigned_at DESC, created_at DESC
+         LIMIT 1
+         FOR UPDATE`,
+        [orderId, partnerId, ASSIGNMENT_STATUSES.REQUESTED, ASSIGNMENT_STATUSES.ASSIGNED]
+      )
+
+      if (assignmentResult.rows.length === 0) {
+        await client.query('COMMIT')
+        return
+      }
+
+      await client.query(
+        `UPDATE delivery_assignments
+         SET assignment_status = $1::text,
+             responded_at = COALESCE(responded_at, CURRENT_TIMESTAMP),
+             rejection_reason = COALESCE(rejection_reason, 'Assignment timed out'),
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = $2::uuid`,
+        [ASSIGNMENT_STATUSES.EXPIRED, assignmentResult.rows[0].id]
+      )
+
+      await client.query(
+        `UPDATE orders
+         SET rider_assignment_status = 'QUEUED',
+             assignment_expires_at = NULL,
+             delivery_status = $1::text,
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = $2::uuid
+           AND delivery_partner_id IS NULL`,
+        [ORDER_DELIVERY_STATUSES.PENDING, orderId]
+      )
+
+      await client.query('COMMIT')
+    } catch (error) {
+      try {
+        await client.query('ROLLBACK')
+      } catch {}
+      console.error('Failed to expire rider assignment request', error)
+      return
+    } finally {
+      client.release()
+    }
+
+    emitRiderAssignmentRemoved(orderId, partnerId, 'expired')
+    setTimeout(() => {
+      autoAssignOrder(orderId, {
+        excludedPartnerIds: [...excludedPartnerIds, partnerId],
+        source: 'assignment_timeout',
+        dispatchNote: 'Reassigned after rider did not respond',
+      }).catch((error) => {
+        console.error('Failed to reassign expired delivery request', error)
+      })
+    }, 0)
+  }, ASSIGNMENT_REQUEST_TIMEOUT_MS + 500)
+
+  scheduledAssignmentTimers.set(key, timer)
+}
+
+const createAssignmentRequestForPartner = async ({
+  client,
+  order,
+  orderId,
+  partnerId,
+  riderLocation,
+  dispatchNote = 'Assignment request sent by Thinava dispatch engine',
+}) => {
+  const offerMetrics = await buildDeliveryOfferMetrics({
+    orderId,
+    paymentMethod: order.payment_method,
+    restaurantLatitude: order.restaurant_latitude,
+    restaurantLongitude: order.restaurant_longitude,
+    customerLatitude: order.customer_latitude,
+    customerLongitude: order.customer_longitude,
+    riderLatitude: riderLocation?.latitude,
+    riderLongitude: riderLocation?.longitude,
+  })
+
+  const expiresAt = new Date(Date.now() + ASSIGNMENT_REQUEST_TIMEOUT_MS)
+
+  await client.query(
+    `UPDATE orders
+     SET delivery_status = $1::text,
+         rider_assignment_status = $2::text,
+         assignment_expires_at = $3::timestamp,
+         route_distance_km = $4,
+         pickup_distance_km = $5,
+         dropoff_distance_km = $6,
+         estimated_pickup_eta_minutes = $7,
+         estimated_dropoff_eta_minutes = $8,
+         estimated_total_eta_minutes = $9,
+         base_delivery_pay = $10,
+         distance_delivery_pay = $11,
+         surge_bonus = $12,
+         rain_bonus = $13,
+         night_bonus = $14,
+         cod_handling_bonus = $15,
+         estimated_earning = $16,
+         updated_at = CURRENT_TIMESTAMP
+     WHERE id = $17::uuid`,
+    [
+      ORDER_DELIVERY_STATUSES.READY_FOR_ASSIGNMENT,
+      ASSIGNMENT_STATUSES.REQUESTED,
+      expiresAt,
+      offerMetrics.route.routeDistanceKm,
+      offerMetrics.route.pickupDistanceKm,
+      offerMetrics.route.dropoffDistanceKm,
+      offerMetrics.route.pickupEtaMinutes,
+      offerMetrics.route.dropoffEtaMinutes,
+      offerMetrics.route.totalEtaMinutes,
+      offerMetrics.pay.basePay,
+      offerMetrics.pay.distancePay,
+      offerMetrics.pay.surgeBonus,
+      offerMetrics.pay.rainBonus,
+      offerMetrics.pay.nightBonus,
+      offerMetrics.pay.codHandlingBonus,
+      offerMetrics.pay.total,
+      orderId,
+    ]
+  )
+
+  await client.query(
+    `INSERT INTO delivery_assignments (
+       order_id,
+       delivery_partner_id,
+       assignment_status,
+       assigned_at,
+       expires_at,
+       earnings,
+       distance_km,
+       updated_at
+     )
+     VALUES ($1::uuid, $2::uuid, $3::text, CURRENT_TIMESTAMP, $4::timestamp, $5, $6, CURRENT_TIMESTAMP)`,
+    [
+      orderId,
+      partnerId,
+      ASSIGNMENT_STATUSES.REQUESTED,
+      expiresAt,
+      offerMetrics.pay.total,
+      offerMetrics.route.dropoffDistanceKm,
+    ]
+  )
+
+  await client.query(
+    `INSERT INTO delivery_status_logs (order_id, delivery_partner_id, status, notes)
+     VALUES ($1::uuid, $2::uuid, $3::text, $4::text)`,
+    [orderId, partnerId, 'ASSIGNMENT_REQUESTED', dispatchNote]
+  )
+
+  return { offerMetrics, expiresAt }
 }
 
 const assignLockedOrderToPartner = async ({
@@ -457,6 +663,8 @@ const assignLockedOrderToPartner = async ({
     `UPDATE orders
      SET delivery_partner_id = $1::uuid,
          delivery_status = $2,
+         rider_assignment_status = $17::text,
+         assignment_expires_at = NULL,
          delivery_assigned_at = CURRENT_TIMESTAMP,
          route_distance_km = $3,
          pickup_distance_km = $4,
@@ -490,6 +698,7 @@ const assignLockedOrderToPartner = async ({
       offerMetrics.pay.codHandlingBonus,
       offerMetrics.pay.total,
       orderId,
+      ASSIGNMENT_STATUSES.ACCEPTED,
     ]
   )
 
@@ -499,11 +708,12 @@ const assignLockedOrderToPartner = async ({
        delivery_partner_id,
        assignment_status,
        assigned_at,
+       responded_at,
        earnings,
        distance_km,
        updated_at
      )
-     VALUES ($1::uuid, $2::uuid, $3, CURRENT_TIMESTAMP, $4, $5, CURRENT_TIMESTAMP)`,
+     VALUES ($1::uuid, $2::uuid, $3, CURRENT_TIMESTAMP, CASE WHEN $3::text = 'ACCEPTED' THEN CURRENT_TIMESTAMP ELSE NULL END, $4, $5, CURRENT_TIMESTAMP)`,
     [
       orderId,
       partnerId,
@@ -753,6 +963,18 @@ const autoAssignOrder = async (orderId, options = {}) => {
       return { success: false, reason: 'restaurant_not_ready' }
     }
 
+    if (
+      order.rider_assignment_status === ASSIGNMENT_STATUSES.REQUESTED &&
+      order.assignment_expires_at &&
+      new Date(order.assignment_expires_at).getTime() > Date.now()
+    ) {
+      await client.query('COMMIT')
+      return {
+        success: false,
+        reason: 'assignment_request_pending',
+      }
+    }
+
     if (order.delivery_partner_id) {
       await client.query('COMMIT')
       return {
@@ -763,12 +985,45 @@ const autoAssignOrder = async (orderId, options = {}) => {
       }
     }
 
-    const bestPartner = await findBestPartnerForOrder(client, order, options.excludedPartnerIds || [])
+    await client.query(
+      `UPDATE delivery_assignments
+       SET assignment_status = $1::text,
+           responded_at = COALESCE(responded_at, CURRENT_TIMESTAMP),
+           rejection_reason = COALESCE(rejection_reason, 'Assignment timed out'),
+           updated_at = CURRENT_TIMESTAMP
+       WHERE order_id = $2::uuid
+         AND assignment_status IN ($3::text, $4::text)
+         AND expires_at <= CURRENT_TIMESTAMP`,
+      [
+        ASSIGNMENT_STATUSES.EXPIRED,
+        normalizedOrderId,
+        ASSIGNMENT_STATUSES.REQUESTED,
+        ASSIGNMENT_STATUSES.ASSIGNED,
+      ]
+    )
+
+    const skippedResult = await client.query(
+      `SELECT DISTINCT delivery_partner_id
+       FROM delivery_assignments
+       WHERE order_id = $1::uuid
+         AND assignment_status IN ($2::text, $3::text)`,
+      [normalizedOrderId, ASSIGNMENT_STATUSES.REJECTED, ASSIGNMENT_STATUSES.EXPIRED]
+    )
+    const bestPartner = await findBestPartnerForOrder(
+      client,
+      order,
+      [
+        ...(options.excludedPartnerIds || []),
+        ...skippedResult.rows.map((row) => row.delivery_partner_id),
+      ]
+    )
 
     if (!bestPartner) {
       await client.query(
         `UPDATE orders
          SET delivery_status = $1,
+             rider_assignment_status = 'QUEUED',
+             assignment_expires_at = NULL,
              updated_at = CURRENT_TIMESTAMP
          WHERE id = $2::uuid`,
         [ORDER_DELIVERY_STATUSES.PENDING, normalizedOrderId]
@@ -786,7 +1041,7 @@ const autoAssignOrder = async (orderId, options = {}) => {
       return { success: false, reason: 'no_online_rider' }
     }
 
-    const offerMetrics = await assignLockedOrderToPartner({
+    const { offerMetrics, expiresAt } = await createAssignmentRequestForPartner({
       client,
       order,
       orderId: normalizedOrderId,
@@ -804,18 +1059,24 @@ const autoAssignOrder = async (orderId, options = {}) => {
 
     await client.query('COMMIT')
 
-    emitOrderAssigned(normalizedOrderId, {
+    scheduleAssignmentExpiry(normalizedOrderId, bestPartner.id, options.excludedPartnerIds || [])
+
+    emitRiderAssignmentRequest(normalizedOrderId, bestPartner.id, {
       source: options.source || 'dispatch_engine',
       partner_id: bestPartner.id,
       auto_assigned: true,
+      assignment_expires_at: expiresAt.toISOString(),
+      timeout_seconds: ASSIGNMENT_REQUEST_TIMEOUT_MS / 1000,
     }).catch((error) => {
-      console.error('Failed to emit realtime auto-assignment event', error)
+      console.error('Failed to emit realtime assignment request event', error)
     })
 
     return {
       success: true,
       order_id: normalizedOrderId,
       partner_id: bestPartner.id,
+      assignment_status: ASSIGNMENT_STATUSES.REQUESTED,
+      assignment_expires_at: expiresAt.toISOString(),
       estimated_earnings: offerMetrics.pay.total,
       route_distance_km: offerMetrics.route.routeDistanceKm,
       estimated_total_eta_minutes: offerMetrics.route.totalEtaMinutes,
@@ -930,51 +1191,96 @@ const confirmAssignedOrder = async (orderId, partnerId) => {
   try {
     await client.query('BEGIN')
 
-    const orderResult = await client.query(
-      `SELECT id, delivery_status
-       FROM orders
-       WHERE id = $1::uuid AND delivery_partner_id = $2::uuid
+    const partnerCheck = await client.query(
+      `SELECT id, current_order_id
+       FROM delivery_partners
+       WHERE id = $1::uuid
        FOR UPDATE`,
-      [normalizedOrderId, normalizedPartnerId]
+      [normalizedPartnerId]
     )
 
-    if (orderResult.rows.length === 0) {
-      const error = new Error('Assigned order not found')
+    if (partnerCheck.rows.length === 0) {
+      const error = new Error('Delivery partner not found')
       error.status = 404
       throw error
     }
 
-    if (ACTIVE_TERMINAL_STATUSES.includes(orderResult.rows[0].delivery_status)) {
+    if (partnerCheck.rows[0].current_order_id && partnerCheck.rows[0].current_order_id !== normalizedOrderId) {
+      const error = new Error('Finish your current delivery before accepting another order')
+      error.status = 400
+      throw error
+    }
+
+    const assignmentResult = await client.query(
+      `SELECT id, assignment_status, expires_at
+       FROM delivery_assignments
+       WHERE order_id = $1::uuid
+         AND delivery_partner_id = $2::uuid
+         AND assignment_status IN ($3::text, $4::text)
+       ORDER BY assigned_at DESC, created_at DESC
+       LIMIT 1
+       FOR UPDATE`,
+      [
+        normalizedOrderId,
+        normalizedPartnerId,
+        ASSIGNMENT_STATUSES.REQUESTED,
+        ASSIGNMENT_STATUSES.ASSIGNED,
+      ]
+    )
+
+    if (assignmentResult.rows.length === 0) {
+      const error = new Error('Assignment request not found or already handled')
+      error.status = 404
+      throw error
+    }
+
+    if (
+      assignmentResult.rows[0].expires_at &&
+      new Date(assignmentResult.rows[0].expires_at).getTime() <= Date.now()
+    ) {
+      const error = new Error('This assignment request has expired')
+      error.status = 400
+      throw error
+    }
+
+    const order = await getOrderDispatchSnapshot(client, normalizedOrderId)
+
+    if (!order) {
+      const error = new Error('Order not found')
+      error.status = 404
+      throw error
+    }
+
+    if (ACTIVE_TERMINAL_STATUSES.includes(order.delivery_status)) {
       const error = new Error('This delivery task is already closed')
       error.status = 400
       throw error
     }
 
+    if (order.delivery_partner_id && order.delivery_partner_id !== normalizedPartnerId) {
+      const error = new Error('Order was already accepted by another rider')
+      error.status = 409
+      throw error
+    }
+
+    const riderLocation = await getLatestPartnerLocationForClient(client, normalizedPartnerId)
+    await assignLockedOrderToPartner({
+      client,
+      order,
+      orderId: normalizedOrderId,
+      partnerId: normalizedPartnerId,
+      riderLocation,
+      assignmentStatus: ASSIGNMENT_STATUSES.ACCEPTED,
+      dispatchNote: 'Accepted assignment request from rider app',
+    })
+
     await client.query(
       `UPDATE delivery_assignments
        SET assignment_status = $1,
+           responded_at = CURRENT_TIMESTAMP,
            updated_at = CURRENT_TIMESTAMP
-       WHERE order_id = $2::uuid AND delivery_partner_id = $3::uuid`,
-      [ASSIGNMENT_STATUSES.ACCEPTED, normalizedOrderId, normalizedPartnerId]
-    )
-
-    await client.query(
-      `UPDATE delivery_partners
-       SET current_order_id = $1::uuid,
-           current_status = 'ASSIGNED',
-           updated_at = CURRENT_TIMESTAMP,
-           last_seen_at = CURRENT_TIMESTAMP
        WHERE id = $2::uuid`,
-      [normalizedOrderId, normalizedPartnerId]
-    )
-
-    await client.query(
-      `UPDATE active_deliveries
-       SET status = $1,
-           accepted_at = CURRENT_TIMESTAMP,
-           updated_at = CURRENT_TIMESTAMP
-       WHERE order_id = $2::uuid AND delivery_partner_id = $3::uuid`,
-      [ORDER_DELIVERY_STATUSES.ASSIGNED, normalizedOrderId, normalizedPartnerId]
+      [ASSIGNMENT_STATUSES.ACCEPTED, assignmentResult.rows[0].id]
     )
 
     await client.query(
@@ -989,6 +1295,13 @@ const confirmAssignedOrder = async (orderId, partnerId) => {
     )
 
     await client.query('COMMIT')
+
+    const timerKey = `${normalizedOrderId}:${normalizedPartnerId}`
+    const existingTimer = scheduledAssignmentTimers.get(timerKey)
+    if (existingTimer) {
+      clearTimeout(existingTimer)
+      scheduledAssignmentTimers.delete(timerKey)
+    }
 
     emitOrderAssigned(normalizedOrderId, {
       source: 'rider_assignment_confirmed',
@@ -1020,20 +1333,44 @@ const rejectAssignedOrder = async (orderId, partnerId) => {
   const normalizedOrderId = ensureUuid(orderId, 'orderId')
   const normalizedPartnerId = ensureUuid(partnerId, 'partnerId')
   const client = await pool.connect()
+  let shouldRedispatch = false
 
   try {
     await client.query('BEGIN')
 
-    const orderResult = await client.query(
-      `SELECT id, delivery_status
-       FROM orders
-       WHERE id = $1::uuid AND delivery_partner_id = $2::uuid
+    const assignmentResult = await client.query(
+      `SELECT id, assignment_status
+       FROM delivery_assignments
+       WHERE order_id = $1::uuid
+         AND delivery_partner_id = $2::uuid
+         AND assignment_status IN ($3::text, $4::text)
+       ORDER BY assigned_at DESC, created_at DESC
+       LIMIT 1
        FOR UPDATE`,
-      [normalizedOrderId, normalizedPartnerId]
+      [
+        normalizedOrderId,
+        normalizedPartnerId,
+        ASSIGNMENT_STATUSES.REQUESTED,
+        ASSIGNMENT_STATUSES.ASSIGNED,
+      ]
+    )
+
+    if (assignmentResult.rows.length === 0) {
+      const error = new Error('Assignment request not found or already handled')
+      error.status = 404
+      throw error
+    }
+
+    const orderResult = await client.query(
+      `SELECT id, delivery_status, delivery_partner_id
+       FROM orders
+       WHERE id = $1::uuid
+       FOR UPDATE`,
+      [normalizedOrderId]
     )
 
     if (orderResult.rows.length === 0) {
-      const error = new Error('Assigned order not found')
+      const error = new Error('Order not found')
       error.status = 404
       throw error
     }
@@ -1044,43 +1381,31 @@ const rejectAssignedOrder = async (orderId, partnerId) => {
       throw error
     }
 
+    if (orderResult.rows[0].delivery_partner_id) {
+      const error = new Error('Accepted deliveries cannot be rejected from the assignment popup')
+      error.status = 400
+      throw error
+    }
+
     await client.query(
       `UPDATE delivery_assignments
        SET assignment_status = $1,
+           responded_at = CURRENT_TIMESTAMP,
+           rejection_reason = 'Rejected by rider',
            updated_at = CURRENT_TIMESTAMP
-       WHERE order_id = $2::uuid AND delivery_partner_id = $3::uuid`,
-      [ASSIGNMENT_STATUSES.REJECTED, normalizedOrderId, normalizedPartnerId]
-    )
-
-    await client.query(
-      `DELETE FROM active_deliveries
-       WHERE order_id = $1::uuid AND delivery_partner_id = $2::uuid`,
-      [normalizedOrderId, normalizedPartnerId]
-    )
-
-    await client.query(
-      `DELETE FROM delivery_tracking
-       WHERE order_id = $1::uuid AND delivery_partner_id = $2::uuid`,
-      [normalizedOrderId, normalizedPartnerId]
+       WHERE id = $2::uuid`,
+      [ASSIGNMENT_STATUSES.REJECTED, assignmentResult.rows[0].id]
     )
 
     await client.query(
       `UPDATE orders
-       SET delivery_partner_id = NULL,
-           delivery_status = $1,
-           delivery_assigned_at = NULL,
+       SET delivery_status = $1,
+           rider_assignment_status = 'QUEUED',
+           assignment_expires_at = NULL,
            updated_at = CURRENT_TIMESTAMP
-       WHERE id = $2::uuid AND delivery_partner_id = $3::uuid`,
-      [ORDER_DELIVERY_STATUSES.PENDING, normalizedOrderId, normalizedPartnerId]
-    )
-
-    await client.query(
-      `UPDATE delivery_partners
-       SET current_order_id = NULL,
-           current_status = 'AVAILABLE',
-           updated_at = CURRENT_TIMESTAMP
-       WHERE id = $1::uuid`,
-      [normalizedPartnerId]
+       WHERE id = $2::uuid
+         AND delivery_partner_id IS NULL`,
+      [ORDER_DELIVERY_STATUSES.PENDING, normalizedOrderId]
     )
 
     await client.query(
@@ -1095,27 +1420,122 @@ const rejectAssignedOrder = async (orderId, partnerId) => {
     )
 
     await client.query('COMMIT')
+    shouldRedispatch = true
 
-    const redispatchResult = await autoAssignOrder(normalizedOrderId, {
-      excludedPartnerIds: [normalizedPartnerId],
-      source: 'rider_assignment_rejected',
-      dispatchNote: 'Reassigned after rider rejected the delivery',
-    })
+    const timerKey = `${normalizedOrderId}:${normalizedPartnerId}`
+    const existingTimer = scheduledAssignmentTimers.get(timerKey)
+    if (existingTimer) {
+      clearTimeout(existingTimer)
+      scheduledAssignmentTimers.delete(timerKey)
+    }
 
+    emitRiderAssignmentRemoved(normalizedOrderId, normalizedPartnerId, 'rejected')
     emitOrderStatusUpdated(normalizedOrderId, {
       source: 'rider_assignment_rejected',
       partner_id: normalizedPartnerId,
-      normalized_status: redispatchResult.success
-        ? ORDER_DELIVERY_STATUSES.ASSIGNED
-        : ORDER_DELIVERY_STATUSES.PENDING,
+      normalized_status: ORDER_DELIVERY_STATUSES.PENDING,
     }).catch((error) => {
       console.error('Failed to emit realtime assignment rejection event', error)
+    })
+
+    setTimeout(() => {
+      autoAssignOrder(normalizedOrderId, {
+        excludedPartnerIds: [normalizedPartnerId],
+        source: 'rider_assignment_rejected',
+        dispatchNote: 'Reassigned after rider rejected the delivery',
+      }).catch((error) => {
+        console.error('Failed to redispatch rejected assignment', error)
+      })
+    }, ASSIGNMENT_REQUEST_TIMEOUT_MS)
+
+    return {
+      success: true,
+      order_id: normalizedOrderId,
+      redispatch_scheduled: shouldRedispatch,
+      retry_after_seconds: ASSIGNMENT_REQUEST_TIMEOUT_MS / 1000,
+    }
+  } catch (error) {
+    await client.query('ROLLBACK')
+    throw error
+  } finally {
+    client.release()
+  }
+}
+
+const reportFoodNotReady = async (orderId, partnerId, reason = '') => {
+  const normalizedOrderId = ensureUuid(orderId, 'orderId')
+  const normalizedPartnerId = ensureUuid(partnerId, 'partnerId')
+  const client = await pool.connect()
+
+  try {
+    await client.query('BEGIN')
+
+    const orderResult = await client.query(
+      `SELECT id, status, delivery_status
+       FROM orders
+       WHERE id = $1::uuid AND delivery_partner_id = $2::uuid
+       FOR UPDATE`,
+      [normalizedOrderId, normalizedPartnerId]
+    )
+
+    if (orderResult.rows.length === 0) {
+      const error = new Error('Order not found or not assigned to you')
+      error.status = 404
+      throw error
+    }
+
+    const order = orderResult.rows[0]
+    const orderStatus = String(order.status || '').toUpperCase()
+    const deliveryStatus = normalizeDeliveryStatus(order.delivery_status)
+
+    if (orderStatus !== 'READY_FOR_PICKUP') {
+      const error = new Error('Food-not-ready can only be reported for ready-for-pickup orders')
+      error.status = 400
+      throw error
+    }
+
+    if (
+      ![
+        ORDER_DELIVERY_STATUSES.ASSIGNED,
+        ORDER_DELIVERY_STATUSES.ARRIVED_AT_RESTAURANT,
+      ].includes(deliveryStatus)
+    ) {
+      const error = new Error('Food-not-ready can only be reported before pickup')
+      error.status = 400
+      throw error
+    }
+
+    await client.query(
+      `UPDATE orders
+       SET status = 'PREPARING',
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = $1::uuid`,
+      [normalizedOrderId]
+    )
+
+    await client.query(
+      `INSERT INTO delivery_status_logs (order_id, delivery_partner_id, status, notes)
+       VALUES ($1::uuid, $2::uuid, 'FOOD_NOT_READY', $3::text)`,
+      [normalizedOrderId, normalizedPartnerId, reason || 'Rider reported food not ready at pickup']
+    )
+
+    await client.query('COMMIT')
+
+    emitOrderStatusUpdated(normalizedOrderId, {
+      source: 'food_not_ready',
+      normalized_status: 'PREPARING',
+      delivery_status: deliveryStatus,
+      reason: reason || 'Food not ready',
+      partner_id: normalizedPartnerId,
+    }).catch((error) => {
+      console.error('Failed to emit food-not-ready realtime event', error)
     })
 
     return {
       success: true,
       order_id: normalizedOrderId,
-      redispatched: redispatchResult.success,
+      status: 'PREPARING',
+      delivery_status: deliveryStatus,
     }
   } catch (error) {
     await client.query('ROLLBACK')
@@ -1137,6 +1557,9 @@ const getOrderDetails = async (orderId, partnerId) => {
        o.tax,
        o.total,
        o.payment_method,
+       o.payment_status,
+       o.cash_collected,
+       o.collected_cash_amount,
        o.created_at,
        o.delivery_assigned_at,
        o.delivery_status,
@@ -1206,6 +1629,99 @@ const getOrderDetails = async (orderId, partnerId) => {
   }
 
   return buildOrderPayload(result.rows[0], riderLocation)
+}
+
+const getAssignmentRequestForPartner = async (partnerId) => {
+  const normalizedPartnerId = ensureUuid(partnerId, 'partnerId')
+  const riderLocation = await getLatestPartnerLocation(normalizedPartnerId)
+  const result = await pool.query(
+    `SELECT
+       o.id,
+       o.subtotal,
+       o.delivery_fee,
+       o.tax,
+       o.total,
+       o.payment_method,
+       o.payment_status,
+       o.cash_collected,
+       o.collected_cash_amount,
+       o.created_at,
+       o.delivery_assigned_at,
+       o.delivery_status,
+       o.route_distance_km,
+       o.pickup_distance_km,
+       o.dropoff_distance_km,
+       o.estimated_pickup_eta_minutes,
+       o.estimated_dropoff_eta_minutes,
+       o.estimated_total_eta_minutes,
+       o.base_delivery_pay,
+       o.distance_delivery_pay,
+       o.surge_bonus,
+       o.rain_bonus,
+       o.night_bonus,
+       o.tip_amount,
+       o.assignment_expires_at,
+       r.id AS restaurant_id,
+       r.name AS restaurant_name,
+       r.image AS restaurant_image,
+       r.formatted_address AS restaurant_address,
+       r.latitude AS restaurant_latitude,
+       r.longitude AS restaurant_longitude,
+       u.id AS customer_id,
+       u.name AS customer_name,
+       u.phone AS customer_phone,
+       a.full_address AS customer_address,
+       a.landmark AS customer_landmark,
+       a.latitude AS customer_latitude,
+       a.longitude AS customer_longitude,
+       NULL::integer AS pickup_eta_minutes,
+       NULL::integer AS dropoff_eta_minutes,
+       NULL::integer AS total_eta_minutes,
+       da.assignment_status,
+       da.expires_at,
+       NULL::numeric AS current_latitude,
+       NULL::numeric AS current_longitude,
+       (SELECT JSON_AGG(
+         JSON_BUILD_OBJECT(
+           'id', oi.id,
+           'name', mi.name,
+           'quantity', oi.quantity,
+           'price', oi.price,
+           'image', mi.image
+         )
+       ) FROM order_items oi
+       JOIN menu_items mi ON oi.menu_item_id = mi.id
+       WHERE oi.order_id = o.id) AS items
+     FROM delivery_assignments da
+     JOIN orders o ON o.id = da.order_id
+     JOIN restaurants r ON o.restaurant_id = r.id
+     JOIN addresses a ON o.address_id = a.id
+     JOIN users u ON o.user_id = u.id
+     WHERE da.delivery_partner_id = $1::uuid
+       AND da.assignment_status IN ($2::text, $3::text)
+       AND COALESCE(da.expires_at, CURRENT_TIMESTAMP + INTERVAL '1 minute') > CURRENT_TIMESTAMP
+       AND o.delivery_partner_id IS NULL
+       AND o.delivery_status = $4::text
+     ORDER BY da.assigned_at DESC, da.created_at DESC
+     LIMIT 1`,
+    [
+      normalizedPartnerId,
+      ASSIGNMENT_STATUSES.REQUESTED,
+      ASSIGNMENT_STATUSES.ASSIGNED,
+      ORDER_DELIVERY_STATUSES.READY_FOR_ASSIGNMENT,
+    ]
+  )
+
+  if (result.rows.length === 0) {
+    return null
+  }
+
+  const payload = await buildOrderPayload(result.rows[0], riderLocation)
+  return {
+    ...payload,
+    assignment_status: ASSIGNMENT_STATUSES.REQUESTED,
+    assignment_expires_at: result.rows[0].expires_at || result.rows[0].assignment_expires_at,
+  }
 }
 
 const getActiveOrderForPartner = async (partnerId) => {
@@ -1302,6 +1818,8 @@ module.exports = {
   assignOrderToPartner,
   confirmAssignedOrder,
   rejectAssignedOrder,
+  reportFoodNotReady,
+  getAssignmentRequestForPartner,
   getActiveOrderForPartner,
   getOrderDetails,
 }

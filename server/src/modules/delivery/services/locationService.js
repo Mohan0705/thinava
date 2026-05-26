@@ -24,6 +24,7 @@ const GPS_TARGET_SCOPE = {
   [ORDER_DELIVERY_STATUSES.ARRIVED_AT_RESTAURANT]: 'restaurant',
   [ORDER_DELIVERY_STATUSES.PICKED_UP]: 'restaurant',
   [ORDER_DELIVERY_STATUSES.REACHED_CUSTOMER]: 'customer',
+  [ORDER_DELIVERY_STATUSES.CASH_COLLECTED]: 'customer',
   [ORDER_DELIVERY_STATUSES.DELIVERED]: 'customer',
 }
 
@@ -32,6 +33,7 @@ const DELIVERY_TO_ORDER_STATUS = {
   [ORDER_DELIVERY_STATUSES.ARRIVED_AT_RESTAURANT]: 'out_for_delivery',
   [ORDER_DELIVERY_STATUSES.PICKED_UP]: 'out_for_delivery',
   [ORDER_DELIVERY_STATUSES.REACHED_CUSTOMER]: 'out_for_delivery',
+  [ORDER_DELIVERY_STATUSES.CASH_COLLECTED]: 'out_for_delivery',
   [ORDER_DELIVERY_STATUSES.DELIVERED]: 'delivered',
   [ORDER_DELIVERY_STATUSES.CANCELLED]: 'cancelled',
 }
@@ -308,6 +310,9 @@ const updateDeliveryStatus = async (
          o.status,
          o.delivery_status,
          o.payment_method,
+         o.payment_status,
+         o.cash_collected,
+         o.collected_cash_amount,
          o.route_distance_km,
          o.dropoff_distance_km,
          o.base_delivery_pay,
@@ -362,6 +367,18 @@ const updateDeliveryStatus = async (
       throw error
     }
 
+    const isCodOrder = String(order.payment_method || '').toLowerCase() === 'cod'
+    if (status === ORDER_DELIVERY_STATUSES.CASH_COLLECTED && !isCodOrder) {
+      const error = new Error('Cash collection is only available for COD orders')
+      error.status = 400
+      throw error
+    }
+    if (status === ORDER_DELIVERY_STATUSES.DELIVERED && isCodOrder && !order.cash_collected) {
+      const error = new Error('Collect cash before completing this COD delivery')
+      error.status = 400
+      throw error
+    }
+
     const riderLocation = await getLocationForStatusValidation(
       client,
       normalizedPartnerId,
@@ -408,6 +425,26 @@ const updateDeliveryStatus = async (
       `UPDATE orders
        SET delivery_status = $1::text,
            status = $2::text,
+           cash_collected = CASE
+             WHEN $7::boolean THEN TRUE
+             ELSE cash_collected
+           END,
+           collected_cash_amount = CASE
+             WHEN $7::boolean THEN COALESCE(NULLIF(collected_cash_amount, 0), total)
+             ELSE collected_cash_amount
+           END,
+           cash_collected_at = CASE
+             WHEN $7::boolean THEN COALESCE(cash_collected_at, CURRENT_TIMESTAMP)
+             ELSE cash_collected_at
+           END,
+           payment_status = CASE
+             WHEN $7::boolean THEN 'cod_collected'
+             ELSE payment_status
+           END,
+           delivery_completed_at = CASE
+             WHEN $6::boolean THEN COALESCE(delivery_completed_at, CURRENT_TIMESTAMP)
+             ELSE delivery_completed_at
+           END,
            picked_up_at = CASE
              WHEN $5::boolean THEN COALESCE(picked_up_at, CURRENT_TIMESTAMP)
              ELSE picked_up_at
@@ -439,6 +476,7 @@ const updateDeliveryStatus = async (
         normalizedPartnerId,
         shouldMarkPickedUpAt,
         shouldMarkDeliveredAt,
+        status === ORDER_DELIVERY_STATUSES.CASH_COLLECTED,
       ]
     )
 

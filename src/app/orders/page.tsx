@@ -180,21 +180,31 @@ export default function OrdersPage() {
     const handleOrderUpdated = (payload: any) => {
       if (payload.order && (!currentOrderIdRef.current || payload.order.id === currentOrderIdRef.current)) {
         const order = payload.order
-        const nextStatus = normalizeStatus(order.status || '')
+        const nextStatus = normalizeStatus(order.status || order.order_status || '')
+        const nextDeliveryStatus = normalizeStatus(order.delivery_status || '')
+        const isTerminalUpdate = terminalStatuses.has(nextStatus) || terminalStatuses.has(nextDeliveryStatus)
         setOrders((current) =>
-          current.map((existing) =>
-            existing.id === order.id
-              ? {
-                  ...existing,
+          current.some((existing) => existing.id === order.id)
+            ? current.map((existing) =>
+                existing.id === order.id
+                  ? {
+                      ...existing,
+                      ...order,
+                      status: order.status || existing.status,
+                      delivery_status: order.delivery_status || existing.delivery_status,
+                    }
+                  : existing
+              )
+            : [
+                {
                   ...order,
-                  status: order.status || existing.status,
-                  delivery_status: order.delivery_status || existing.delivery_status,
-                }
-              : existing
-          )
+                  status: order.status || (isTerminalUpdate ? nextStatus : 'placed'),
+                },
+                ...current,
+              ]
         )
 
-        if (terminalStatuses.has(nextStatus)) {
+        if (isTerminalUpdate) {
           setCurrentOrder(null)
           return
         }
@@ -322,6 +332,7 @@ export default function OrdersPage() {
     socket.on('riderLocationUpdated', handleRiderLocationUpdated)
     socket.on('delivery_completed', handleDeliveryCompleted)
     socket.on('order_cancelled', handleOrderCancelled)
+    socket.on('ORDER_MOVED_TO_HISTORY', handleOrderUpdated)
     socket.on('orderRated', handleOrderRated)
 
       return () => {
@@ -337,6 +348,7 @@ export default function OrdersPage() {
         socket.off('riderLocationUpdated', handleRiderLocationUpdated)
         socket.off('delivery_completed', handleDeliveryCompleted)
         socket.off('order_cancelled', handleOrderCancelled)
+        socket.off('ORDER_MOVED_TO_HISTORY', handleOrderUpdated)
         socket.off('orderRated', handleOrderRated)
         releaseRealtimeSocket('customer', token)
       }
@@ -413,7 +425,11 @@ export default function OrdersPage() {
         )
 
         const activeOrder =
-          uniqueOrders.find((order) => !terminalStatuses.has(normalizeStatus(order.status))) ||
+          uniqueOrders.find(
+            (order) =>
+              !terminalStatuses.has(normalizeStatus(order.status)) &&
+              !terminalStatuses.has(normalizeStatus(order.delivery_status || ''))
+          ) ||
           null
 
         const restaurantIds = Array.from(
