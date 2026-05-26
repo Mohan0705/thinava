@@ -290,7 +290,7 @@ Emits: restaurantRejected (Socket.IO)
 
 **Implementation**:
 ```html
-<a href="tel:9160776152">
+<a href="tel:+919160776152">
   <button>Call Support: 9160776152</button>
 </a>
 ```

@@ -147,7 +147,7 @@ Password: Test@123
 - ✅ Admin panels (contact info)
 - ✅ Dashboard help sections
 
-**Format**: `tel:9160776152` - Clicking calls directly
+**Format**: `tel:+919160776152` - Clicking calls directly
 
 ## Database Records Created
 
@@ -314,7 +314,7 @@ Body: { rejectionReason, rejectedByAdminId }
 **Solution**: Email has spaces or special characters. Check format.
 
 ### Problem: Support button doesn't work
-**Solution**: Make sure URL is `tel:9160776152`. Your phone should open dialer.
+**Solution**: Make sure URL is `tel:+919160776152`. Your phone should open dialer.
 
 ### Problem: Real-time updates not appearing
 **Solution**: Check Socket.IO connection in browser console. Refresh page as fallback.

@@ -9,6 +9,7 @@ import { restaurantPanelApi } from '@/lib/restaurant-panel-api'
 import { API_BASE_URL } from '@/lib/api'
 import { useRestaurantOwnerAuthStore } from '@/store/restaurantOwnerAuthStore'
 import { ForgotPasswordModal } from '@/components/restaurant/ForgotPasswordModal'
+import { SUPPORT_PHONE_DISPLAY, SUPPORT_TEL } from '@/lib/support'
 
 // Animated tab switch component
 const TabSwitch = ({ isLogin, setIsLogin, loading }: any) => {
@@ -124,7 +125,7 @@ const ApprovalWaitingScreen = ({ status, message, email }: any) => {
             >
               Go Home
             </button>
-            <a href="tel:9160776152">
+            <a href={SUPPORT_TEL}>
               <button className="w-full bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white font-semibold py-3 rounded-xl transition">
                 Support
               </button>
@@ -551,12 +552,12 @@ export default function RestaurantAuthPage() {
                       {isLoading ? 'Signing in...' : 'Sign In'}
                     </button>
 
-                    <a href="tel:9160776152">
+                    <a href={SUPPORT_TEL}>
                       <button
                         type="button"
                         className="w-full border border-slate-600/50 hover:border-orange-500/30 bg-transparent hover:bg-orange-500/5 text-slate-300 hover:text-white font-semibold py-3 rounded-xl transition"
                       >
-                        📞 Call Support: 9160776152
+                        Call Support: {SUPPORT_PHONE_DISPLAY}
                       </button>
                     </a>
                   </form>

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
 import { Search, ShoppingBag, Sparkles, Star, X } from 'lucide-react'
@@ -34,6 +34,13 @@ interface MenuItemResult {
   is_veg: boolean
 }
 
+type DropdownPosition = {
+  top: number
+  left: number
+  width: number
+  maxHeight: number
+}
+
 export default function LiveSearchBar({ elevated = false }: { elevated?: boolean }) {
   const router = useRouter()
   const { t } = useTranslation()
@@ -43,6 +50,35 @@ export default function LiveSearchBar({ elevated = false }: { elevated?: boolean
   const [menuItems, setMenuItems] = useState<MenuItemResult[]>([])
   const [loading, setLoading] = useState(false)
   const searchRef = useRef<HTMLDivElement>(null)
+  const [isMobileViewport, setIsMobileViewport] = useState(false)
+  const [dropdownPosition, setDropdownPosition] = useState<DropdownPosition | null>(null)
+  const shouldShowDropdown = showDropdown && query.trim().length > 0
+
+  const updateDropdownPosition = useCallback(() => {
+    const isMobile = window.innerWidth < 768
+    setIsMobileViewport(isMobile)
+
+    if (!isMobile || !searchRef.current) {
+      setDropdownPosition(null)
+      return
+    }
+
+    const rect = searchRef.current.getBoundingClientRect()
+    const visualViewport = window.visualViewport
+    const viewportWidth = visualViewport?.width ?? window.innerWidth
+    const viewportHeight = visualViewport?.height ?? window.innerHeight
+    const offsetLeft = visualViewport?.offsetLeft ?? 0
+    const offsetTop = visualViewport?.offsetTop ?? 0
+    const sidePadding = 12
+    const gap = 8
+    const width = Math.min(rect.width, viewportWidth - sidePadding * 2)
+    const maxLeft = offsetLeft + viewportWidth - width - sidePadding
+    const left = Math.max(offsetLeft + sidePadding, Math.min(rect.left, maxLeft))
+    const top = rect.bottom + gap
+    const maxHeight = Math.max(220, offsetTop + viewportHeight - top - 18)
+
+    setDropdownPosition({ top, left, width, maxHeight })
+  }, [])
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -53,6 +89,43 @@ export default function LiveSearchBar({ elevated = false }: { elevated?: boolean
 
     document.addEventListener('mousedown', handleClickOutside)
     return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  useEffect(() => {
+    updateDropdownPosition()
+
+    const handleViewportChange = () => updateDropdownPosition()
+
+    window.addEventListener('resize', handleViewportChange)
+    window.addEventListener('orientationchange', handleViewportChange)
+    window.addEventListener('scroll', handleViewportChange, true)
+    window.visualViewport?.addEventListener('resize', handleViewportChange)
+    window.visualViewport?.addEventListener('scroll', handleViewportChange)
+
+    return () => {
+      window.removeEventListener('resize', handleViewportChange)
+      window.removeEventListener('orientationchange', handleViewportChange)
+      window.removeEventListener('scroll', handleViewportChange, true)
+      window.visualViewport?.removeEventListener('resize', handleViewportChange)
+      window.visualViewport?.removeEventListener('scroll', handleViewportChange)
+    }
+  }, [updateDropdownPosition])
+
+  useEffect(() => {
+    if (shouldShowDropdown) {
+      updateDropdownPosition()
+    }
+  }, [menuItems.length, query, restaurants.length, shouldShowDropdown, updateDropdownPosition])
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setShowDropdown(false)
+      }
+    }
+
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
   }, [])
 
   useEffect(() => {
@@ -107,9 +180,21 @@ export default function LiveSearchBar({ elevated = false }: { elevated?: boolean
     ? 'h-14 w-full rounded-[1.75rem] border border-white/70 bg-white/95 py-3.5 pl-12 pr-11 text-base font-medium text-[#111827] shadow-[0_18px_40px_-18px_rgba(15,23,42,0.5)] backdrop-blur-md placeholder:text-[#8B95A7] transition-all focus:border-[#FF6B35]/20 focus:outline-none focus:ring-2 focus:ring-[#FF6B35]/20'
     : 'w-full rounded-full border border-thinava-border bg-white py-3 pl-12 pr-10 text-sm font-medium text-thinava-text shadow-search placeholder:text-gray-400 transition-all focus:border-thinava-primary focus:bg-white focus:outline-none focus:ring-2 focus:ring-thinava-primary/15'
   const placeholderText = elevated ? 'Search "biryani"' : t('searchPlaceholder')
+  const dropdownStyle: CSSProperties | undefined =
+    isMobileViewport && dropdownPosition
+      ? {
+          top: dropdownPosition.top,
+          left: dropdownPosition.left,
+          width: dropdownPosition.width,
+          maxHeight: dropdownPosition.maxHeight,
+        }
+      : undefined
+  const dropdownClassName = isMobileViewport
+    ? 'fixed z-[1000] overflow-hidden overflow-y-auto overscroll-contain rounded-[1.35rem] border border-slate-200 bg-white shadow-[0_24px_60px_-24px_rgba(15,23,42,0.45)] divide-y divide-slate-100'
+    : 'absolute left-0 right-0 top-full z-50 mt-3 max-h-[450px] overflow-hidden overflow-y-auto overscroll-contain rounded-3xl border border-slate-200 bg-white shadow-2xl divide-y divide-slate-100'
 
   return (
-    <div ref={searchRef} className="relative z-50 min-w-0 w-full max-w-xl flex-1">
+    <div ref={searchRef} data-thinava-search-root className="relative z-50 min-w-0 w-full max-w-xl flex-1">
       <form onSubmit={handleSearchSubmit} className="flex gap-2">
         <div className="relative flex-1">
           <Search
@@ -140,12 +225,15 @@ export default function LiveSearchBar({ elevated = false }: { elevated?: boolean
       </form>
 
       <AnimatePresence>
-        {showDropdown && query.trim() ? (
+        {shouldShowDropdown ? (
           <motion.div
-            initial={{ opacity: 0, y: 15 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 15 }}
-            className="absolute left-0 right-0 top-full z-50 mt-3 max-h-[450px] overflow-hidden overflow-y-auto rounded-3xl border border-slate-200 bg-white shadow-2xl divide-y divide-slate-100"
+            initial={{ opacity: 0, y: isMobileViewport ? -4 : 15, scale: isMobileViewport ? 0.98 : 1 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: isMobileViewport ? -4 : 15, scale: isMobileViewport ? 0.98 : 1 }}
+            transition={{ duration: 0.18, ease: 'easeOut' }}
+            style={dropdownStyle}
+            data-thinava-search-dropdown
+            className={dropdownClassName}
           >
             {loading ? (
               <div className="p-6 text-center text-sm font-semibold text-slate-400 animate-pulse">
@@ -180,15 +268,15 @@ export default function LiveSearchBar({ elevated = false }: { elevated?: boolean
                             router.push(`/restaurant/${restaurant.id}`)
                             setShowDropdown(false)
                           }}
-                          className="flex w-full items-center gap-3 rounded-2xl p-2 text-left transition hover:bg-slate-50"
+                          className="flex min-h-[4.5rem] w-full min-w-0 items-center gap-3 rounded-2xl p-3 text-left transition hover:bg-slate-50 active:bg-orange-50 sm:min-h-0 sm:p-2"
                         >
-                          <div className="relative h-12 w-12 flex-shrink-0 overflow-hidden rounded-xl bg-slate-100">
+                          <div className="relative h-14 w-14 flex-shrink-0 overflow-hidden rounded-xl bg-slate-100 sm:h-12 sm:w-12">
                             {imageUrl ? (
                               <Image
                                 src={imageUrl}
                                 alt={restaurant.name}
                                 fill
-                                sizes="48px"
+                                sizes="(max-width: 767px) 56px, 48px"
                                 className={`object-cover ${isOpen ? '' : 'grayscale opacity-75'}`}
                               />
                             ) : (
@@ -198,17 +286,17 @@ export default function LiveSearchBar({ elevated = false }: { elevated?: boolean
                             )}
                           </div>
                           <div className="min-w-0 flex-1">
-                            <h4 className="truncate text-sm font-bold text-slate-800">{restaurant.name}</h4>
-                            <p className="truncate text-xs text-slate-400">
+                            <h4 className="truncate text-[0.94rem] font-extrabold leading-5 text-slate-900 sm:text-sm">{restaurant.name}</h4>
+                            <p className="mt-0.5 truncate text-xs font-medium text-slate-500">
                               {isOpen ? restaurant.cuisines.join(', ') : `Closed${restaurant.nextOpeningTime ? ` - opens at ${restaurant.nextOpeningTime}` : ''}`}
                             </p>
                           </div>
-                          <div className="text-right">
-                            <div className="flex items-center gap-1 text-xs font-bold text-slate-800">
+                          <div className="shrink-0 text-right">
+                            <div className="flex items-center justify-end gap-1 text-xs font-bold text-slate-800">
                               <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-400" />
                               <span>{Number(restaurant.rating).toFixed(1)}</span>
                             </div>
-                            <span className="mt-0.5 block text-[10px] font-semibold text-slate-400">
+                            <span className="mt-0.5 block whitespace-nowrap text-[10px] font-semibold text-slate-400">
                               {restaurant.delivery_time}
                             </span>
                           </div>
@@ -238,15 +326,15 @@ export default function LiveSearchBar({ elevated = false }: { elevated?: boolean
                             router.push(`/restaurant/${item.restaurant_id}`)
                             setShowDropdown(false)
                           }}
-                          className="flex w-full items-center gap-3 rounded-2xl p-2 text-left transition hover:bg-slate-50"
+                          className="flex min-h-[4.5rem] w-full min-w-0 items-center gap-3 rounded-2xl p-3 text-left transition hover:bg-slate-50 active:bg-orange-50 sm:min-h-0 sm:p-2"
                         >
-                          <div className="relative h-12 w-12 flex-shrink-0 overflow-hidden rounded-xl bg-slate-100">
+                          <div className="relative h-14 w-14 flex-shrink-0 overflow-hidden rounded-xl bg-slate-100 sm:h-12 sm:w-12">
                             {imageUrl ? (
                               <Image
                                 src={imageUrl}
                                 alt={item.name}
                                 fill
-                                sizes="48px"
+                                sizes="(max-width: 767px) 56px, 48px"
                                 className="object-cover"
                               />
                             ) : (
@@ -256,18 +344,18 @@ export default function LiveSearchBar({ elevated = false }: { elevated?: boolean
                             )}
                           </div>
                           <div className="min-w-0 flex-1">
-                            <div className="flex items-center gap-1.5">
+                            <div className="flex min-w-0 items-center gap-1.5">
                               <span
-                                className={`inline-block h-2.5 w-2.5 rounded-full ${
+                                className={`inline-block h-2.5 w-2.5 shrink-0 rounded-full ${
                                   item.is_veg ? 'bg-green-500' : 'bg-red-500'
                                 }`}
                               />
-                              <h4 className="truncate text-sm font-bold text-slate-800">{item.name}</h4>
+                              <h4 className="min-w-0 truncate text-[0.94rem] font-extrabold leading-5 text-slate-900 sm:text-sm">{item.name}</h4>
                             </div>
-                            <p className="mt-0.5 truncate text-xs text-slate-400">from {item.restaurant_name}</p>
+                            <p className="mt-0.5 truncate text-xs font-medium text-slate-500">from {item.restaurant_name}</p>
                           </div>
-                          <div className="text-right">
-                            <span className="text-sm font-extrabold text-orange-500">Rs{Number(item.price)}</span>
+                          <div className="ml-2 shrink-0 text-right">
+                            <span className="whitespace-nowrap text-sm font-extrabold text-orange-500">Rs{Number(item.price)}</span>
                           </div>
                         </button>
                           )

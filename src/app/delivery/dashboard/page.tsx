@@ -46,8 +46,8 @@ export default function DeliveryDashboardPage() {
   const hasActiveOrder = Boolean(partner?.current_order_id)
 
   const [wallet, setWallet] = useState<RiderWallet | null>(null)
-  const [supportPhone, setSupportPhone] = useState('+918978992808')
-  const [supportWhatsapp, setSupportWhatsapp] = useState('918978992808')
+  const [supportPhone, setSupportPhone] = useState('+919160776152')
+  const [supportWhatsapp, setSupportWhatsapp] = useState('919160776152')
   const [riderZone, setRiderZone] = useState<string | null>(null)
   const [requestingPickup, setRequestingPickup] = useState(false)
   const [pickupRequests, setPickupRequests] = useState<CashPickupRequest[]>([])

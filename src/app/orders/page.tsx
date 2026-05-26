@@ -764,7 +764,7 @@ export default function OrdersPage() {
                     className="h-10 justify-center bg-[#16A34A] text-white font-bold shadow-sm hover:bg-[#15803D]"
                     onClick={() => {
                       const orderId = currentOrder?.id ? currentOrder.id.slice(0, 8).toUpperCase() : ''
-                      window.open(getWhatsAppLink(`Hi%20Thinava%20Support%20I%20need%20help%20with%20order%20${orderId}`), '_blank')
+                      window.open(getWhatsAppLink(`Hi Thinava Support, I need help with order ${orderId}`), '_blank')
                     }}
                   >
                     <MessageCircle className="mr-2 h-4 w-4" />
@@ -864,11 +864,11 @@ export default function OrdersPage() {
               
               return (
                 <div key={order.id}>
-                  <Card className="border-slate-100 dark:border-slate-800 shadow-sm hover:shadow-md transition-shadow">
-                    <CardContent className="p-5">
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                        <div className="flex items-center gap-4">
-                          <div className="h-16 w-16 overflow-hidden rounded-xl bg-slate-100 flex-shrink-0 ring-1 ring-slate-200/50">
+                  <Card className="border border-slate-200 bg-white text-slate-950 shadow-[0_14px_34px_-24px_rgba(15,23,42,0.32)] transition-shadow hover:shadow-[0_20px_44px_-28px_rgba(15,23,42,0.42)]">
+                    <CardContent className="p-4 sm:p-5">
+                      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="flex min-w-0 items-center gap-3.5 sm:gap-4">
+                          <div className="h-16 w-16 flex-shrink-0 overflow-hidden rounded-xl bg-slate-100 ring-1 ring-slate-200/70">
                             {restaurant.image ? (
                               <Image
                                 src={restaurant.image}
@@ -883,19 +883,19 @@ export default function OrdersPage() {
                               </div>
                             )}
                           </div>
-                          <div>
-                            <h3 className="font-bold text-slate-900 dark:text-white">{restaurant.name}</h3>
-                            <p className="text-xs text-slate-500 mt-0.5">
+                          <div className="min-w-0">
+                            <h3 className="truncate text-base font-black text-slate-950">{restaurant.name}</h3>
+                            <p className="mt-1 truncate text-xs font-medium text-slate-600">
                               Ordered on {new Date(order.created_at).toLocaleDateString('en-IN')} at {new Date(order.created_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
                             </p>
-                            <p className="text-xs font-semibold text-slate-400 mt-1">
+                            <p className="mt-1 truncate text-xs font-semibold text-slate-500">
                               ID: #{order.id.slice(0, 8).toUpperCase()}
                             </p>
                           </div>
                         </div>
 
-                        <div className="flex sm:flex-col items-center sm:items-end justify-between sm:justify-start gap-2">
-                          <p className="font-black text-lg text-slate-900 dark:text-white">{formatPrice(Number(order.total))}</p>
+                        <div className="flex items-center justify-between gap-2 sm:flex-col sm:items-end sm:justify-start">
+                          <p className="text-lg font-black text-slate-950">{formatPrice(Number(order.total))}</p>
                           <Badge variant={statusVariant(order.status)}>
                             {humanizeStatus(order.status)}
                           </Badge>
@@ -903,10 +903,10 @@ export default function OrdersPage() {
                       </div>
 
                       {/* Action Buttons */}
-                      <div className="mt-4 pt-4 border-t border-slate-100 dark:border-slate-800 flex flex-wrap items-center gap-2.5">
+                      <div className="mt-4 flex flex-wrap items-center gap-2.5 border-t border-slate-200 pt-4">
                         <Button
                           size="sm"
-                          className="inline-flex items-center gap-1.5 rounded-full border-0 bg-slate-900 px-4 py-2 text-xs font-bold text-white shadow-md shadow-slate-900/15 hover:bg-slate-800 hover:shadow-lg hover:shadow-slate-900/20 active:scale-95 transition-all"
+                          className="inline-flex items-center gap-1.5 rounded-full border-0 bg-gradient-to-r from-orange-500 to-red-500 px-4 py-2 text-xs font-bold text-white shadow-md shadow-orange-500/20 transition-all hover:from-orange-600 hover:to-red-600 hover:shadow-lg hover:shadow-orange-500/30 active:scale-95"
                           onClick={() => setSelectedInvoiceOrder(order)}
                         >
                           <FileText className="w-3.5 h-3.5" />

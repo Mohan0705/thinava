@@ -46,8 +46,8 @@ Scanned 100+ source files across the entire codebase for `process.env`, `NEXT_PU
 | `DELIVERY_RAIN_BONUS` | `15` | Rain bonus |
 | `DELIVERY_GPS_RADIUS_METERS` | `75` | GPS validation radius |
 | `DELIVERY_RAIN_MODE` | `false` | Rain mode toggle |
-| `SUPPORT_PHONE` | `+918978992808` | Support contact |
-| `SUPPORT_WHATSAPP` | `918978992808` | Support WhatsApp |
+| `SUPPORT_PHONE` | `+919160776152` | Support contact |
+| `SUPPORT_WHATSAPP` | `919160776152` | Support WhatsApp |
 | `SUPPORT_EMAIL` | `support@thinava.com` | Support email |
 | `GOOGLE_MAPS_SERVER_KEY` | — | Server-side Google Maps |
 
@@ -181,8 +181,8 @@ DELIVERY_RAIN_BONUS=15
 DELIVERY_GPS_RADIUS_METERS=75
 DELIVERY_RAIN_MODE=false
 GOOGLE_MAPS_SERVER_KEY=<your-server-gmaps-key>
-SUPPORT_PHONE=+918978992808
-SUPPORT_WHATSAPP=918978992808
+SUPPORT_PHONE=+919160776152
+SUPPORT_WHATSAPP=919160776152
 SUPPORT_EMAIL=support@thinava.com
 ```
 

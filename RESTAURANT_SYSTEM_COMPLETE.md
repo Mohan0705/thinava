@@ -136,7 +136,7 @@ THINAVA has been successfully transformed from a **test/demo dashboard** into a 
   - ✅ Approval waiting screen (button)
   - ✅ Admin approvals (contact info)
   - ✅ Documentation (throughout)
-- **Format**: `tel:9160776152` - Direct dialing
+- **Format**: `tel:+919160776152` - Direct dialing
 - **24/7 Available**: Support hotline
 
 ### 11. ✅ Security Hardening

@@ -615,7 +615,7 @@ export default function DeliveryActiveOrderPage() {
                       className="border-green-500/20 bg-green-500/10 text-green-200 hover:bg-green-500/20"
                       onClick={() => {
                         const orderId = activeOrder?.id ? activeOrder.id.slice(0, 8).toUpperCase() : ''
-                        window.open(getWhatsAppLink(`Hi%20Thinava%20Rider%20Support%20I%20need%20help%20with%20order%20${orderId}`), '_blank')
+                        window.open(getWhatsAppLink(`Hi Thinava Rider Support, I need help with order ${orderId}`), '_blank')
                       }}
                     >
                       <MessageCircle className="mr-2 h-4 w-4" />

@@ -151,7 +151,7 @@ export default function Header({ immersive = false }: HeaderProps) {
     return (
       <>
         <header className="sticky top-0 z-[70] md:hidden">
-          <div className="relative overflow-hidden bg-[linear-gradient(135deg,#0f172a_0%,#162544_55%,#1f2937_100%)] px-4 pb-2 pt-[max(0.85rem,env(safe-area-inset-top))] shadow-[0_16px_40px_-20px_rgba(15,23,42,0.7)]">
+          <div className="relative overflow-visible bg-[linear-gradient(135deg,#0f172a_0%,#162544_55%,#1f2937_100%)] px-4 pb-2 pt-[max(0.85rem,env(safe-area-inset-top))] shadow-[0_16px_40px_-20px_rgba(15,23,42,0.7)]">
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.18),transparent_28%)]" />
             <div className="absolute -left-14 top-2 h-28 w-28 rounded-full bg-[#FF6B35]/18 blur-3xl" />
             <div className="absolute right-0 top-0 h-24 w-24 rounded-full bg-[#F59E0B]/18 blur-3xl" />

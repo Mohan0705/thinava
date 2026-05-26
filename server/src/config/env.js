@@ -30,8 +30,8 @@ const REQUIRED = {
   DELIVERY_GPS_RADIUS_METERS: { default: '75', parse: Number },
   DELIVERY_RAIN_MODE: { default: 'false' },
 
-  SUPPORT_PHONE: { default: '+918978992808' },
-  SUPPORT_WHATSAPP: { default: '918978992808' },
+  SUPPORT_PHONE: { default: '+919160776152' },
+  SUPPORT_WHATSAPP: { default: '919160776152' },
   SUPPORT_EMAIL: { default: 'support@thinava.com' },
 }
 
