@@ -873,7 +873,7 @@ const findBestPartnerForOrder = async (client, order, excludedPartnerIds = []) =
          SELECT COUNT(*)::int
          FROM orders active_orders
          WHERE active_orders.delivery_partner_id = dp.id
-           AND active_orders.delivery_status NOT IN ('DELIVERED', 'CANCELLED')
+           AND UPPER(COALESCE(active_orders.delivery_status, 'PENDING')) NOT IN ('DELIVERED', 'CANCELLED')
        ) AS active_orders
      FROM delivery_partners dp
      LEFT JOIN LATERAL (

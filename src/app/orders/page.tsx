@@ -58,8 +58,12 @@ type ApiOrder = {
   rider_latitude?: number | null
   rider_longitude?: number | null
   payment_method: string
+  payment_type?: string | null
   estimated_delivery?: string
   created_at: string
+  updated_at?: string
+  delivered_at?: string | null
+  cancelled_at?: string | null
   items?: ApiOrderItem[]
 }
 
@@ -115,6 +119,25 @@ const statusVariant = (status: string): 'default' | 'secondary' | 'destructive' 
     return 'default'
   }
   return 'secondary'
+}
+
+const getTerminalTimestamp = (order: ApiOrder) => {
+  const normalizedStatus = normalizeStatus(order.status || order.delivery_status || '')
+  if (normalizedStatus === 'delivered') {
+    return order.delivered_at || order.updated_at || order.created_at
+  }
+  if (normalizedStatus === 'cancelled') {
+    return order.cancelled_at || order.updated_at || order.created_at
+  }
+  return order.updated_at || order.created_at
+}
+
+const getPaymentLabel = (order: ApiOrder) => {
+  const paymentValue = String(order.payment_type || order.payment_method || '').toLowerCase()
+  if (paymentValue === 'cod') return 'COD'
+  if (paymentValue === 'upi') return 'UPI'
+  if (paymentValue === 'prepaid') return 'Prepaid'
+  return paymentValue ? paymentValue.toUpperCase() : 'Payment'
 }
 
 const fetchOrderPayload = async (path: string): Promise<OrderPayload | null> => {
@@ -178,7 +201,7 @@ export default function OrdersPage() {
     }
 
     const handleOrderUpdated = (payload: any) => {
-      if (payload.order && (!currentOrderIdRef.current || payload.order.id === currentOrderIdRef.current)) {
+      if (payload.order) {
         const order = payload.order
         const nextStatus = normalizeStatus(order.status || order.order_status || '')
         const nextDeliveryStatus = normalizeStatus(order.delivery_status || '')
@@ -205,11 +228,14 @@ export default function OrdersPage() {
         )
 
         if (isTerminalUpdate) {
-          setCurrentOrder(null)
+          if (!currentOrderIdRef.current || order.id === currentOrderIdRef.current) {
+            setCurrentOrder(null)
+          }
           return
         }
 
         setCurrentOrder((prev) => {
+          if (prev && prev.id !== order.id) return prev
           if (!prev) return order
           return {
             ...prev,
@@ -324,6 +350,16 @@ export default function OrdersPage() {
     }
 
     socket.on('customer:order_updated', handleOrderUpdated)
+    socket.on('ORDER_CREATED', handleOrderUpdated)
+    socket.on('ORDER_CONFIRMED', handleOrderUpdated)
+    socket.on('ORDER_PREPARING', handleOrderUpdated)
+    socket.on('ORDER_READY', handleOrderUpdated)
+    socket.on('ORDER_ASSIGNED', handleOrderUpdated)
+    socket.on('RIDER_ASSIGNED', handleOrderUpdated)
+    socket.on('PICKED_UP', handleOrderUpdated)
+    socket.on('ARRIVING', handleOrderUpdated)
+    socket.on('DELIVERED', handleOrderUpdated)
+    socket.on('CANCELLED', handleOrderUpdated)
     socket.on('orderAssigned', handleOrderAssigned)
     socket.on('orderAccepted', handleOrderAccepted)
     socket.on('orderPickedUp', handleOrderPickedUp)
@@ -340,6 +376,16 @@ export default function OrdersPage() {
           socket.emit('order:leave', { orderId: currentOrderIdRef.current })
         }
         socket.off('customer:order_updated', handleOrderUpdated)
+        socket.off('ORDER_CREATED', handleOrderUpdated)
+        socket.off('ORDER_CONFIRMED', handleOrderUpdated)
+        socket.off('ORDER_PREPARING', handleOrderUpdated)
+        socket.off('ORDER_READY', handleOrderUpdated)
+        socket.off('ORDER_ASSIGNED', handleOrderUpdated)
+        socket.off('RIDER_ASSIGNED', handleOrderUpdated)
+        socket.off('PICKED_UP', handleOrderUpdated)
+        socket.off('ARRIVING', handleOrderUpdated)
+        socket.off('DELIVERED', handleOrderUpdated)
+        socket.off('CANCELLED', handleOrderUpdated)
         socket.off('orderAssigned', handleOrderAssigned)
         socket.off('orderAccepted', handleOrderAccepted)
         socket.off('orderPickedUp', handleOrderPickedUp)
@@ -514,12 +560,18 @@ export default function OrdersPage() {
   }, [token, user?.id])
 
   const pastOrders = useMemo(() => {
-    if (!currentOrder) {
-      return orders
-    }
-
-    return orders.filter((order) => order.id !== currentOrder.id)
-  }, [currentOrder, orders])
+    return orders
+      .filter(
+        (order) =>
+          terminalStatuses.has(normalizeStatus(order.status)) ||
+          terminalStatuses.has(normalizeStatus(order.delivery_status || ''))
+      )
+      .sort(
+        (left, right) =>
+          new Date(getTerminalTimestamp(right)).getTime() -
+          new Date(getTerminalTimestamp(left)).getTime()
+      )
+  }, [orders])
 
   const getRestaurantDetails = (order: ApiOrder) => {
     const restaurant = restaurantMap[order.restaurant_id]
@@ -550,8 +602,8 @@ export default function OrdersPage() {
       <div className="min-h-screen bg-gray-50 pb-20 md:pb-0">
       <Header />
 
-      <div className="container mx-auto px-4 py-8">
-        <h1 className="mb-8 text-3xl font-bold text-gray-900">Order Tracking</h1>
+      <div className="container mx-auto px-3 py-5 sm:px-4 sm:py-6">
+        <h1 className="mb-5 text-2xl font-bold text-gray-900 sm:text-3xl">Order Tracking</h1>
 
         {loading ? (
           <div className="space-y-4">
@@ -566,7 +618,7 @@ export default function OrdersPage() {
 
         {!loading && currentOrder ? (
           <>
-            <Card className="mb-6 relative overflow-hidden border-slate-800 bg-[#000A22] text-white shadow-[0_24px_60px_-36px_rgba(15,23,42,0.7)]">
+            <Card className="mb-4 relative overflow-hidden border-slate-800 bg-[#000A22] text-white shadow-[0_24px_60px_-36px_rgba(15,23,42,0.7)]">
               <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-orange-500 to-red-500" />
               <CardContent className="p-4 sm:p-5">
                 <div className="mb-4 flex items-center justify-between gap-3">
@@ -809,7 +861,7 @@ export default function OrdersPage() {
               </Card>
             ) : null}
 
-            <Card className="mb-8 border-slate-800 bg-[#000A22] text-white">
+            <Card className="mb-6 border-slate-800 bg-[#000A22] text-white">
               <CardContent className="p-4 sm:p-5">
                 <div className="mb-3 flex items-center justify-between gap-3">
                   <h3 className="font-bold text-white">Need Help?</h3>
@@ -903,9 +955,9 @@ export default function OrdersPage() {
         )}
 
         {!loading && !currentOrder ? (
-          <Card className="mb-8">
-            <CardContent className="p-8 text-center">
-              <h2 className="text-2xl font-bold text-gray-900">No active orders</h2>
+          <Card className="mb-6">
+            <CardContent className="p-5 text-center">
+              <h2 className="text-xl font-bold text-gray-900">No active orders</h2>
               <p className="mt-2 text-gray-600">
                 {orders.length > 0
                   ? 'Your completed and cancelled orders are listed below in order history.'
@@ -918,8 +970,8 @@ export default function OrdersPage() {
           </Card>
         ) : null}
 
-        <h2 className="mb-6 text-2xl font-bold text-gray-900">Past Orders</h2>
-        <div className="space-y-4">
+        <h2 className="mb-4 text-xl font-bold text-gray-900">Past Orders</h2>
+        <div className="space-y-3">
           {pastOrders.length === 0 ? (
             <Card>
               <CardContent className="p-6 text-sm text-gray-600">
@@ -955,10 +1007,10 @@ export default function OrdersPage() {
                           <div className="min-w-0">
                             <h3 className="truncate text-base font-black text-slate-950">{restaurant.name}</h3>
                             <p className="mt-1 truncate text-xs font-medium text-slate-600">
-                              Ordered on {new Date(order.created_at).toLocaleDateString('en-IN')} at {new Date(order.created_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                              {statusNormalized === 'delivered' ? 'Delivered' : 'Closed'} on {new Date(getTerminalTimestamp(order)).toLocaleDateString('en-IN')} at {new Date(getTerminalTimestamp(order)).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
                             </p>
                             <p className="mt-1 truncate text-xs font-semibold text-slate-500">
-                              ID: #{order.id.slice(0, 8).toUpperCase()}
+                              {getPaymentLabel(order)} - ID: #{order.id.slice(0, 8).toUpperCase()}
                             </p>
                           </div>
                         </div>
@@ -971,8 +1023,33 @@ export default function OrdersPage() {
                         </div>
                       </div>
 
+                      {order.items?.length ? (
+                        <div className="mt-4 rounded-xl border border-slate-100 bg-slate-50 px-3 py-2">
+                          <div className="flex flex-wrap gap-x-3 gap-y-1 text-sm text-slate-700">
+                            {order.items.slice(0, 4).map((item) => (
+                              <span key={item.id} className="font-medium">
+                                {item.quantity} x {item.name || 'Menu item'}
+                              </span>
+                            ))}
+                            {order.items.length > 4 ? (
+                              <span className="font-semibold text-slate-500">+{order.items.length - 4} more</span>
+                            ) : null}
+                          </div>
+                        </div>
+                      ) : null}
+
                       {/* Action Buttons */}
                       <div className="mt-4 flex flex-wrap items-center gap-2.5 border-t border-slate-200 pt-4">
+                        <Link href={`/restaurant/${order.restaurant_id}`}>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-bold"
+                          >
+                            Reorder
+                          </Button>
+                        </Link>
+
                         <Button
                           size="sm"
                           className="inline-flex items-center gap-1.5 rounded-full border-0 bg-gradient-to-r from-orange-500 to-red-500 px-4 py-2 text-xs font-bold text-white shadow-md shadow-orange-500/20 transition-all hover:from-orange-600 hover:to-red-600 hover:shadow-lg hover:shadow-orange-500/30 active:scale-95"

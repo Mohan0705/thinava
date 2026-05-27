@@ -129,13 +129,6 @@ router.post('/validate', asyncHandler(async (req, res) => {
       }
     }
 
-    if (source === 'admin' && coupon.usage_limit > 0) {
-      await pool.query(
-        'UPDATE coupon_codes SET used_count = used_count + 1 WHERE code = $1',
-        [normalizedCode]
-      )
-    }
-
     res.json({
       success: true,
       valid: true,

@@ -151,8 +151,8 @@ export function AdminPageShell({
   return (
     <div className="min-h-screen bg-[#fff8f3] text-slate-950">
       <AdminAuthBootstrap />
-      <div className="absolute inset-x-0 top-0 h-[320px] bg-[radial-gradient(circle_at_top_left,_rgba(251,146,60,0.35),_transparent_36%),radial-gradient(circle_at_top_right,_rgba(239,68,68,0.18),_transparent_32%),linear-gradient(180deg,#fff8f3_0%,rgba(255,248,243,0.88)_100%)]" />
-      <div className="relative mx-auto grid min-h-screen max-w-[1650px] gap-6 p-4 lg:grid-cols-[290px_minmax(0,1fr)] lg:p-6">
+      <div className="absolute inset-x-0 top-0 h-[220px] bg-[linear-gradient(180deg,rgba(251,146,60,0.18),rgba(255,248,243,0.88)_78%,rgba(255,248,243,0))]" />
+      <div className="relative mx-auto grid min-h-screen max-w-[1650px] gap-4 p-3 lg:grid-cols-[260px_minmax(0,1fr)] lg:p-4">
         <aside className="hidden lg:block">{sidebar}</aside>
 
         <div className="flex min-h-screen flex-col">
@@ -178,20 +178,20 @@ export function AdminPageShell({
             </div>
           ) : null}
 
-          <header className="sticky top-4 z-20 mb-6 rounded-[28px] border border-orange-100/80 bg-white/85 px-5 py-5 shadow-[0_25px_70px_-38px_rgba(234,88,12,0.55)] backdrop-blur">
-            <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+          <header className="sticky top-2 z-20 mb-4 rounded-2xl border border-orange-100/80 bg-white/90 px-4 py-4 shadow-[0_18px_54px_-38px_rgba(234,88,12,0.52)] backdrop-blur">
+            <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
               <div>
-                <div className="mb-2 inline-flex items-center gap-2 rounded-full bg-orange-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.25em] text-orange-700">
+                <div className="mb-1.5 inline-flex items-center gap-2 rounded-full bg-orange-100 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-orange-700">
                   <Sparkles className="h-3.5 w-3.5" />
                   Thinava Control Center
                 </div>
-                <h1 className={cn('text-3xl font-bold tracking-tight text-slate-950', spaceGrotesk.className)}>
+                <h1 className={cn('text-2xl font-bold tracking-tight text-slate-950', spaceGrotesk.className)}>
                   {title}
                 </h1>
-                <p className="mt-2 max-w-3xl text-sm text-slate-500">{description}</p>
+                <p className="mt-1 max-w-3xl text-sm text-slate-500">{description}</p>
               </div>
-              <div className="flex flex-wrap items-center gap-3">
-                <div className="inline-flex items-center gap-2 rounded-2xl border border-orange-100 bg-orange-50 px-3 py-2 text-sm text-orange-800">
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="inline-flex items-center gap-2 rounded-xl border border-orange-100 bg-orange-50 px-2.5 py-2 text-xs font-semibold text-orange-800">
                   <Bell className="h-4 w-4" />
                   Live sync active
                 </div>

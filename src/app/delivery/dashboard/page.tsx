@@ -288,8 +288,8 @@ export default function DeliveryDashboardPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[linear-gradient(180deg,#000A22_0%,#051634_22%,#0a1e40_36%,#f8fafc_36%,#f8fafc_100%)] pb-28">
-      <div className="px-4 pb-6 pt-4 md:px-8">
+    <div className="min-h-screen bg-[linear-gradient(180deg,#000A22_0%,#051634_20%,#0a1e40_32%,#f8fafc_32%,#f8fafc_100%)] pb-[calc(6.5rem+env(safe-area-inset-bottom))] md:pb-8">
+      <div className="px-3 pb-5 pt-3 md:px-6">
         <div className="mx-auto max-w-6xl">
 
           {/* Floating Cash Warning Banners */}
@@ -357,7 +357,7 @@ export default function DeliveryDashboardPage() {
           <motion.div
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
-            className="rounded-[34px] border border-white/10 bg-white/5 p-4 text-white shadow-[0_30px_80px_-40px_rgba(0,10,34,0.95)] backdrop-blur-xl"
+            className="rounded-2xl border border-white/10 bg-white/5 p-3 text-white shadow-[0_26px_70px_-42px_rgba(0,10,34,0.95)] backdrop-blur-xl"
           >
             <div className="flex items-center justify-between gap-3">
               <button
@@ -395,8 +395,8 @@ export default function DeliveryDashboardPage() {
               </div>
             </div>
 
-            <div className="mt-5 grid gap-5 xl:grid-cols-[1.2fr_0.8fr]">
-              <div className="rounded-[32px] bg-[linear-gradient(135deg,rgba(255,107,0,0.95)_0%,rgba(123,52,0,0.85)_45%,rgba(8,16,36,0.95)_100%)] p-5 shadow-[0_35px_80px_-50px_rgba(255,107,0,0.8)]">
+            <div className="mt-4 grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
+              <div className="rounded-2xl bg-[linear-gradient(135deg,rgba(255,107,0,0.95)_0%,rgba(123,52,0,0.85)_45%,rgba(8,16,36,0.95)_100%)] p-4 shadow-[0_30px_70px_-52px_rgba(255,107,0,0.8)]">
                 {isOnline && hasActiveOrder ? (
                   <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-amber-300/25 bg-amber-400/15 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.18em] text-amber-50">
                     Complete active order before going offline
@@ -405,7 +405,7 @@ export default function DeliveryDashboardPage() {
                 <p className="text-sm font-medium text-orange-50/90">Today's earnings</p>
                 <div className="mt-3 flex items-start justify-between gap-4">
                   <div>
-                    <h1 className="text-4xl font-bold tracking-tight">{formatCurrency(todayEarnings)}</h1>
+                    <h1 className="text-3xl font-bold tracking-tight">{formatCurrency(todayEarnings)}</h1>
                     <p className="mt-2 text-sm text-orange-50/75">
                       Smart route pay and completed trips.
                     </p>
@@ -422,23 +422,23 @@ export default function DeliveryDashboardPage() {
                   </div>
                 </div>
 
-                <div className="mt-6 grid gap-3 sm:grid-cols-3">
-                  <div className="rounded-2xl border border-white/12 bg-white/10 p-4 backdrop-blur">
+                <div className="mt-4 grid gap-2 sm:grid-cols-3">
+                  <div className="rounded-xl border border-white/12 bg-white/10 p-3 backdrop-blur">
                     <p className="text-xs uppercase tracking-[0.18em] text-orange-50/60">Orders</p>
-                    <p className="mt-2 text-3xl font-bold">{todayDeliveries}</p>
+                    <p className="mt-1 text-2xl font-bold">{todayDeliveries}</p>
                   </div>
-                  <div className="rounded-2xl border border-white/12 bg-white/10 p-4 backdrop-blur">
+                  <div className="rounded-xl border border-white/12 bg-white/10 p-3 backdrop-blur">
                     <p className="text-xs uppercase tracking-[0.18em] text-orange-50/60">Online</p>
-                    <p className="mt-2 text-3xl font-bold">{displayOnlineTime}</p>
+                    <p className="mt-1 text-2xl font-bold">{displayOnlineTime}</p>
                   </div>
-                  <div className="rounded-2xl border border-white/12 bg-white/10 p-4 backdrop-blur">
+                  <div className="rounded-xl border border-white/12 bg-white/10 p-3 backdrop-blur">
                     <p className="text-xs uppercase tracking-[0.18em] text-orange-50/60">Cash</p>
-                    <p className="mt-2 text-3xl font-bold">{formatCurrency(floatingCash)}</p>
+                    <p className="mt-1 text-2xl font-bold">{formatCurrency(floatingCash)}</p>
                   </div>
                 </div>
               </div>
 
-              <div className="rounded-[32px] border border-white/10 bg-[#06152f]/90 p-5">
+              <div className="rounded-2xl border border-white/10 bg-[#06152f]/90 p-4">
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm font-medium text-white/80">Today's progress</p>
@@ -476,19 +476,19 @@ export default function DeliveryDashboardPage() {
             </div>
           </motion.div>
 
-          <div className="mt-6 grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
-            <motion.div initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} className="space-y-5">
+          <div className="mt-4 grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
+            <motion.div initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
               <Card className="overflow-hidden border-0 bg-white shadow-[0_30px_90px_-65px_rgba(0,10,34,0.55)]">
-                <CardContent className="p-6">
+                <CardContent className="p-4">
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">Quick actions</p>
-                      <h2 className="mt-2 text-2xl font-bold text-slate-950">Rider control</h2>
+                      <h2 className="mt-1 text-xl font-bold text-slate-950">Rider control</h2>
                     </div>
                     <Bike className="h-6 w-6 text-orange-500" />
                   </div>
 
-                  <div className="mt-5 grid grid-cols-3 gap-3">
+                  <div className="mt-4 grid grid-cols-3 gap-2">
                     {quickActions.map((action) => {
                       const Icon = action.icon
                       return (
@@ -496,13 +496,13 @@ export default function DeliveryDashboardPage() {
                           key={action.label}
                           type="button"
                           onClick={action.onClick}
-                          className="rounded-[26px] border border-slate-100 bg-slate-50/80 p-4 text-left transition hover:-translate-y-0.5 hover:shadow-lg"
+                          className="rounded-xl border border-slate-100 bg-slate-50/80 p-3 text-left transition hover:-translate-y-0.5 hover:shadow-lg"
                         >
                           <div className={`inline-flex rounded-2xl bg-gradient-to-br ${action.color} p-3 text-white shadow-lg`}>
                             <Icon className="h-5 w-5" />
                           </div>
-                          <p className="mt-4 font-semibold text-slate-950">{action.label}</p>
-                          <p className="mt-1 text-sm text-slate-500">{action.helper}</p>
+                          <p className="mt-3 font-semibold text-slate-950">{action.label}</p>
+                          <p className="mt-0.5 text-xs text-slate-500">{action.helper}</p>
                         </button>
                       )
                     })}
@@ -560,9 +560,9 @@ export default function DeliveryDashboardPage() {
               </Card>
             </motion.div>
 
-            <motion.div initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.06 }} className="space-y-5">
+            <motion.div initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.06 }} className="space-y-4">
               <Card className="overflow-hidden border-0 bg-white shadow-[0_30px_90px_-65px_rgba(0,10,34,0.55)]">
-                <CardContent className="p-6">
+                <CardContent className="p-4">
                   <div className="flex gap-3">
                     <Button type="button" className="flex-1" onClick={() => router.push('/delivery/orders')}>
                       Go to live orders

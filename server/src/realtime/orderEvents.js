@@ -20,6 +20,7 @@ const LIFECYCLE_EVENTS = {
   ORDER_READY: 'ORDER_READY',
   RIDER_ASSIGNMENT_REQUEST: 'RIDER_ASSIGNMENT_REQUEST',
   ORDER_ASSIGNED: 'ORDER_ASSIGNED',
+  RIDER_ASSIGNED: 'RIDER_ASSIGNED',
   RIDER_ACCEPTED: 'RIDER_ACCEPTED',
   RIDER_REJECTED: 'RIDER_REJECTED',
   RIDER_ARRIVED: 'RIDER_ARRIVED',
@@ -74,6 +75,20 @@ const emitLifecycleAlias = (order, eventName, payload) => {
   if (order.delivery_partner_id) {
     emitToRoom(ROOMS.deliveryPartner(order.delivery_partner_id), eventName, aliasPayload)
   }
+
+  if (eventName === LIFECYCLE_EVENTS.ORDER_ASSIGNED) {
+    const riderAssignedPayload = {
+      ...aliasPayload,
+      lifecycle_event: LIFECYCLE_EVENTS.RIDER_ASSIGNED,
+    }
+    emitToRoom(ROOMS.ADMIN_GLOBAL, LIFECYCLE_EVENTS.RIDER_ASSIGNED, riderAssignedPayload)
+    emitToRoom(ROOMS.customer(order.user_id), LIFECYCLE_EVENTS.RIDER_ASSIGNED, riderAssignedPayload)
+    emitToRoom(ROOMS.restaurant(order.restaurant_id), LIFECYCLE_EVENTS.RIDER_ASSIGNED, riderAssignedPayload)
+
+    if (order.delivery_partner_id) {
+      emitToRoom(ROOMS.deliveryPartner(order.delivery_partner_id), LIFECYCLE_EVENTS.RIDER_ASSIGNED, riderAssignedPayload)
+    }
+  }
 }
 
 const getOrderRealtimeSnapshot = async (orderId) => {
@@ -96,10 +111,13 @@ const getOrderRealtimeSnapshot = async (orderId) => {
        o.total,
        o.route_distance_km,
        o.estimated_total_eta_minutes,
+       o.delivered_at,
+       o.cancelled_at,
        o.created_at,
        o.updated_at,
        u.name AS customer_name,
        r.name AS restaurant_name,
+       r.image AS restaurant_image,
        dp.full_name AS rider_name,
        dp.phone AS rider_phone,
        dp.profile_image AS rider_profile_image,
@@ -111,7 +129,8 @@ const getOrderRealtimeSnapshot = async (orderId) => {
        r.latitude AS restaurant_latitude,
        r.longitude AS restaurant_longitude,
        loc.latitude AS rider_latitude,
-       loc.longitude AS rider_longitude
+       loc.longitude AS rider_longitude,
+       COALESCE(item_snapshot.items, '[]'::json) AS items
      FROM orders o
      JOIN users u ON u.id = o.user_id
      JOIN restaurants r ON r.id = o.restaurant_id
@@ -124,6 +143,23 @@ const getOrderRealtimeSnapshot = async (orderId) => {
        ORDER BY timestamp DESC
        LIMIT 1
      ) loc ON TRUE
+     LEFT JOIN LATERAL (
+       SELECT JSON_AGG(
+         JSON_BUILD_OBJECT(
+           'id', oi.id,
+           'menu_item_id', oi.menu_item_id,
+           'quantity', oi.quantity,
+           'price', oi.price,
+           'name', mi.name,
+           'image', mi.image,
+           'notes', oi.notes
+         )
+         ORDER BY mi.name ASC, oi.id ASC
+       ) AS items
+       FROM order_items oi
+       LEFT JOIN menu_items mi ON mi.id = oi.menu_item_id
+       WHERE oi.order_id = o.id
+     ) item_snapshot ON TRUE
      WHERE o.id = $1`,
     [orderId]
   )
@@ -152,10 +188,13 @@ const getOrderRealtimeSnapshot = async (orderId) => {
     route_distance_km: row.route_distance_km !== null ? Number(row.route_distance_km) : null,
     estimated_total_eta_minutes:
       row.estimated_total_eta_minutes !== null ? Number(row.estimated_total_eta_minutes) : null,
+    delivered_at: row.delivered_at,
+    cancelled_at: row.cancelled_at,
     created_at: row.created_at,
     updated_at: row.updated_at,
     customer_name: row.customer_name,
     restaurant_name: row.restaurant_name,
+    restaurant_image: row.restaurant_image,
     rider_name: row.rider_name,
     rider_phone: row.rider_phone,
     rider_profile_image: row.rider_profile_image,
@@ -168,6 +207,15 @@ const getOrderRealtimeSnapshot = async (orderId) => {
     restaurant_longitude: row.restaurant_longitude !== null ? Number(row.restaurant_longitude) : null,
     rider_latitude: row.rider_latitude !== null ? Number(row.rider_latitude) : null,
     rider_longitude: row.rider_longitude !== null ? Number(row.rider_longitude) : null,
+    items: (row.items || []).map((item) => ({
+      id: item.id,
+      menu_item_id: item.menu_item_id,
+      quantity: Number(item.quantity || 0),
+      price: Number(item.price || 0),
+      name: item.name,
+      image: item.image,
+      notes: item.notes || '',
+    })),
   }
 }
 

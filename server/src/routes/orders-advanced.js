@@ -668,7 +668,8 @@ router.get('/rider/:riderId/active', authenticateDeliveryPartner, asyncHandler(a
      FROM orders o
      JOIN restaurants r ON r.id = o.restaurant_id
      JOIN addresses a ON a.id = o.address_id
-     WHERE o.delivery_partner_id = $1 AND o.status NOT IN ('DELIVERED', 'REJECTED', 'CANCELLED')
+     WHERE o.delivery_partner_id = $1
+       AND UPPER(COALESCE(o.status, 'PLACED')) NOT IN ('DELIVERED', 'REJECTED', 'CANCELLED')
      ORDER BY o.created_at DESC
      LIMIT 1`,
     [riderId]

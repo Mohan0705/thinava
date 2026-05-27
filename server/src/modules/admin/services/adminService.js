@@ -417,7 +417,7 @@ const getOrderRows = async (limit = 150) => {
              'quantity', oi.quantity,
              'price', oi.price
            )
-           ORDER BY oi.created_at ASC
+           ORDER BY mi.name ASC, oi.id ASC
          ) FILTER (WHERE oi.id IS NOT NULL),
          '[]'::json
        ) AS items
@@ -1098,8 +1098,8 @@ const listRestaurants = async () => {
        r.complaints_count,
        r.zone_name,
        COUNT(o.id)::int AS total_orders,
-       COUNT(*) FILTER (WHERE o.status = 'cancelled')::int AS cancelled_orders,
-       COUNT(*) FILTER (WHERE o.status NOT IN ('cancelled', 'delivered'))::int AS active_orders,
+       COUNT(*) FILTER (WHERE UPPER(o.status) = 'CANCELLED')::int AS cancelled_orders,
+       COUNT(*) FILTER (WHERE UPPER(COALESCE(o.status, 'PLACED')) NOT IN ('CANCELLED', 'DELIVERED'))::int AS active_orders,
        COALESCE(SUM(o.total), 0)::numeric AS revenue
      FROM restaurants r
      LEFT JOIN orders o ON o.restaurant_id = r.id

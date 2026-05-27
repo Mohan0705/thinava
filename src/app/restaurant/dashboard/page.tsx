@@ -125,8 +125,8 @@ function DashboardContent() {
         </>
       }
     >
-      <div className="space-y-6">
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+      <div className="space-y-4">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
           <MetricCard
             label="Total orders today"
             value={summary.total_orders_today.toString()}
@@ -153,33 +153,33 @@ function DashboardContent() {
           />
         </div>
 
-        <div className="grid gap-6 xl:grid-cols-[1.25fr_0.75fr]">
+        <div className="grid gap-4 xl:grid-cols-[1.25fr_0.75fr]">
           <Card className="border border-white/60 bg-white/90">
-            <CardContent className="p-6">
-              <div className="mb-5 flex items-center justify-between">
+            <CardContent className="p-4">
+              <div className="mb-4 flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-slate-500">Operational snapshot</p>
-                  <h2 className="text-2xl font-semibold text-slate-950">Storefront health</h2>
+                  <h2 className="text-xl font-semibold text-slate-950">Storefront health</h2>
                 </div>
                 <StatusBadge status={summary.restaurant_status} />
               </div>
 
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="rounded-3xl bg-slate-950 p-5 text-white">
-                  <div className="mb-3 inline-flex rounded-full bg-white/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.24em] text-slate-200">
+              <div className="grid gap-3 md:grid-cols-2">
+                <div className="rounded-xl bg-slate-950 p-4 text-white">
+                  <div className="mb-2 inline-flex rounded-full bg-white/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-200">
                     Partner profile
                   </div>
-                  <h3 className="text-xl font-semibold">{owner?.restaurant.name}</h3>
-                  <p className="mt-2 text-sm text-slate-300">
+                  <h3 className="text-lg font-semibold">{owner?.restaurant.name}</h3>
+                  <p className="mt-1 text-sm text-slate-300">
                     Keep your store details fresh so the customer app reflects accurate branding, timing, and availability.
                   </p>
                 </div>
 
-                <div className="rounded-3xl bg-orange-50 p-5">
-                  <div className="mb-3 inline-flex rounded-full bg-orange-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.24em] text-orange-700">
+                <div className="rounded-xl bg-orange-50 p-4">
+                  <div className="mb-2 inline-flex rounded-full bg-orange-100 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-orange-700">
                     Offer spotlight
                   </div>
-                  <h3 className="text-xl font-semibold text-slate-950">
+                  <h3 className="text-lg font-semibold text-slate-950">
                     {summary.active_offer || 'No active offer'}
                   </h3>
                   <p className="mt-2 text-sm text-slate-500">
@@ -191,13 +191,13 @@ function DashboardContent() {
           </Card>
 
           <Card className="border border-white/60 bg-white/90">
-            <CardContent className="p-6">
-              <div className="mb-5">
+            <CardContent className="p-4">
+              <div className="mb-4">
                 <p className="text-sm font-medium text-slate-500">Quick actions</p>
-                <h2 className="text-2xl font-semibold text-slate-950">Stay in flow</h2>
+                <h2 className="text-xl font-semibold text-slate-950">Stay in flow</h2>
               </div>
 
-              <div className="space-y-3">
+              <div className="space-y-2">
                 {[
                   {
                     href: '/restaurant/orders',
@@ -223,11 +223,11 @@ function DashboardContent() {
                   <Link
                     key={item.href}
                     href={item.href}
-                    className="group flex items-start justify-between rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 transition hover:border-orange-300 hover:bg-orange-50"
+                    className="group flex items-start justify-between rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 transition hover:border-orange-300 hover:bg-orange-50"
                   >
                     <div>
                       <div className="font-semibold text-slate-950">{item.title}</div>
-                      <div className="mt-1 text-sm text-slate-500">{item.copy}</div>
+                      <div className="mt-0.5 text-xs text-slate-500">{item.copy}</div>
                     </div>
                     <ArrowRight className="mt-1 h-5 w-5 text-slate-400 transition group-hover:translate-x-1 group-hover:text-orange-500" />
                   </Link>
@@ -238,10 +238,10 @@ function DashboardContent() {
         </div>
 
         {/* Analytics & Visual Insights Section */}
-        <div className="space-y-6 pt-4">
+        <div className="space-y-4 pt-2">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
-              <h2 className="text-2xl font-bold text-slate-950 dark:text-white">Performance Insights</h2>
+              <h2 className="text-xl font-bold text-slate-950 dark:text-white">Performance Insights</h2>
               <p className="text-sm text-slate-500 dark:text-slate-400">Deep dive into sales trends, customer dish preferences, and order timings.</p>
             </div>
             <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white p-1 shadow-sm dark:border-slate-800 dark:bg-slate-900">
@@ -265,18 +265,18 @@ function DashboardContent() {
           </div>
 
           {/* Extra Analytics Cards */}
-          <div className="grid gap-4 md:grid-cols-3">
+          <div className="grid gap-3 md:grid-cols-3">
             <Card className="border border-white/60 bg-white/90 shadow-sm dark:border-slate-800 dark:bg-slate-950/90">
-              <CardContent className="p-5">
+              <CardContent className="p-4">
                 <p className="text-xs font-medium text-slate-500 uppercase tracking-wider dark:text-slate-400">Average Order Value</p>
-                <h3 className="mt-1 text-2xl font-bold text-slate-950 dark:text-white">{formatPrice(analytics?.summary.avgOrderValue || 0)}</h3>
+                <h3 className="mt-1 text-xl font-bold text-slate-950 dark:text-white">{formatPrice(analytics?.summary.avgOrderValue || 0)}</h3>
                 <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Revenue per order in this period</p>
               </CardContent>
             </Card>
             <Card className="border border-white/60 bg-white/90 shadow-sm dark:border-slate-800 dark:bg-slate-950/90">
-              <CardContent className="p-5">
+              <CardContent className="p-4">
                 <p className="text-xs font-medium text-slate-500 uppercase tracking-wider dark:text-slate-400">Order Success Rate</p>
-                <h3 className="mt-1 text-2xl font-bold text-slate-950 dark:text-white">
+                <h3 className="mt-1 text-xl font-bold text-slate-950 dark:text-white">
                   {analytics?.summary.totalOrders && analytics?.summary.totalOrders > 0
                     ? `${Math.round((analytics.summary.completedOrders / analytics.summary.totalOrders) * 100)}%`
                     : '0%'}
@@ -285,9 +285,9 @@ function DashboardContent() {
               </CardContent>
             </Card>
             <Card className="border border-white/60 bg-white/90 shadow-sm dark:border-slate-800 dark:bg-slate-950/90">
-              <CardContent className="p-5">
+              <CardContent className="p-4">
                 <p className="text-xs font-medium text-slate-500 uppercase tracking-wider dark:text-slate-400">Cancellation Rate</p>
-                <h3 className="mt-1 text-2xl font-bold text-red-600 dark:text-red-400">
+                <h3 className="mt-1 text-xl font-bold text-red-600 dark:text-red-400">
                   {analytics?.summary.totalOrders && analytics?.summary.totalOrders > 0
                     ? `${Math.round((analytics.summary.cancelledOrders / analytics.summary.totalOrders) * 100)}%`
                     : '0%'}
@@ -298,7 +298,7 @@ function DashboardContent() {
           </div>
 
           {/* Charts Grid */}
-          <div className="grid gap-6 lg:grid-cols-2">
+          <div className="grid gap-4 lg:grid-cols-2">
             {/* Revenue & Sales Trend */}
             <Card className="border border-white/60 bg-white/90 shadow-sm dark:border-slate-800 dark:bg-slate-950/90">
               <CardContent className="p-6">

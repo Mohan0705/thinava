@@ -67,7 +67,7 @@ const workflowActions: Partial<Record<OrderStatus, Array<{ label: string; status
 function StatusBadge({ status }: { status: OrderStatus }) {
   const config = statusConfig[status] || statusConfig.PLACED
   return (
-    <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${config.bg} ${config.color}`}>
+    <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold ${config.bg} ${config.color}`}>
       {config.label}
     </span>
   )
@@ -87,7 +87,7 @@ function PaymentBadge({ method, status }: { method: string; status: string }) {
 
   return (
     <div className="flex items-center gap-2">
-      <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${isCod ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}>
+      <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold ${isCod ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}>
         {label}
       </span>
       <span className="text-xs text-slate-500">{paymentLabel}</span>
@@ -254,14 +254,14 @@ function OrdersContent() {
       title="Orders"
       description="Manage incoming orders. Focus on food preparation and handover to riders."
       actions={
-        <div className="flex items-center gap-3 rounded-2xl border border-orange-200 bg-orange-50 px-4 py-3 text-sm text-orange-900">
+        <div className="flex items-center gap-2 rounded-xl border border-orange-200 bg-orange-50 px-3 py-2 text-xs font-semibold text-orange-900">
           <BellRing className="h-4 w-4" />
           Live order sync active
         </div>
       }
     >
-      <div className="space-y-4">
-        <div className="sticky top-0 z-20 -mx-4 border-y border-slate-200/70 bg-slate-50/95 px-4 py-3 backdrop-blur md:mx-0 md:rounded-2xl md:border">
+      <div className="space-y-3">
+        <div className="sticky top-2 z-20 -mx-3 border-y border-slate-200/70 bg-slate-50/95 px-3 py-2 backdrop-blur md:mx-0 md:rounded-xl md:border">
           <div className="flex gap-2 overflow-x-auto pb-1">
             {filterChips.map((chip) => {
               const active = statusFilter === chip.key
@@ -270,7 +270,7 @@ function OrdersContent() {
                   key={chip.key}
                   type="button"
                   onClick={() => setStatusFilter(chip.key)}
-                  className={`shrink-0 rounded-full border px-4 py-2 text-sm font-semibold transition ${
+                  className={`shrink-0 rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
                     active
                       ? 'border-orange-500 bg-orange-500 text-white shadow-lg shadow-orange-500/20'
                       : 'border-slate-200 bg-white text-slate-700 hover:border-orange-200'
@@ -284,20 +284,20 @@ function OrdersContent() {
               )
             })}
           </div>
-          <div className="mt-3 grid gap-3 md:grid-cols-[1fr_180px]">
+          <div className="mt-2 grid gap-2 md:grid-cols-[1fr_160px]">
             <label className="relative block">
               <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <input
                 value={searchTerm}
                 onChange={(event) => setSearchTerm(event.target.value)}
                 placeholder="Search order, customer, rider, or item"
-                className="h-12 w-full rounded-xl border-2 border-slate-200 bg-white pl-11 pr-4 text-sm font-medium outline-none transition focus:border-orange-400"
+                className="h-10 w-full rounded-xl border-2 border-slate-200 bg-white pl-10 pr-3 text-sm font-medium outline-none transition focus:border-orange-400"
               />
             </label>
             <select
               value={paymentFilter}
               onChange={(event) => setPaymentFilter(event.target.value as 'ALL' | 'COD' | 'ONLINE')}
-              className="h-12 rounded-xl border-2 border-slate-200 bg-white px-4 text-sm font-medium outline-none transition focus:border-orange-400"
+              className="h-10 rounded-xl border-2 border-slate-200 bg-white px-3 text-sm font-medium outline-none transition focus:border-orange-400"
             >
               <option value="ALL">All payments</option>
               <option value="COD">COD</option>
@@ -334,11 +334,11 @@ function OrdersContent() {
                   : 'border-white/60'
               }`}
             >
-              <CardContent className="p-6">
-                {/* Header */}
-                <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
+                <CardContent className="p-4">
+                  {/* Header */}
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                   <div className="flex items-center gap-3">
-                    <h2 className="text-xl font-bold text-slate-900">#{order.id.slice(0, 8)}</h2>
+                    <h2 className="text-lg font-bold text-slate-900">#{order.id.slice(0, 8)}</h2>
                     <StatusBadge status={order.status} />
                     {isHighlighted && (
                       <span className="rounded-full bg-orange-100 px-3 py-1 text-xs font-semibold text-orange-700">
@@ -346,20 +346,20 @@ function OrdersContent() {
                       </span>
                     )}
                   </div>
-                  <div className="flex items-center gap-2 text-sm text-slate-500">
+                  <div className="flex items-center gap-2 text-xs text-slate-500">
                     <Clock3 className="h-4 w-4" />
                     {new Date(order.created_at).toLocaleString()}
                   </div>
                 </div>
 
-                <div className="grid gap-4 lg:grid-cols-3">
+                <div className="grid gap-3 lg:grid-cols-[1fr_1fr_0.9fr]">
                   {/* Customer Info */}
-                  <div className="rounded-2xl bg-slate-50 p-4">
-                    <div className="mb-3 flex items-center justify-between gap-3">
+                  <div className="rounded-xl bg-slate-50 p-3">
+                    <div className="mb-2 flex items-center justify-between gap-3">
                       <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400">Customer</h3>
-                      <span className="text-base font-black text-slate-950">Rs. {Number(order.total || 0).toFixed(0)}</span>
+                      <span className="text-sm font-black text-slate-950">Rs. {Number(order.total || 0).toFixed(0)}</span>
                     </div>
-                    <div className="space-y-2">
+                    <div className="space-y-1.5">
                       <div className="flex items-center gap-2">
                         <User className="h-4 w-4 text-slate-400" />
                         <span className="font-medium text-slate-900">{order.customer.name}</span>
@@ -382,18 +382,18 @@ function OrdersContent() {
                         </a>
                       )}
                     </div>
-                    <div className="mt-3 pt-3 border-t border-slate-200">
+                    <div className="mt-2 border-t border-slate-200 pt-2">
                       <PaymentBadge method={order.payment_method} status={order.payment_status} />
                     </div>
                   </div>
 
                   {/* Order Items */}
-                  <div className="rounded-2xl bg-slate-50 p-4 lg:col-span-1">
-                    <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-3 flex items-center gap-2">
+                  <div className="rounded-xl bg-slate-50 p-3 lg:col-span-1">
+                    <h3 className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
                       <PackageCheck className="h-4 w-4 text-orange-500" />
                       Items
                     </h3>
-                    <div className="space-y-2">
+                    <div className="space-y-1.5">
                       {order.items.map((item) => (
                         <div key={item.id} className="flex items-start justify-between gap-2">
                           <div className="flex-1">
@@ -412,10 +412,10 @@ function OrdersContent() {
                   </div>
 
                   {/* Rider & Actions */}
-                  <div className="space-y-4">
+                  <div className="space-y-3">
                     {/* Rider Info */}
-                    <div className="rounded-2xl bg-slate-50 p-4">
-                      <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-3 flex items-center gap-2">
+                    <div className="rounded-xl bg-slate-50 p-3">
+                      <h3 className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
                         <Truck className="h-4 w-4 text-slate-400" />
                         Rider
                       </h3>
@@ -435,11 +435,12 @@ function OrdersContent() {
 
                     {/* Workflow Actions */}
                     {!isTerminal && actions.length > 0 && (
-                      <div className="space-y-2">
+                      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-1">
                         {actions.map((action) => (
                           <Button
                             key={action.status}
                             variant={action.variant === 'destructive' ? 'destructive' : action.variant === 'outline' ? 'outline' : 'default'}
+                            size="sm"
                             className="w-full justify-center"
                             disabled={updatingOrderId === order.id}
                             onClick={() => handleStatusUpdate(order.id, action.status)}
@@ -455,7 +456,7 @@ function OrdersContent() {
                     )}
 
                     {isTerminal && (
-                      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-center">
+                      <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-center">
                         <p className="text-sm text-slate-500">
                           {order.status === 'DELIVERED' ? '✓ Order delivered successfully' : ' Order cancelled'}
                         </p>

@@ -67,17 +67,17 @@ export default function AdminDashboardPage() {
           <p className="text-sm text-slate-500 mb-6">{error}</p>
         </div>
       ) : !data || loading ? (
-        <div className="grid gap-6">
-          <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-4">
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             {Array.from({ length: 4 }).map((_, index) => (
-              <Skeleton key={index} className="h-40 rounded-[28px]" />
+              <Skeleton key={index} className="h-28 rounded-2xl" />
             ))}
           </div>
-          <Skeleton className="h-[420px] rounded-[28px]" />
+          <Skeleton className="h-[320px] rounded-2xl" />
         </div>
       ) : (
-        <div className="space-y-6">
-          <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-4">
+        <div className="space-y-4">
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             <AdminMetricCard
               label="Orders Today"
               value={data.metrics.orders_today.toString()}
@@ -108,16 +108,16 @@ export default function AdminDashboardPage() {
             />
           </div>
 
-          <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
+          <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
             <Card className="border border-white/70 bg-white/90">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-xl">
+              <CardHeader className="p-4 pb-2">
+                <CardTitle className="flex items-center gap-2 text-lg">
                   <BarChart3 className="h-5 w-5 text-orange-600" />
                   Revenue and Order Momentum
                 </CardTitle>
               </CardHeader>
-              <CardContent className="grid gap-6 lg:grid-cols-2">
-                <div className="h-[280px]">
+              <CardContent className="grid gap-4 p-4 pt-0 lg:grid-cols-2">
+                <div className="h-[230px]">
                   <ResponsiveContainer width="100%" height="100%">
                     <AreaChart data={data.revenue_trend}>
                       <defs>
@@ -134,7 +134,7 @@ export default function AdminDashboardPage() {
                     </AreaChart>
                   </ResponsiveContainer>
                 </div>
-                <div className="h-[280px]">
+                <div className="h-[230px]">
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
                       <Pie data={data.order_status_breakdown} dataKey="value" nameKey="label" innerRadius={58} outerRadius={96}>
@@ -152,15 +152,15 @@ export default function AdminDashboardPage() {
             <RealtimeFeed items={data.activity_feed} />
           </div>
 
-          <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
+          <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
             <OperationsMap data={data.live_map} compact />
 
             <Card className="border border-white/70 bg-white/90">
-              <CardHeader>
-                <CardTitle className="text-xl">Busy Zone Heat</CardTitle>
+              <CardHeader className="p-4 pb-2">
+                <CardTitle className="text-lg">Busy Zone Heat</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="h-[240px]">
+              <CardContent className="space-y-3 p-4 pt-0">
+                <div className="h-[210px]">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={data.zone_performance}>
                       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f8fafc" />
@@ -173,7 +173,7 @@ export default function AdminDashboardPage() {
                 </div>
                 <div className="grid gap-3">
                   {data.zone_performance.slice(0, 4).map((zone) => (
-                    <div key={zone.zone} className="rounded-2xl border border-slate-100 bg-slate-50/80 p-4">
+                    <div key={zone.zone} className="rounded-xl border border-slate-100 bg-slate-50/80 p-3">
                       <div className="flex items-center justify-between">
                         <p className="font-semibold text-slate-900">{zone.zone}</p>
                         <p className="text-sm text-slate-500">{zone.orders} orders</p>

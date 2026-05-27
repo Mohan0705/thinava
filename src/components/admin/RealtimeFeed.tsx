@@ -19,19 +19,19 @@ const severityIcons = {
 export function RealtimeFeed({ items }: { items: ActivityFeedItem[] }) {
   return (
     <Card className="border border-white/70 bg-white/90">
-      <CardHeader className="flex-row items-center justify-between space-y-0">
-        <CardTitle className="text-xl">Realtime Activity Feed</CardTitle>
-        <div className="inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
+      <CardHeader className="flex-row items-center justify-between space-y-0 p-4 pb-2">
+        <CardTitle className="text-lg">Realtime Activity Feed</CardTitle>
+        <div className="inline-flex items-center gap-2 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
           <span className="h-2 w-2 rounded-full bg-emerald-500" />
           Live
         </div>
       </CardHeader>
-      <CardContent className="space-y-3">
+      <CardContent className="space-y-2 p-4 pt-0">
         {items.map((item) => {
           const Icon = severityIcons[item.severity]
           return (
-            <div key={item.id} className="flex gap-3 rounded-2xl border border-slate-100 bg-slate-50/70 p-4">
-              <div className={`mt-0.5 rounded-2xl p-2 ${severityClasses[item.severity]}`}>
+            <div key={item.id} className="flex gap-3 rounded-xl border border-slate-100 bg-slate-50/70 p-3">
+              <div className={`mt-0.5 rounded-lg p-2 ${severityClasses[item.severity]}`}>
                 <Icon className="h-4 w-4" />
               </div>
               <div className="flex-1">

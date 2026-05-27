@@ -33,6 +33,8 @@ async function addOrderLifecycleColumns() {
       { name: 'rider_assignment_status', sql: "ALTER TABLE orders ADD COLUMN rider_assignment_status VARCHAR(50) DEFAULT 'UNASSIGNED'" },
       { name: 'assignment_expires_at', sql: 'ALTER TABLE orders ADD COLUMN assignment_expires_at TIMESTAMP NULL' },
       { name: 'delivery_completed_at', sql: 'ALTER TABLE orders ADD COLUMN delivery_completed_at TIMESTAMP NULL' },
+      { name: 'coupon_code', sql: 'ALTER TABLE orders ADD COLUMN coupon_code VARCHAR(80)' },
+      { name: 'discount_amount', sql: 'ALTER TABLE orders ADD COLUMN discount_amount DECIMAL(10, 2) DEFAULT 0' },
     ]
     for (const col of ordersCols) {
       await ensureColumn(client, 'orders', col.name, col.sql)

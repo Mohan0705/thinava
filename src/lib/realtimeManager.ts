@@ -255,7 +255,11 @@ export function useAdminRealtimeSync(token: string | null, onDashboardUpdate?: (
     })
 
     ;[
+      'ORDER_CREATED',
+      'ORDER_CONFIRMED',
       'ORDER_ASSIGNED',
+      'RIDER_ASSIGNED',
+      'RIDER_ASSIGNMENT_REQUEST',
       'ORDER_PREPARING',
       'ORDER_READY',
       'RIDER_ACCEPTED',
@@ -264,6 +268,7 @@ export function useAdminRealtimeSync(token: string | null, onDashboardUpdate?: (
       'ARRIVING',
       'DELIVERED',
       'CANCELLED',
+      'ORDER_MOVED_TO_HISTORY',
     ].forEach((eventName) => {
       mgr.subscribe(eventName, (payload: any) => {
         onDashboardUpdate?.(payload)

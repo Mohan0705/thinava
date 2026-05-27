@@ -292,6 +292,11 @@ export default function CheckoutPage() {
       })
 
       const data = await response.json().catch(() => ({}))
+      const apiErrorMessage =
+        data?.error?.message ||
+        data?.error ||
+        data?.message ||
+        data?.details?.message
 
       if (!response.ok) {
         // Handle specific auth errors
@@ -301,7 +306,7 @@ export default function CheckoutPage() {
         if (response.status === 403) {
           throw new Error('You do not have permission to place this order. Please make sure you are logged in correctly.')
         }
-        throw new Error(data?.error || 'Failed to place order')
+        throw new Error(apiErrorMessage || 'Failed to place order')
       }
 
       if (typeof window !== 'undefined' && data?.order?.id) {
