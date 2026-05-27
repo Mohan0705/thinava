@@ -184,6 +184,17 @@ const updateRestaurantOrderStatus = async (restaurantId, orderId, nextStatusValu
     throw error
   }
 
+  if (nextStatus === ORDER_STATUS.PREPARING) {
+    try {
+      await autoAssignOrder(orderId, {
+        source: 'restaurant_preparing',
+        dispatchNote: 'Automatic assignment triggered when restaurant started preparing order',
+      })
+    } catch (error) {
+      console.error('Failed to auto-assign delivery partner after restaurant started preparing', error)
+    }
+  }
+
   if (nextStatus === ORDER_STATUS.READY_FOR_PICKUP) {
     try {
       await autoAssignOrder(orderId, {
