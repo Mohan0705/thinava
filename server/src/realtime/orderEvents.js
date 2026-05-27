@@ -29,7 +29,12 @@ const LIFECYCLE_EVENTS = {
   CASH_COLLECTED: 'CASH_COLLECTED',
   DELIVERED: 'DELIVERED',
   CANCELLED: 'CANCELLED',
+  ORDER_COMPLETED: 'ORDER_COMPLETED',
+  ORDER_CANCELLED: 'ORDER_CANCELLED',
   ORDER_MOVED_TO_HISTORY: 'ORDER_MOVED_TO_HISTORY',
+  RIDER_ORDER_CLOSED: 'RIDER_ORDER_CLOSED',
+  RIDER_AVAILABLE: 'RIDER_AVAILABLE',
+  ACTIVE_DELIVERY_CLEARED: 'ACTIVE_DELIVERY_CLEARED',
 }
 
 const normalizeUpper = (value) => String(value || '').trim().toUpperCase()
@@ -321,6 +326,7 @@ const emitRiderAssignmentRemoved = (orderId, deliveryPartnerId, reason = 'remove
     changed_at: new Date().toISOString(),
   }
   emitToRoom(ROOMS.deliveryPartner(deliveryPartnerId), EVENTS.DELIVERY_OFFER_REMOVED, payload)
+  emitToRoom(ROOMS.deliveryPartner(deliveryPartnerId), EVENTS.DELIVERY_ACTIVE_ORDER_UPDATED, payload)
   emitToRoom(ROOMS.deliveryPartner(deliveryPartnerId), LIFECYCLE_EVENTS.RIDER_REJECTED, {
     ...payload,
     lifecycle_event: LIFECYCLE_EVENTS.RIDER_REJECTED,

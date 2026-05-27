@@ -16,6 +16,7 @@ interface DeliveryOrderStore {
   setCurrentLocation: (location: DeliveryLocation | null) => void
   setRefreshing: (refreshing: boolean) => void
   updateActiveOrderStatus: (status: string) => void
+  resetActiveDelivery: (orderId?: string | null) => void
 }
 
 export const useDeliveryOrderStore = create<DeliveryOrderStore>()((set) => ({
@@ -76,6 +77,28 @@ export const useDeliveryOrderStore = create<DeliveryOrderStore>()((set) => ({
   updateActiveOrderStatus: (status) => {
     set((state) => ({
       activeOrder: state.activeOrder ? { ...state.activeOrder, delivery_status: status } : null,
+    }))
+  },
+
+  resetActiveDelivery: (orderId = null) => {
+    console.log('[RIDER_STATE_RESET]', {
+      orderId,
+      source: 'deliveryOrderStore',
+      timestamp: new Date().toISOString(),
+    })
+    set((state) => ({
+      activeOrder:
+        orderId && state.activeOrder?.id && state.activeOrder.id !== orderId
+          ? state.activeOrder
+          : null,
+      assignmentRequest:
+        orderId && state.assignmentRequest?.id && state.assignmentRequest.id !== orderId
+          ? state.assignmentRequest
+          : null,
+      availableOrders: orderId
+        ? state.availableOrders.filter((order) => order.id !== orderId)
+        : state.availableOrders,
+      refreshing: false,
     }))
   },
 }))

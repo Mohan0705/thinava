@@ -11,6 +11,7 @@ import { DeliveryBottomNav } from '@/components/delivery/DeliveryBottomNav'
 import { DeliveryLiveMap } from '@/components/delivery/DeliveryLiveMap'
 import { deliveryApi } from '@/lib/delivery-api'
 import { getRealtimeSocket, releaseRealtimeSocket } from '@/lib/realtime'
+import { resetRiderDeliveryState } from '@/lib/realtimeManager'
 import { useDeliveryAuthStore } from '@/store/deliveryAuthStore'
 import { useDeliveryOrderStore } from '@/store/deliveryOrderStore'
 
@@ -63,18 +64,51 @@ export default function DeliveryOrdersPage() {
       return
     }
 
-    const handleAssignedOrder = () => {
+    const handleAssignedOrder = (payload?: any) => {
+      const status = String(
+        payload?.status ||
+        payload?.delivery_status ||
+        payload?.order?.delivery_status ||
+        payload?.order?.status ||
+        ''
+      ).toUpperCase()
+
+      if (['DELIVERED', 'CANCELLED', 'FAILED', 'EXPIRED'].includes(status)) {
+        resetRiderDeliveryState(payload)
+        return
+      }
+
       void loadAssignedOrder(true)
+    }
+
+    const handleTerminalEvent = (payload: any) => {
+      resetRiderDeliveryState(payload)
     }
 
     socket.on('delivery:active_order_updated', handleAssignedOrder)
     socket.on('ORDER_ASSIGNED', handleAssignedOrder)
     socket.on('delivery:offer_removed', handleAssignedOrder)
+    socket.on('ORDER_COMPLETED', handleTerminalEvent)
+    socket.on('ORDER_CANCELLED', handleTerminalEvent)
+    socket.on('ORDER_MOVED_TO_HISTORY', handleTerminalEvent)
+    socket.on('RIDER_ORDER_CLOSED', handleTerminalEvent)
+    socket.on('RIDER_AVAILABLE', handleTerminalEvent)
+    socket.on('ACTIVE_DELIVERY_CLEARED', handleTerminalEvent)
+    socket.on('delivery_completed', handleTerminalEvent)
+    socket.on('order_cancelled', handleTerminalEvent)
 
     return () => {
       socket.off('delivery:active_order_updated', handleAssignedOrder)
       socket.off('ORDER_ASSIGNED', handleAssignedOrder)
       socket.off('delivery:offer_removed', handleAssignedOrder)
+      socket.off('ORDER_COMPLETED', handleTerminalEvent)
+      socket.off('ORDER_CANCELLED', handleTerminalEvent)
+      socket.off('ORDER_MOVED_TO_HISTORY', handleTerminalEvent)
+      socket.off('RIDER_ORDER_CLOSED', handleTerminalEvent)
+      socket.off('RIDER_AVAILABLE', handleTerminalEvent)
+      socket.off('ACTIVE_DELIVERY_CLEARED', handleTerminalEvent)
+      socket.off('delivery_completed', handleTerminalEvent)
+      socket.off('order_cancelled', handleTerminalEvent)
       releaseRealtimeSocket('delivery_partner', token)
     }
   }, [token])

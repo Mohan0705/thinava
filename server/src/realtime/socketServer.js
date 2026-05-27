@@ -108,6 +108,14 @@ const startHeartbeat = (io) => {
         const lastPing = socket.data._lastPing || 0
         if (now - lastPing > STALE_SOCKET_TIMEOUT_MS) {
           logger.warn('Stale socket disconnected', { socketId: id, tag: 'realtime' })
+          if (socket.data.session?.role === ROLES.DELIVERY_PARTNER) {
+            console.log('[STALE_RIDER_SOCKET_CLEANUP]', {
+              socketId: id,
+              riderId: socket.data.session.subjectId,
+              lastPing,
+              timestamp: new Date().toISOString(),
+            })
+          }
           socket.disconnect(true)
           continue
         }
@@ -288,6 +296,21 @@ const closeSocketServer = async () => {
 const getIO = () => socketServer
 const getIoInstance = getIO
 
+const getRoomConnectionCount = (room) => {
+  const io = socketServer
+  if (!io || !room) {
+    return 0
+  }
+
+  return io.sockets.adapter.rooms.get(room)?.size || 0
+}
+
+const getDeliveryPartnerConnectionCount = (partnerId) =>
+  getRoomConnectionCount(ROOMS.deliveryPartner(partnerId))
+
+const isDeliveryPartnerConnected = (partnerId) =>
+  getDeliveryPartnerConnectionCount(partnerId) > 0
+
 const emitToRoom = (room, event, data) => {
   const io = socketServer
   if (!io) {
@@ -317,6 +340,9 @@ module.exports = {
   closeSocketServer,
   getIO,
   getIoInstance,
+  getRoomConnectionCount,
+  getDeliveryPartnerConnectionCount,
+  isDeliveryPartnerConnected,
   emitToRoom,
   ROLES,
   ROOMS,

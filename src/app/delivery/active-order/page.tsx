@@ -27,6 +27,7 @@ import { useDeliveryAuthStore } from '@/store/deliveryAuthStore'
 import { useDeliveryOrderStore } from '@/store/deliveryOrderStore'
 import { deliveryApi } from '@/lib/delivery-api'
 import { getRealtimeSocket, releaseRealtimeSocket } from '@/lib/realtime'
+import { resetRiderDeliveryState } from '@/lib/realtimeManager'
 import { DeliveryRealtimeEvent } from '@/types/delivery'
 import { SUPPORT_TEL, getWhatsAppLink } from '@/lib/support'
 import { calculateDistanceKm, openOsmDirections } from '@/lib/maps/geo'
@@ -154,23 +155,27 @@ export default function DeliveryActiveOrderPage() {
       }
     }
 
-    const handleDeliveryCompleted = (payload: any) => {
+    const handleTerminalClose = (payload: any) => {
       if (payload?.order_id === activeOrderIdRef.current) {
-        toast.success(`Delivery completed! Rs. ${Number(payload.payout_amount || 0).toFixed(0)} added to wallet`)
+        resetRiderDeliveryState(payload)
         setActiveOrder(null)
         setTimeout(() => {
           router.push('/delivery/dashboard')
-        }, 1200)
+        }, 150)
+      }
+    }
+
+    const handleDeliveryCompleted = (payload: any) => {
+      if (payload?.order_id === activeOrderIdRef.current) {
+        toast.success(`Delivery completed! Rs. ${Number(payload.payout_amount || 0).toFixed(0)} added to wallet`)
+        handleTerminalClose(payload)
       }
     }
 
     const handleOrderCancelled = (payload: any) => {
       if (payload?.order_id === activeOrderIdRef.current) {
         toast.info(payload.message || 'This delivery has been cancelled')
-        setActiveOrder(null)
-        setTimeout(() => {
-          router.push('/delivery/orders')
-        }, 1200)
+        handleTerminalClose(payload)
       }
     }
 
@@ -184,6 +189,12 @@ export default function DeliveryActiveOrderPage() {
     socket.on('delivery:location_updated', handleLocationUpdate)
     socket.on('delivery_completed', handleDeliveryCompleted)
     socket.on('order_cancelled', handleOrderCancelled)
+    socket.on('ORDER_COMPLETED', handleDeliveryCompleted)
+    socket.on('ORDER_CANCELLED', handleOrderCancelled)
+    socket.on('ORDER_MOVED_TO_HISTORY', handleTerminalClose)
+    socket.on('RIDER_ORDER_CLOSED', handleTerminalClose)
+    socket.on('RIDER_AVAILABLE', handleTerminalClose)
+    socket.on('ACTIVE_DELIVERY_CLEARED', handleTerminalClose)
 
     return () => {
       socket.off('delivery:active_order_updated', handleActiveOrderUpdate)
@@ -196,6 +207,12 @@ export default function DeliveryActiveOrderPage() {
       socket.off('delivery:location_updated', handleLocationUpdate)
       socket.off('delivery_completed', handleDeliveryCompleted)
       socket.off('order_cancelled', handleOrderCancelled)
+      socket.off('ORDER_COMPLETED', handleDeliveryCompleted)
+      socket.off('ORDER_CANCELLED', handleOrderCancelled)
+      socket.off('ORDER_MOVED_TO_HISTORY', handleTerminalClose)
+      socket.off('RIDER_ORDER_CLOSED', handleTerminalClose)
+      socket.off('RIDER_AVAILABLE', handleTerminalClose)
+      socket.off('ACTIVE_DELIVERY_CLEARED', handleTerminalClose)
       releaseRealtimeSocket('delivery_partner', token)
     }
   }, [token])
@@ -371,7 +388,13 @@ export default function DeliveryActiveOrderPage() {
         applyCurrentLocation({ lat, lng })
       }
 
-      await deliveryApi.updateDeliveryStatus(token!, activeOrder.id, newStatus, lat, lng)
+      await deliveryApi.updateDeliveryStatus(token!, activeOrder.id, newStatus, lat, lng, {
+        cash_collected: newStatus === 'CASH_COLLECTED',
+        notes:
+          newStatus === 'CASH_COLLECTED'
+            ? 'COD cash collected by rider'
+            : undefined,
+      })
       void loadActiveOrder(true)
 
       if (newStatus === 'DELIVERED') {

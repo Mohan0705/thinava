@@ -3,7 +3,11 @@ const { ORDER_DELIVERY_STATUSES, ASSIGNMENT_STATUSES } = require('../constants')
 const { emitOrderStatusUpdated, emitDeliveryStatusUpdated } = require('../../../realtime/orderEvents')
 const SocketEventsHandler = require('../../../realtime/socketEventsHandler')
 const { getIO } = require('../../../realtime/socketServer')
-const { validateOrderTransition } = require('../../orders/orderLifecycleService')
+const {
+  ORDER_STATUS,
+  updateOrderLifecycleState,
+  validateOrderTransition,
+} = require('../../orders/orderLifecycleService')
 const { computeRiderPayout } = require('./logisticsService')
 
 const ACTIVE_TERMINAL_STATUSES = [
@@ -28,6 +32,13 @@ const toNumber = (value) => Number(value || 0)
  * - Earnings: records rider payout exactly once
  */
 const completeDelivery = async (orderId, partnerId, options = {}) => {
+  return updateOrderLifecycleState(orderId, ORDER_STATUS.DELIVERED, {
+    source: options.source || 'delivery_completion',
+    deliveryStatus: ORDER_DELIVERY_STATUSES.DELIVERED,
+    expectedRiderId: partnerId || undefined,
+    force: !partnerId,
+  })
+
   const client = await pool.connect()
   const io = getIO()
   const socketHandler = new SocketEventsHandler()
@@ -390,6 +401,13 @@ const completeDelivery = async (orderId, partnerId, options = {}) => {
  * - Rider cancel action (with restrictions)
  */
 const cancelDelivery = async (orderId, reason, cancelledBy, options = {}) => {
+  return updateOrderLifecycleState(orderId, ORDER_STATUS.CANCELLED, {
+    source: options.source || 'cancellation',
+    deliveryStatus: ORDER_DELIVERY_STATUSES.CANCELLED,
+    reason: reason || `Cancelled by ${cancelledBy}`,
+    force: true,
+  })
+
   const client = await pool.connect()
   const io = getIO()
   const socketHandler = new SocketEventsHandler()

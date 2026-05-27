@@ -111,6 +111,13 @@ const isTerminalStatus = (status) => {
   return status === ORDER_STATUS.DELIVERED || status === ORDER_STATUS.CANCELLED
 }
 
+const logLifecycle = (tag, payload = {}) => {
+  console.log(`[${tag}]`, {
+    ...payload,
+    timestamp: new Date().toISOString(),
+  })
+}
+
 // ============================================================
 // TRANSITION VALIDATOR (standalone, no DB calls)
 // ============================================================
@@ -230,6 +237,13 @@ const updateOrderLifecycleState = async (orderId, newStatus, options = {}) => {
 
     const order = orderResult.rows[0]
     const currentStatus = normalizeStatus(order.status) || ORDER_STATUS.PLACED
+    const currentRiderId = order.delivery_partner_id
+
+    if (options.expectedRiderId && currentRiderId !== options.expectedRiderId) {
+      const error = new Error('Order not assigned to this rider')
+      error.status = 403
+      throw error
+    }
 
     // 2. Terminal state guard — runs BEFORE force bypass
     //    Terminal states (DELIVERED, CANCELLED) are FINAL.
@@ -305,6 +319,15 @@ const updateOrderLifecycleState = async (orderId, newStatus, options = {}) => {
 
     // 6. Update delivery assignments if rider exists
     if (riderId) {
+      if (isTerminal) {
+        logLifecycle('RIDER_CLEANUP_STARTED', {
+          orderId,
+          riderId,
+          status: normalizedStatus,
+          source: options.source || 'lifecycle_update',
+        })
+      }
+
       const assignmentStatus = isDelivered ? 'DELIVERED' : isCancelled ? 'CANCELLED' : null
       if (assignmentStatus) {
         await client.query(
@@ -319,15 +342,23 @@ const updateOrderLifecycleState = async (orderId, newStatus, options = {}) => {
       }
 
       // 7. Update active deliveries
-      await client.query(
-        `UPDATE active_deliveries
-         SET status = $1::text,
-             delivered_at = CASE WHEN $1::text = 'DELIVERED' THEN CURRENT_TIMESTAMP ELSE delivered_at END,
-             cancelled_at = CASE WHEN $1::text = 'CANCELLED' THEN CURRENT_TIMESTAMP ELSE cancelled_at END,
-             updated_at = CURRENT_TIMESTAMP
-         WHERE order_id = $2::uuid AND delivery_partner_id = $3::uuid`,
-        [newDeliveryStatus, orderId, riderId]
-      )
+      if (isTerminal) {
+        await client.query(
+          `DELETE FROM active_deliveries
+           WHERE order_id = $1::uuid AND delivery_partner_id = $2::uuid`,
+          [orderId, riderId]
+        )
+      } else {
+        await client.query(
+          `UPDATE active_deliveries
+           SET status = $1::text,
+               delivered_at = CASE WHEN $1::text = 'DELIVERED' THEN CURRENT_TIMESTAMP ELSE delivered_at END,
+               cancelled_at = CASE WHEN $1::text = 'CANCELLED' THEN CURRENT_TIMESTAMP ELSE cancelled_at END,
+               updated_at = CURRENT_TIMESTAMP
+           WHERE order_id = $2::uuid AND delivery_partner_id = $3::uuid`,
+          [newDeliveryStatus, orderId, riderId]
+        )
+      }
 
       // 8. Update delivery tracking
       await client.query(
@@ -345,9 +376,16 @@ const updateOrderLifecycleState = async (orderId, newStatus, options = {}) => {
            SET current_order_id = NULL,
                current_status = 'AVAILABLE',
                updated_at = CURRENT_TIMESTAMP
-           WHERE id = $1::uuid`,
-          [riderId]
+           WHERE id = $1::uuid
+             AND (current_order_id = $2::uuid OR current_order_id IS NULL)`,
+          [riderId, orderId]
         )
+
+        logLifecycle('RIDER_CLEANUP_COMPLETED', {
+          orderId,
+          riderId,
+          status: normalizedStatus,
+        })
       }
     }
 
@@ -449,6 +487,16 @@ const updateOrderLifecycleState = async (orderId, newStatus, options = {}) => {
       timestamp: new Date().toISOString(),
     }
 
+    if (isTerminal) {
+      logLifecycle('ORDER_TERMINATED', {
+        orderId,
+        riderId,
+        status: normalizedStatus,
+        deliveryStatus: newDeliveryStatus,
+        source: options.source || 'lifecycle_update',
+      })
+    }
+
     emitOrderStatusUpdated(orderId, {
       source: options.source || 'lifecycle_update',
       normalized_status: normalizedStatus,
@@ -467,6 +515,34 @@ const updateOrderLifecycleState = async (orderId, newStatus, options = {}) => {
       duration_minutes: durationMinutes,
     }).catch((err) => console.error('Failed to emit delivery status update:', err))
 
+    if (io && isTerminal) {
+      const terminalOrderEvent = isDelivered ? 'ORDER_COMPLETED' : 'ORDER_CANCELLED'
+      const orderTerminalPayload = {
+        ...eventPayload,
+        event: terminalOrderEvent,
+        current_order_id: null,
+        rider_status: riderId ? 'AVAILABLE' : undefined,
+        active_delivery_id: null,
+      }
+      const terminalRooms = [
+        'admin:global',
+        `customer:${order.customer_id}`,
+        `restaurant:${order.restaurant_id}`,
+      ]
+
+      if (riderId) {
+        terminalRooms.push(`delivery_partner:${riderId}`)
+      }
+
+      terminalRooms.forEach((room) => {
+        io.to(room).emit(terminalOrderEvent, orderTerminalPayload)
+        io.to(room).emit('ORDER_MOVED_TO_HISTORY', {
+          ...orderTerminalPayload,
+          event: 'ORDER_MOVED_TO_HISTORY',
+        })
+      })
+    }
+
     // Emit granular events
     if (isDelivered) {
       socketHandler.emitOrderDelivered(orderId, { userId: order.customer_id })
@@ -481,8 +557,14 @@ const updateOrderLifecycleState = async (orderId, newStatus, options = {}) => {
     if (io && riderId && isTerminal) {
       const eventName = isDelivered ? 'delivery_completed' : 'order_cancelled'
       const riderRoom = `delivery_partner:${riderId}`
-      io.to(riderRoom).emit(eventName, {
+      const riderTerminalPayload = {
         order_id: orderId,
+        rider_id: riderId,
+        status: normalizedStatus,
+        delivery_status: newDeliveryStatus,
+        current_order_id: null,
+        rider_status: 'AVAILABLE',
+        active_delivery_id: null,
         payout_amount: payoutAmount,
         distance_km: finalDistance,
         duration_minutes: durationMinutes,
@@ -490,6 +572,25 @@ const updateOrderLifecycleState = async (orderId, newStatus, options = {}) => {
           ? 'Delivery completed! Earnings added to your wallet.'
           : 'This delivery has been cancelled. You are now available for new orders.',
         timestamp: eventPayload.timestamp,
+        source: options.source || 'lifecycle_update',
+      }
+      const terminalEvents = [
+        eventName,
+        isDelivered ? 'ORDER_COMPLETED' : 'ORDER_CANCELLED',
+        'ORDER_MOVED_TO_HISTORY',
+        'RIDER_ORDER_CLOSED',
+        'RIDER_AVAILABLE',
+        'ACTIVE_DELIVERY_CLEARED',
+      ]
+
+      terminalEvents.forEach((terminalEvent) => {
+        logLifecycle('RIDER_SOCKET_EMIT', {
+          orderId,
+          riderId,
+          room: riderRoom,
+          event: terminalEvent,
+        })
+        io.to(riderRoom).emit(terminalEvent, riderTerminalPayload)
       })
 
       if (isDelivered) {
@@ -551,6 +652,11 @@ const updateOrderLifecycleState = async (orderId, newStatus, options = {}) => {
     if (io) {
       const eventName = isDelivered ? 'delivery_completed' : isCancelled ? 'order_cancelled' : 'order_status_updated'
       io.to('admin:global').emit(eventName, eventPayload)
+      if (isTerminal) {
+        io.to('admin:global').emit(isDelivered ? 'ORDER_COMPLETED' : 'ORDER_CANCELLED', eventPayload)
+        io.to('admin:global').emit('ACTIVE_DELIVERY_CLEARED', eventPayload)
+        io.to('admin:global').emit('RIDER_AVAILABLE', eventPayload)
+      }
     }
 
     return {

@@ -9,6 +9,17 @@ import type { ActiveOrder, AvailableOrder, DeliveryRealtimeEvent } from '@/types
 
 type EventHandler = (...args: any[]) => void
 
+const RIDER_TERMINAL_EVENTS = [
+  'ORDER_COMPLETED',
+  'ORDER_CANCELLED',
+  'ORDER_MOVED_TO_HISTORY',
+  'RIDER_ORDER_CLOSED',
+  'RIDER_AVAILABLE',
+  'ACTIVE_DELIVERY_CLEARED',
+  'delivery_completed',
+  'order_cancelled',
+]
+
 interface SubscriptionEntry {
   event: string
   handler: EventHandler
@@ -32,6 +43,18 @@ const safeCallback = (fn: EventHandler) => {
   }
   ;(wrapped as any)[HANDLER_META] = true
   return wrapped
+}
+
+export const resetRiderDeliveryState = (payload?: any) => {
+  const orderId = payload?.order_id || payload?.order?.id || null
+  console.log('[RIDER_STATE_RESET]', {
+    orderId,
+    event: payload?.event || payload?.lifecycle_event || payload?.status,
+    source: 'realtimeManager',
+    timestamp: new Date().toISOString(),
+  })
+  useDeliveryOrderStore.getState().resetActiveDelivery(orderId)
+  useDeliveryAuthStore.getState().clearActiveDeliverySession()
 }
 
 export function useRealtimeManager({ role, token, enabled = true }: RealtimeManagerOptions) {
@@ -100,6 +123,11 @@ export function useRealtimeStoreSync(config: StoreSyncConfig) {
       mgr.subscribe('delivery:active_order_updated', (payload: DeliveryRealtimeEvent) => {
         if (payload?.order) {
           const { order } = payload
+          if (['DELIVERED', 'CANCELLED', 'FAILED', 'EXPIRED'].includes(String(order.delivery_status || order.status || '').toUpperCase())) {
+            resetRiderDeliveryState(payload)
+            onEvent?.('delivery:active_order_updated', payload)
+            return
+          }
           if (
             order.delivery_status === 'READY_FOR_ASSIGNMENT' ||
             order.rider_assignment_status === 'REQUESTED' ||
@@ -219,9 +247,21 @@ export function useRealtimeStoreSync(config: StoreSyncConfig) {
 
       mgr.subscribe('delivery:status_updated', (payload: DeliveryRealtimeEvent) => {
         if (payload?.order?.delivery_status) {
+          if (['DELIVERED', 'CANCELLED', 'FAILED', 'EXPIRED'].includes(String(payload.order.delivery_status).toUpperCase())) {
+            resetRiderDeliveryState(payload)
+            onEvent?.('delivery:status_updated', payload)
+            return
+          }
           deliveryOrderActions.updateActiveOrderStatus(payload.order.delivery_status)
         }
         onEvent?.('delivery:status_updated', payload)
+      })
+
+      RIDER_TERMINAL_EVENTS.forEach((eventName) => {
+        mgr.subscribe(eventName, (payload: any) => {
+          resetRiderDeliveryState({ ...payload, event: eventName })
+          onEvent?.(eventName, payload)
+        })
       })
     }
 
@@ -363,9 +403,12 @@ export function useRiderDashboardSync(token: string | null, onStatsUpdate?: (eve
     })
 
     // Listen to generic delivery completion
-    mgr.subscribe('delivery_completed', (payload: any) => {
-      console.log('[EVENT_RX] delivery_completed', payload)
-      onStatsUpdate?.({ type: 'delivery_completed', data: payload })
+    RIDER_TERMINAL_EVENTS.forEach((eventName) => {
+      mgr.subscribe(eventName, (payload: any) => {
+        console.log(`[EVENT_RX] ${eventName}`, payload)
+        resetRiderDeliveryState({ ...payload, event: eventName })
+        onStatsUpdate?.({ type: eventName, data: payload })
+      })
     })
   }, [token, mgr, onStatsUpdate])
 }

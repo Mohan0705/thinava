@@ -110,6 +110,10 @@ const { repairRestaurantAuthUsers } = require('./modules/restaurantPanel/service
 const { getPasswordResetEmailStatus } = require('./modules/restaurantPanel/services/passwordResetEmailService')
 const { createSocketServer, closeSocketServer } = require('./realtime/socketServer')
 const {
+  startDeliveryDispatchMaintenance,
+  stopDeliveryDispatchMaintenance,
+} = require('./modules/delivery/services/orderService')
+const {
   startRestaurantAvailabilityBroadcaster,
   stopRestaurantAvailabilityBroadcaster,
 } = require('./realtime/restaurantAvailabilityBroadcaster')
@@ -241,8 +245,10 @@ logger.info('All routes mounted', { tag: 'system' })
 // ============================================================
 const io = createSocketServer(server, { corsOrigin: env.FRONTEND_URL })
 app.set('io', io)
+startDeliveryDispatchMaintenance()
 
 registerShutdownTask(async () => {
+  stopDeliveryDispatchMaintenance()
   stopRestaurantAvailabilityBroadcaster()
   await closeSocketServer()
   logger.info('Socket server closed', { tag: 'system' })

@@ -18,6 +18,7 @@ const {
   emitRiderAssignmentRemoved,
   emitRiderAssignmentRequest,
 } = require('../../../realtime/orderEvents')
+const { isDeliveryPartnerConnected } = require('../../../realtime/socketServer')
 
 const ACTIVE_TERMINAL_STATUSES = [
   ORDER_DELIVERY_STATUSES.DELIVERED,
@@ -25,11 +26,26 @@ const ACTIVE_TERMINAL_STATUSES = [
 ]
 
 const ASSIGNMENT_REQUEST_TIMEOUT_MS = 60 * 1000
+const RIDER_LOCATION_FRESHNESS_MS = 60 * 1000
 const scheduledAssignmentTimers = new Map()
+let maintenanceInterval = null
+
+const logAssignment = (tag, payload = {}) => {
+  console.log(`[${tag}]`, {
+    ...payload,
+    timestamp: new Date().toISOString(),
+  })
+}
 
 const toNumber = (value) => Number(value || 0)
 
 const toCurrency = (value) => roundMetric(value || 0)
+
+const isFreshTimestamp = (value, maxAgeMs = RIDER_LOCATION_FRESHNESS_MS) => {
+  if (!value) return false
+  const time = new Date(value).getTime()
+  return Number.isFinite(time) && Date.now() - time <= maxAgeMs
+}
 
 const normalizeDeliveryStatus = (status) => {
   const upper = String(status || ORDER_DELIVERY_STATUSES.ASSIGNED).trim().toUpperCase()
@@ -532,8 +548,17 @@ const scheduleAssignmentExpiry = (orderId, partnerId, excludedPartnerIds = []) =
       client.release()
     }
 
+    logAssignment('ASSIGNMENT_TIMEOUT', {
+      orderId,
+      partnerId,
+    })
     emitRiderAssignmentRemoved(orderId, partnerId, 'expired')
     setTimeout(() => {
+      logAssignment('ASSIGNMENT_REDISPATCHED', {
+        orderId,
+        excludedPartnerIds: [...excludedPartnerIds, partnerId],
+        reason: 'timeout',
+      })
       autoAssignOrder(orderId, {
         excludedPartnerIds: [...excludedPartnerIds, partnerId],
         source: 'assignment_timeout',
@@ -638,6 +663,13 @@ const createAssignmentRequestForPartner = async ({
     [orderId, partnerId, 'ASSIGNMENT_REQUESTED', dispatchNote]
   )
 
+  logAssignment('ASSIGNMENT_REQUESTED', {
+    orderId,
+    partnerId,
+    expiresAt: expiresAt.toISOString(),
+    dispatchNote,
+  })
+
   return { offerMetrics, expiresAt }
 }
 
@@ -647,6 +679,7 @@ const assignLockedOrderToPartner = async ({
   orderId,
   partnerId,
   riderLocation,
+  assignmentId = null,
   assignmentStatus = ASSIGNMENT_STATUSES.ASSIGNED,
   dispatchNote = 'Assigned by Thinava dispatch engine',
 }) => {
@@ -705,32 +738,57 @@ const assignLockedOrderToPartner = async ({
     ]
   )
 
-  await client.query(
-    `INSERT INTO delivery_assignments (
-       order_id,
-       delivery_partner_id,
-       assignment_status,
-       assigned_at,
-       responded_at,
-       earnings,
-       distance_km,
-       updated_at
-     )
-      VALUES ($1::uuid, $2::uuid, $3::text, CURRENT_TIMESTAMP, CASE WHEN $3::text = 'ACCEPTED' THEN CURRENT_TIMESTAMP ELSE NULL END, $4::numeric, $5::numeric, CURRENT_TIMESTAMP)`,
-    [
-      orderId,
-      partnerId,
-      assignmentStatus,
-      offerMetrics.pay.total,
-      offerMetrics.route.dropoffDistanceKm,
-    ]
-  )
+  if (assignmentId) {
+    await client.query(
+      `UPDATE delivery_assignments
+       SET assignment_status = $1::text,
+           responded_at = COALESCE(responded_at, CURRENT_TIMESTAMP),
+           earnings = $3::numeric,
+           distance_km = $4::numeric,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = $2::uuid`,
+      [
+        assignmentStatus,
+        assignmentId,
+        offerMetrics.pay.total,
+        offerMetrics.route.dropoffDistanceKm,
+      ]
+    )
+  } else {
+    await client.query(
+      `INSERT INTO delivery_assignments (
+         order_id,
+         delivery_partner_id,
+         assignment_status,
+         assigned_at,
+         responded_at,
+         earnings,
+         distance_km,
+         updated_at
+       )
+        VALUES ($1::uuid, $2::uuid, $3::text, CURRENT_TIMESTAMP, CASE WHEN $3::text = 'ACCEPTED' THEN CURRENT_TIMESTAMP ELSE NULL END, $4::numeric, $5::numeric, CURRENT_TIMESTAMP)`,
+      [
+        orderId,
+        partnerId,
+        assignmentStatus,
+        offerMetrics.pay.total,
+        offerMetrics.route.dropoffDistanceKm,
+      ]
+    )
+  }
 
   await client.query(
     `INSERT INTO delivery_status_logs (order_id, delivery_partner_id, status, notes)
      VALUES ($1::uuid, $2::uuid, $3::text, $4::text)`,
     [orderId, partnerId, ORDER_DELIVERY_STATUSES.ASSIGNED, dispatchNote]
   )
+
+  logAssignment('ASSIGNMENT_ACCEPTED', {
+    orderId,
+    partnerId,
+    assignmentId,
+    dispatchNote,
+  })
 
   await client.query(
     `INSERT INTO active_deliveries (
@@ -902,6 +960,30 @@ const findBestPartnerForOrder = async (client, order, excludedPartnerIds = []) =
 
   const ranked = riderResult.rows
     .filter((candidate) => !exclusionList.includes(candidate.id))
+    .filter((candidate) => {
+      const hasFreshLocation =
+        coerceCoordinate(candidate.latitude) !== null &&
+        coerceCoordinate(candidate.longitude) !== null &&
+        isFreshTimestamp(candidate.location_timestamp)
+      const hasNoActiveOrders = Number(candidate.active_orders || 0) === 0 && !candidate.current_order_id
+      const socketConnected = isDeliveryPartnerConnected(candidate.id)
+
+      if (!hasFreshLocation || !hasNoActiveOrders || !socketConnected) {
+        logAssignment('ASSIGNMENT_RIDER_SKIPPED', {
+          orderId: order.id,
+          partnerId: candidate.id,
+          reason: !socketConnected
+            ? 'socket_disconnected'
+            : !hasFreshLocation
+              ? 'stale_or_missing_location'
+              : 'active_order_exists',
+          locationTimestamp: candidate.location_timestamp,
+          activeOrders: Number(candidate.active_orders || 0),
+        })
+      }
+
+      return hasFreshLocation && hasNoActiveOrders && socketConnected
+    })
     .map((candidate) => {
       const riderPoint =
         coerceCoordinate(candidate.latitude) !== null && coerceCoordinate(candidate.longitude) !== null
@@ -939,6 +1021,191 @@ const findBestPartnerForOrder = async (client, order, excludedPartnerIds = []) =
     .sort((left, right) => left.score - right.score)
 
   return ranked[0] ?? null
+}
+
+const requestAssignmentForPartner = async (orderId, partnerId, options = {}) => {
+  const normalizedOrderId = ensureUuid(orderId, 'orderId')
+  const normalizedPartnerId = ensureUuid(partnerId, 'partnerId')
+  const client = await pool.connect()
+  let previousPartnerId = null
+
+  try {
+    await client.query('BEGIN')
+
+    const partnerResult = await client.query(
+      `SELECT id, full_name, current_order_id, is_online, is_active, is_suspended, force_offline
+       FROM delivery_partners
+       WHERE id = $1::uuid
+       FOR UPDATE`,
+      [normalizedPartnerId]
+    )
+
+    if (partnerResult.rows.length === 0) {
+      const error = new Error('Delivery partner not found')
+      error.status = 404
+      throw error
+    }
+
+    const partner = partnerResult.rows[0]
+    if (
+      !partner.is_online ||
+      partner.current_order_id ||
+      partner.is_active === false ||
+      partner.is_suspended ||
+      partner.force_offline
+    ) {
+      const error = new Error('Selected rider is not available for assignment')
+      error.status = 400
+      throw error
+    }
+
+    if (!isDeliveryPartnerConnected(normalizedPartnerId)) {
+      const error = new Error('Selected rider app is not connected. Ask the rider to open the app and try again.')
+      error.status = 400
+      throw error
+    }
+
+    const riderLocation = await getLatestPartnerLocationForClient(client, normalizedPartnerId)
+    if (
+      !riderLocation ||
+      coerceCoordinate(riderLocation.latitude) === null ||
+      coerceCoordinate(riderLocation.longitude) === null ||
+      !isFreshTimestamp(riderLocation.timestamp)
+    ) {
+      const error = new Error('Selected rider location is stale. Wait for a fresh GPS ping and try again.')
+      error.status = 400
+      throw error
+    }
+
+    const order = await getOrderDispatchSnapshot(client, normalizedOrderId)
+
+    if (!order) {
+      const error = new Error('Order not found')
+      error.status = 404
+      throw error
+    }
+
+    if (ACTIVE_TERMINAL_STATUSES.includes(order.delivery_status)) {
+      const error = new Error('This delivery task is already closed')
+      error.status = 400
+      throw error
+    }
+
+    if (!['PREPARING', 'READY_FOR_PICKUP'].includes(String(order.status || '').toUpperCase()) && !options.force) {
+      const error = new Error('Order is not ready for rider assignment')
+      error.status = 400
+      throw error
+    }
+
+    previousPartnerId = order.delivery_partner_id
+    if (previousPartnerId && previousPartnerId !== normalizedPartnerId) {
+      await client.query(
+        `UPDATE delivery_partners
+         SET current_order_id = NULL,
+             current_status = 'AVAILABLE',
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = $1::uuid AND current_order_id = $2::uuid`,
+        [previousPartnerId, normalizedOrderId]
+      )
+
+      await client.query(
+        `UPDATE delivery_assignments
+         SET assignment_status = $1::text,
+             rejection_reason = COALESCE(rejection_reason, $4::text),
+             responded_at = COALESCE(responded_at, CURRENT_TIMESTAMP),
+             updated_at = CURRENT_TIMESTAMP
+         WHERE order_id = $2::uuid
+           AND delivery_partner_id = $3::uuid
+           AND assignment_status IN ($5::text, $6::text)`,
+        [
+          ASSIGNMENT_STATUSES.CANCELLED,
+          normalizedOrderId,
+          previousPartnerId,
+          options.reassignmentReason || 'Reassigned by operations',
+          ASSIGNMENT_STATUSES.REQUESTED,
+          ASSIGNMENT_STATUSES.ACCEPTED,
+        ]
+      )
+    }
+
+    await client.query(
+      `UPDATE delivery_assignments
+       SET assignment_status = $1::text,
+           responded_at = COALESCE(responded_at, CURRENT_TIMESTAMP),
+           rejection_reason = COALESCE(rejection_reason, 'Superseded by a new assignment request'),
+           updated_at = CURRENT_TIMESTAMP
+       WHERE order_id = $2::uuid
+         AND assignment_status IN ($3::text, $4::text)`,
+      [
+        ASSIGNMENT_STATUSES.EXPIRED,
+        normalizedOrderId,
+        ASSIGNMENT_STATUSES.REQUESTED,
+        ASSIGNMENT_STATUSES.ASSIGNED,
+      ]
+    )
+
+    await client.query(`DELETE FROM active_deliveries WHERE order_id = $1::uuid`, [normalizedOrderId])
+    await client.query(`DELETE FROM delivery_tracking WHERE order_id = $1::uuid`, [normalizedOrderId])
+    await client.query(
+      `UPDATE orders
+       SET delivery_partner_id = NULL,
+           delivery_assigned_at = NULL,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = $1::uuid`,
+      [normalizedOrderId]
+    )
+
+    const refreshedOrder = {
+      ...order,
+      delivery_partner_id: null,
+    }
+
+    const { offerMetrics, expiresAt } = await createAssignmentRequestForPartner({
+      client,
+      order: refreshedOrder,
+      orderId: normalizedOrderId,
+      partnerId: normalizedPartnerId,
+      riderLocation: {
+        latitude: Number(riderLocation.latitude),
+        longitude: Number(riderLocation.longitude),
+      },
+      dispatchNote: options.dispatchNote || 'Assignment request sent by operations',
+    })
+
+    await client.query('COMMIT')
+
+    if (previousPartnerId && previousPartnerId !== normalizedPartnerId) {
+      emitRiderAssignmentRemoved(normalizedOrderId, previousPartnerId, 'reassigned')
+    }
+
+    scheduleAssignmentExpiry(normalizedOrderId, normalizedPartnerId, options.excludedPartnerIds || [])
+
+    emitRiderAssignmentRequest(normalizedOrderId, normalizedPartnerId, {
+      source: options.source || 'manual_assignment_request',
+      partner_id: normalizedPartnerId,
+      auto_assigned: false,
+      assignment_expires_at: expiresAt.toISOString(),
+      timeout_seconds: ASSIGNMENT_REQUEST_TIMEOUT_MS / 1000,
+    }).catch((error) => {
+      console.error('Failed to emit realtime manual assignment request event', error)
+    })
+
+    return {
+      success: true,
+      order_id: normalizedOrderId,
+      partner_id: normalizedPartnerId,
+      assignment_status: ASSIGNMENT_STATUSES.REQUESTED,
+      assignment_expires_at: expiresAt.toISOString(),
+      estimated_earnings: offerMetrics.pay.total,
+      route_distance_km: offerMetrics.route.routeDistanceKm,
+      estimated_total_eta_minutes: offerMetrics.route.totalEtaMinutes,
+    }
+  } catch (error) {
+    await client.query('ROLLBACK')
+    throw error
+  } finally {
+    client.release()
+  }
 }
 
 const autoAssignOrder = async (orderId, options = {}) => {
@@ -1033,6 +1300,12 @@ const autoAssignOrder = async (orderId, options = {}) => {
       )
 
       await client.query('COMMIT')
+
+      logAssignment('ASSIGNMENT_REDISPATCHED', {
+        orderId: normalizedOrderId,
+        reason: 'no_eligible_rider',
+        source: options.source || 'dispatch_engine',
+      })
 
       emitOrderStatusUpdated(normalizedOrderId, {
         source: options.source || 'dispatch_engine',
@@ -1273,18 +1546,10 @@ const confirmAssignedOrder = async (orderId, partnerId) => {
       orderId: normalizedOrderId,
       partnerId: normalizedPartnerId,
       riderLocation,
+      assignmentId: assignmentResult.rows[0].id,
       assignmentStatus: ASSIGNMENT_STATUSES.ACCEPTED,
       dispatchNote: 'Accepted assignment request from rider app',
     })
-
-    await client.query(
-      `UPDATE delivery_assignments
-       SET assignment_status = $1::text,
-           responded_at = CURRENT_TIMESTAMP,
-           updated_at = CURRENT_TIMESTAMP
-       WHERE id = $2::uuid`,
-      [ASSIGNMENT_STATUSES.ACCEPTED, assignmentResult.rows[0].id]
-    )
 
     await client.query(
       `INSERT INTO delivery_status_logs (order_id, delivery_partner_id, status, notes)
@@ -1432,6 +1697,10 @@ const rejectAssignedOrder = async (orderId, partnerId) => {
       scheduledAssignmentTimers.delete(timerKey)
     }
 
+    logAssignment('ASSIGNMENT_REJECTED', {
+      orderId: normalizedOrderId,
+      partnerId: normalizedPartnerId,
+    })
     emitRiderAssignmentRemoved(normalizedOrderId, normalizedPartnerId, 'rejected')
     emitOrderStatusUpdated(normalizedOrderId, {
       source: 'rider_assignment_rejected',
@@ -1442,6 +1711,11 @@ const rejectAssignedOrder = async (orderId, partnerId) => {
     })
 
     setTimeout(() => {
+      logAssignment('ASSIGNMENT_REDISPATCHED', {
+        orderId: normalizedOrderId,
+        excludedPartnerIds: [normalizedPartnerId],
+        reason: 'rejected',
+      })
       autoAssignOrder(normalizedOrderId, {
         excludedPartnerIds: [normalizedPartnerId],
         source: 'rider_assignment_rejected',
@@ -1449,13 +1723,13 @@ const rejectAssignedOrder = async (orderId, partnerId) => {
       }).catch((error) => {
         console.error('Failed to redispatch rejected assignment', error)
       })
-    }, ASSIGNMENT_REQUEST_TIMEOUT_MS)
+    }, 0)
 
     return {
       success: true,
       order_id: normalizedOrderId,
       redispatch_scheduled: shouldRedispatch,
-      retry_after_seconds: ASSIGNMENT_REQUEST_TIMEOUT_MS / 1000,
+      retry_after_seconds: 0,
     }
   } catch (error) {
     await client.query('ROLLBACK')
@@ -1621,8 +1895,16 @@ const getOrderDetails = async (orderId, partnerId) => {
        ORDER BY updated_at DESC, created_at DESC
        LIMIT 1
      ) da ON TRUE
-     WHERE o.id = $1::uuid AND o.delivery_partner_id = $2::uuid`,
-    [normalizedOrderId, normalizedPartnerId]
+     WHERE o.id = $1::uuid
+       AND o.delivery_partner_id = $2::uuid
+       AND EXISTS (
+         SELECT 1
+         FROM delivery_assignments accepted_assignment
+         WHERE accepted_assignment.order_id = o.id
+           AND accepted_assignment.delivery_partner_id = $2::uuid
+           AND accepted_assignment.assignment_status = $3::text
+       )`,
+    [normalizedOrderId, normalizedPartnerId, ASSIGNMENT_STATUSES.ACCEPTED]
   )
 
   if (result.rows.length === 0) {
@@ -1750,9 +2032,21 @@ const getActiveOrderForPartner = async (partnerId) => {
        FROM orders
        WHERE delivery_partner_id = $1::uuid
          AND delivery_status NOT IN ($2::text, $3::text)
+         AND EXISTS (
+           SELECT 1
+           FROM delivery_assignments da
+           WHERE da.order_id = orders.id
+             AND da.delivery_partner_id = $1::uuid
+             AND da.assignment_status = $4::text
+         )
        ORDER BY delivery_assigned_at DESC NULLS LAST, created_at DESC
        LIMIT 1`,
-      [normalizedPartnerId, ORDER_DELIVERY_STATUSES.DELIVERED, ORDER_DELIVERY_STATUSES.CANCELLED]
+      [
+        normalizedPartnerId,
+        ORDER_DELIVERY_STATUSES.DELIVERED,
+        ORDER_DELIVERY_STATUSES.CANCELLED,
+        ASSIGNMENT_STATUSES.ACCEPTED,
+      ]
     )
 
     currentOrderId = orderResult.rows[0]?.id ?? null
@@ -1768,6 +2062,29 @@ const getActiveOrderForPartner = async (partnerId) => {
   }
 
   if (!currentOrderId) {
+    return null
+  }
+
+  const acceptedAssignmentResult = await pool.query(
+    `SELECT 1
+     FROM delivery_assignments
+     WHERE order_id = $1::uuid
+       AND delivery_partner_id = $2::uuid
+       AND assignment_status = $3::text
+     LIMIT 1`,
+    [currentOrderId, normalizedPartnerId, ASSIGNMENT_STATUSES.ACCEPTED]
+  )
+
+  if (acceptedAssignmentResult.rows.length === 0) {
+    await pool.query(
+      `UPDATE delivery_partners
+       SET current_order_id = NULL,
+           current_status = CASE WHEN is_online THEN 'AVAILABLE' ELSE 'OFFLINE' END,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = $1::uuid
+         AND current_order_id = $2::uuid`,
+      [normalizedPartnerId, currentOrderId]
+    )
     return null
   }
 
@@ -1814,11 +2131,137 @@ const dispatchPendingOrders = async (limit = 5) => {
   return outcomes
 }
 
+const cleanupExpiredAssignmentRequests = async (limit = 25) => {
+  const client = await pool.connect()
+  const expired = []
+
+  try {
+    await client.query('BEGIN')
+
+    const result = await client.query(
+      `SELECT order_id, delivery_partner_id
+       FROM delivery_assignments
+       WHERE assignment_status IN ($1::text, $2::text)
+         AND expires_at <= CURRENT_TIMESTAMP
+       ORDER BY expires_at ASC
+       LIMIT $3::int
+       FOR UPDATE SKIP LOCKED`,
+      [ASSIGNMENT_STATUSES.REQUESTED, ASSIGNMENT_STATUSES.ASSIGNED, limit]
+    )
+
+    for (const row of result.rows) {
+      expired.push(row)
+    }
+
+    if (expired.length > 0) {
+      await client.query(
+        `UPDATE delivery_assignments
+         SET assignment_status = $1::text,
+             responded_at = COALESCE(responded_at, CURRENT_TIMESTAMP),
+             rejection_reason = COALESCE(rejection_reason, 'Assignment timed out'),
+             updated_at = CURRENT_TIMESTAMP
+         WHERE assignment_status IN ($2::text, $3::text)
+           AND expires_at <= CURRENT_TIMESTAMP`,
+        [
+          ASSIGNMENT_STATUSES.EXPIRED,
+          ASSIGNMENT_STATUSES.REQUESTED,
+          ASSIGNMENT_STATUSES.ASSIGNED,
+        ]
+      )
+
+      await client.query(
+        `UPDATE orders
+         SET rider_assignment_status = 'QUEUED',
+             assignment_expires_at = NULL,
+             delivery_status = $1::text,
+             updated_at = CURRENT_TIMESTAMP
+         WHERE delivery_partner_id IS NULL
+           AND rider_assignment_status IN ($2::text, $3::text)
+           AND assignment_expires_at <= CURRENT_TIMESTAMP`,
+        [
+          ORDER_DELIVERY_STATUSES.PENDING,
+          ASSIGNMENT_STATUSES.REQUESTED,
+          ASSIGNMENT_STATUSES.ASSIGNED,
+        ]
+      )
+    }
+
+    await client.query('COMMIT')
+  } catch (error) {
+    await client.query('ROLLBACK')
+    throw error
+  } finally {
+    client.release()
+  }
+
+  for (const row of expired) {
+    const key = `${row.order_id}:${row.delivery_partner_id}`
+    const existingTimer = scheduledAssignmentTimers.get(key)
+    if (existingTimer) {
+      clearTimeout(existingTimer)
+      scheduledAssignmentTimers.delete(key)
+    }
+
+    logAssignment('ASSIGNMENT_TIMEOUT', {
+      orderId: row.order_id,
+      partnerId: row.delivery_partner_id,
+      source: 'cleanup_job',
+    })
+    emitRiderAssignmentRemoved(row.order_id, row.delivery_partner_id, 'expired')
+    logAssignment('ASSIGNMENT_REDISPATCHED', {
+      orderId: row.order_id,
+      excludedPartnerIds: [row.delivery_partner_id],
+      reason: 'cleanup_timeout',
+    })
+    autoAssignOrder(row.order_id, {
+      excludedPartnerIds: [row.delivery_partner_id],
+      source: 'assignment_cleanup',
+      dispatchNote: 'Reassigned after expired assignment cleanup',
+    }).catch((error) => {
+      console.error('Failed to redispatch cleaned-up assignment', error)
+    })
+  }
+
+  return {
+    success: true,
+    expired_count: expired.length,
+  }
+}
+
+const startDeliveryDispatchMaintenance = (intervalMs = 15000) => {
+  if (maintenanceInterval) {
+    clearInterval(maintenanceInterval)
+  }
+
+  maintenanceInterval = setInterval(() => {
+    cleanupExpiredAssignmentRequests().catch((error) => {
+      console.error('Failed to clean up expired assignment requests', error)
+    })
+  }, intervalMs)
+  maintenanceInterval.unref()
+}
+
+const stopDeliveryDispatchMaintenance = () => {
+  if (maintenanceInterval) {
+    clearInterval(maintenanceInterval)
+    maintenanceInterval = null
+  }
+
+  for (const timer of scheduledAssignmentTimers.values()) {
+    clearTimeout(timer)
+  }
+  scheduledAssignmentTimers.clear()
+}
+
 module.exports = {
   autoAssignOrder,
   dispatchPendingOrders,
+  cleanupExpiredAssignmentRequests,
+  startDeliveryDispatchMaintenance,
+  stopDeliveryDispatchMaintenance,
   getAvailableOrders,
   assignOrderToPartner,
+  requestAssignmentForPartner,
   confirmAssignedOrder,
   rejectAssignedOrder,
   reportFoodNotReady,

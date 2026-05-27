@@ -43,6 +43,13 @@ const normalizeDeliveryStatus = (status) => {
   return DELIVERY_STATUS_ALIASES[upper] || upper
 }
 
+const logRiderStatus = (tag, payload = {}) => {
+  console.log(`[${tag}]`, {
+    ...payload,
+    timestamp: new Date().toISOString(),
+  })
+}
+
 const ensureUuid = (value, fieldName) => {
   const normalized = String(value || '').trim()
 
@@ -294,6 +301,7 @@ const updateDeliveryStatus = async (
   const normalizedPartnerId = ensureUuid(partnerId, 'partnerId')
   const status = normalizeDeliveryStatus(requestedStatus)
   const client = await pool.connect()
+  let transactionOpen = false
 
   if (!Object.values(ORDER_DELIVERY_STATUSES).includes(status)) {
     const error = new Error(`Unsupported delivery status: ${requestedStatus}`)
@@ -301,8 +309,17 @@ const updateDeliveryStatus = async (
     throw error
   }
 
+  logRiderStatus('RIDER_STATUS_UPDATE', {
+    orderId: normalizedOrderId,
+    partnerId: normalizedPartnerId,
+    requestedStatus,
+    status,
+    hasCoordinates: latitude !== null && latitude !== undefined && longitude !== null && longitude !== undefined,
+  })
+
   try {
     await client.query('BEGIN')
+    transactionOpen = true
 
     const orderResult = await client.query(
       `SELECT
@@ -333,12 +350,19 @@ const updateDeliveryStatus = async (
        JOIN restaurants r ON r.id = o.restaurant_id
        JOIN addresses a ON a.id = o.address_id
        WHERE o.id = $1::uuid AND o.delivery_partner_id = $2::uuid
+         AND EXISTS (
+           SELECT 1
+           FROM delivery_assignments da
+           WHERE da.order_id = o.id
+             AND da.delivery_partner_id = $2::uuid
+             AND da.assignment_status = $3::text
+         )
        FOR UPDATE`,
-      [normalizedOrderId, normalizedPartnerId]
+      [normalizedOrderId, normalizedPartnerId, ASSIGNMENT_STATUSES.ACCEPTED]
     )
 
     if (orderResult.rows.length === 0) {
-      const error = new Error('Order not found or not assigned to this partner')
+      const error = new Error('Active delivery not found. Accept the assignment before updating status.')
       error.status = 404
       throw error
     }
@@ -364,6 +388,7 @@ const updateDeliveryStatus = async (
     if (!allowedTransitions.includes(status)) {
       const error = new Error(`Cannot move delivery from ${currentDeliveryStatus} to ${status}`)
       error.status = 400
+      error.code = 'INVALID_DELIVERY_TRANSITION'
       throw error
     }
 
@@ -371,11 +396,13 @@ const updateDeliveryStatus = async (
     if (status === ORDER_DELIVERY_STATUSES.CASH_COLLECTED && !isCodOrder) {
       const error = new Error('Cash collection is only available for COD orders')
       error.status = 400
+      error.code = 'COD_ONLY_ACTION'
       throw error
     }
     if (status === ORDER_DELIVERY_STATUSES.DELIVERED && isCodOrder && !order.cash_collected) {
       const error = new Error('Collect cash before completing this COD delivery')
       error.status = 400
+      error.code = 'COD_CASH_REQUIRED'
       throw error
     }
 
@@ -399,6 +426,7 @@ const updateDeliveryStatus = async (
       if (!riderLocation) {
         const error = new Error('Live GPS location is required for this delivery action')
         error.status = 400
+        error.code = 'GPS_REQUIRED'
         throw error
       }
 
@@ -411,7 +439,48 @@ const updateDeliveryStatus = async (
             : `You are too far from the restaurant. Remaining distance: ${remainingMeters} meters.`
         )
         error.status = 400
+        error.code = 'GPS_OUT_OF_RANGE'
         throw error
+      }
+    }
+
+    if ([ORDER_DELIVERY_STATUSES.DELIVERED, ORDER_DELIVERY_STATUSES.CANCELLED].includes(status)) {
+      await client.query('ROLLBACK')
+      transactionOpen = false
+
+      const {
+        updateOrderLifecycleState,
+        ORDER_STATUS,
+      } = require('../../orders/orderLifecycleService')
+
+      const lifecycleStatus =
+        status === ORDER_DELIVERY_STATUSES.DELIVERED
+          ? ORDER_STATUS.DELIVERED
+          : ORDER_STATUS.CANCELLED
+      const lifecycleResult = await updateOrderLifecycleState(normalizedOrderId, lifecycleStatus, {
+        source: 'delivery_status_update',
+        deliveryStatus: status,
+        expectedRiderId: normalizedPartnerId,
+        reason: notes || undefined,
+      })
+
+      logRiderStatus('RIDER_STATUS_SUCCESS', {
+        orderId: normalizedOrderId,
+        partnerId: normalizedPartnerId,
+        status,
+        orderStatus: lifecycleResult.status,
+        centralizedLifecycle: true,
+      })
+
+      return {
+        success: true,
+        status,
+        order_status: lifecycleResult.status?.toLowerCase(),
+        earnings_total: Number(order.estimated_earning || 0),
+        distance_km: Number(order.dropoff_distance_km || 0),
+        duration_minutes: Number(order.estimated_total_eta_minutes || 0),
+        gps_validation: gpsValidationSnapshot,
+        lifecycle: lifecycleResult,
       }
     }
 
@@ -499,8 +568,8 @@ const updateDeliveryStatus = async (
       await client.query(
         `UPDATE delivery_partners
          SET last_seen_at = CURRENT_TIMESTAMP,
-             last_latitude = $2,
-             last_longitude = $3,
+             last_latitude = $2::numeric,
+             last_longitude = $3::numeric,
              last_location_at = CURRENT_TIMESTAMP,
              updated_at = CURRENT_TIMESTAMP
          WHERE id = $1::uuid`,
@@ -522,9 +591,7 @@ const updateDeliveryStatus = async (
     )
 
     let assignmentStatus = ASSIGNMENT_STATUSES.ACCEPTED
-    if (status === ORDER_DELIVERY_STATUSES.PICKED_UP) {
-      assignmentStatus = ASSIGNMENT_STATUSES.PICKED_UP
-    } else if (status === ORDER_DELIVERY_STATUSES.DELIVERED) {
+    if (status === ORDER_DELIVERY_STATUSES.DELIVERED) {
       assignmentStatus = ASSIGNMENT_STATUSES.DELIVERED
     } else if (status === ORDER_DELIVERY_STATUSES.CANCELLED) {
       assignmentStatus = ASSIGNMENT_STATUSES.CANCELLED
@@ -533,7 +600,6 @@ const updateDeliveryStatus = async (
     await client.query(
        `UPDATE delivery_assignments
         SET assignment_status = $1::text,
-            picked_up_at = CASE WHEN $1::text = 'PICKED_UP' THEN CURRENT_TIMESTAMP ELSE picked_up_at END,
             delivered_at = CASE WHEN $1::text = 'DELIVERED' THEN CURRENT_TIMESTAMP ELSE delivered_at END,
             updated_at = CURRENT_TIMESTAMP
         WHERE order_id = $2::uuid AND delivery_partner_id = $3::uuid`,
@@ -713,6 +779,14 @@ const updateDeliveryStatus = async (
     }
 
     await client.query('COMMIT')
+    transactionOpen = false
+
+    logRiderStatus('RIDER_STATUS_SUCCESS', {
+      orderId: normalizedOrderId,
+      partnerId: normalizedPartnerId,
+      status,
+      orderStatus,
+    })
 
     emitDeliveryStatusUpdated(normalizedOrderId, {
       source: 'delivery_status_update',
@@ -763,7 +837,18 @@ const updateDeliveryStatus = async (
       gps_validation: gpsValidationSnapshot,
     }
   } catch (error) {
-    await client.query('ROLLBACK')
+    if (transactionOpen) {
+      await client.query('ROLLBACK')
+      transactionOpen = false
+    }
+    logRiderStatus(error?.routine || error?.severity ? 'RIDER_STATUS_SQL_ERROR' : 'RIDER_STATUS_VALIDATION_FAILED', {
+      orderId: normalizedOrderId,
+      partnerId: normalizedPartnerId,
+      requestedStatus,
+      status,
+      error: error.message,
+      code: error.code,
+    })
     throw error
   } finally {
     client.release()

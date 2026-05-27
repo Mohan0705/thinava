@@ -7,7 +7,7 @@ const {
   emitOrderStatusUpdated,
 } = require('../../../realtime/orderEvents')
 const { buildDeliveryOfferMetrics } = require('../../delivery/services/logisticsService')
-const { autoAssignOrder } = require('../../delivery/services/orderService')
+const { autoAssignOrder, requestAssignmentForPartner } = require('../../delivery/services/orderService')
 const { updateOrderLifecycleState, ORDER_STATUS, DELIVERY_STATUS, normalizeStatus } = require('../../orders/orderLifecycleService')
 const {
   ADMIN_ROLES,
@@ -805,6 +805,28 @@ const cancelOrder = async (orderId, reason, adminUser) => {
 }
 
 const reassignRider = async (orderId, riderId, adminUser) => {
+  const result = await requestAssignmentForPartner(orderId, riderId, {
+    force: true,
+    source: 'admin_reassignment',
+    dispatchNote: 'Assignment request triggered by admin reassignment',
+    reassignmentReason: 'Reassigned by admin control center',
+  })
+
+  await recordActivity({
+    adminUserId: adminUser.id,
+    action: 'rider_reassignment_requested',
+    entityType: 'order',
+    entityId: orderId,
+    description: `Delivery assignment request sent to rider ${riderId}`,
+    metadata: {
+      rider_id: riderId,
+      assignment_status: result.assignment_status,
+      assignment_expires_at: result.assignment_expires_at,
+    },
+  })
+
+  return result
+
   const client = await pool.connect()
 
   try {

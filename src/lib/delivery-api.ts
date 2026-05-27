@@ -142,7 +142,8 @@ export const deliveryApi = {
     orderId: string,
     status: string,
     latitude?: number,
-    longitude?: number
+    longitude?: number,
+    options?: { notes?: string; cash_collected?: boolean }
   ) {
     return apiRequest<{ success: boolean; message: string }>(
       '/delivery/orders/status',
@@ -154,6 +155,8 @@ export const deliveryApi = {
           status,
           latitude,
           longitude,
+          notes: options?.notes,
+          cash_collected: options?.cash_collected,
         }),
       }
     )

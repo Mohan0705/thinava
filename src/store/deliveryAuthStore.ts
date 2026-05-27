@@ -37,6 +37,7 @@ interface DeliveryAuthStore {
   updateRating: (rating: number) => void
   updateOnlineStatus: (isOnline: boolean) => void
   syncPartnerStats: (stats: Partial<DeliveryPartner>) => void
+  clearActiveDeliverySession: () => void
 }
 
 export const useDeliveryAuthStore = create<DeliveryAuthStore>()(
@@ -205,6 +206,26 @@ export const useDeliveryAuthStore = create<DeliveryAuthStore>()(
           
           return updates
         })
+      },
+
+      clearActiveDeliverySession: () => {
+        console.log('[RIDER_STATE_RESET]', {
+          source: 'deliveryAuthStore',
+          timestamp: new Date().toISOString(),
+        })
+        set((state) => ({
+          partner: state.partner
+            ? {
+              ...state.partner,
+                current_order_id: undefined,
+                current_status: state.partner.is_online ? 'AVAILABLE' : 'OFFLINE',
+              }
+            : null,
+          realtimeStats: {
+            ...state.realtimeStats,
+            isOnline: Boolean(state.partner?.is_online ?? state.realtimeStats.isOnline),
+          },
+        }))
       },
     }),
     {
