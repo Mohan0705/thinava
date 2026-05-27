@@ -1,43 +1,110 @@
-'use client'
+"use client";
 
-import Link from 'next/link'
-import { usePathname } from 'next/navigation'
-import { Bike, CalendarDays, Coins, LayoutGrid, MenuSquare } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import {
+  Home,
+  Navigation,
+  Wallet,
+  CalendarClock,
+  User,
+} from "lucide-react";
 
-const navItems = [
-  { href: '/delivery/dashboard', label: 'Home', icon: LayoutGrid },
-  { href: '/delivery/orders', label: 'Offers', icon: Bike },
-  { href: '/delivery/earnings', label: 'Earnings', icon: Coins },
-  { href: '/delivery/shifts', label: 'Shifts', icon: CalendarDays },
-  { href: '/delivery/more', label: 'More', icon: MenuSquare },
-]
+const tabs = [
+  {
+    to: "/delivery/dashboard",
+    label: "Home",
+    icon: Home,
+  },
+  {
+    to: "/delivery/orders",
+    label: "Live",
+    icon: Navigation,
+  },
+  {
+    to: "/delivery/earnings",
+    label: "Earnings",
+    icon: Wallet,
+  },
+  {
+    to: "/delivery/shifts",
+    label: "Shifts",
+    icon: CalendarClock,
+  },
+  {
+    to: "/delivery/profile",
+    label: "Profile",
+    icon: User,
+  },
+] as const;
 
 export function DeliveryBottomNav() {
-  const pathname = usePathname()
+  const pathname = usePathname();
 
   return (
-    <nav className="fixed bottom-[calc(0.75rem+env(safe-area-inset-bottom))] left-1/2 z-50 w-[calc(100%-1.5rem)] max-w-xl -translate-x-1/2 md:hidden">
-      <div className="grid grid-cols-5 rounded-2xl border border-slate-200 bg-white/96 p-1.5 shadow-[0_24px_72px_-42px_rgba(15,23,42,0.9)] ring-1 ring-slate-950/5 backdrop-blur-xl">
-        {navItems.map((item) => {
-          const Icon = item.icon
-          const isActive = pathname === item.href
+    <nav className="fixed inset-x-0 bottom-0 z-[90] px-4 pb-4 pt-2 md:hidden">
+      <div className="pointer-events-auto mx-auto max-w-md">
+        <div className="glass relative overflow-hidden rounded-full border border-white/10 px-2 py-2 shadow-2xl backdrop-blur-2xl">
+          <div className="absolute inset-0 bg-gradient-to-r from-orange-500/5 via-transparent to-orange-400/5" />
 
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={cn(
-                'flex flex-col items-center gap-1 rounded-xl px-2 py-2 text-[11px] font-semibold transition-all',
-                isActive ? 'bg-orange-500 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-950'
-              )}
-            >
-              <Icon className="h-4 w-4" />
-              <span>{item.label}</span>
-            </Link>
-          )
-        })}
+          <div className="relative flex items-center justify-between gap-1">
+            {tabs.map(({ to, label, icon: Icon }) => {
+              const active = pathname === to;
+
+              return (
+                <Link
+                  key={to}
+                  href={to}
+                  className={`
+                    group relative flex flex-1 flex-col items-center justify-center
+                    gap-1 rounded-full px-2 py-2.5
+                    transition-all duration-300 ease-out
+                    ${
+                      active
+                        ? "text-white"
+                        : "text-white/60 hover:text-white/90"
+                    }
+                  `}
+                >
+                  {active && (
+                    <div className="absolute inset-0 rounded-full bg-gradient-to-br from-[#FF7A2F] to-[#FF5A36] shadow-[0_0_24px_rgba(255,122,47,0.45)]" />
+                  )}
+
+                  {active && (
+                    <div className="absolute inset-0 rounded-full bg-orange-500/20 blur-xl" />
+                  )}
+
+                  <div className="relative z-10">
+                    <Icon
+                      className={`
+                        h-5 w-5 transition-all duration-300
+                        ${active ? "scale-110" : "scale-100"}
+                      `}
+                      strokeWidth={active ? 2.5 : 2}
+                    />
+                  </div>
+
+                  <span
+                    className={`
+                      relative z-10 text-[10px] font-medium tracking-wide
+                      transition-all duration-300
+                      ${active ? "opacity-100" : "opacity-80"}
+                    `}
+                  >
+                    {label}
+                  </span>
+
+                  {active && (
+                    <span className="absolute -top-0.5 right-[30%] h-1.5 w-1.5 animate-pulse rounded-full bg-white" />
+                  )}
+                </Link>
+              );
+            })}
+          </div>
+        </div>
       </div>
     </nav>
-  )
+  );
 }
+
+export default DeliveryBottomNav;
