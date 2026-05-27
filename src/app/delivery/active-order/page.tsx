@@ -28,6 +28,7 @@ import { useDeliveryOrderStore } from '@/store/deliveryOrderStore'
 import { deliveryApi } from '@/lib/delivery-api'
 import { getRealtimeSocket, releaseRealtimeSocket } from '@/lib/realtime'
 import { resetRiderDeliveryState } from '@/lib/realtimeManager'
+import { reconcileRiderDeliveryState, resetReconciliationTimer } from '@/lib/deliveryStateReconciliation'
 import { DeliveryRealtimeEvent } from '@/types/delivery'
 import { SUPPORT_TEL, getWhatsAppLink } from '@/lib/support'
 import { calculateDistanceKm, openOsmDirections } from '@/lib/maps/geo'
@@ -89,6 +90,7 @@ export default function DeliveryActiveOrderPage() {
   const [status, setStatus] = useState<string>('ASSIGNED')
   const lastLocationSyncRef = useRef<{ lat: number; lng: number; syncedAt: number } | null>(null)
   const lastLocationRenderRef = useRef<{ lat: number; lng: number; renderedAt: number } | null>(null)
+  const pendingSocketAcksRef = useRef<Map<string, NodeJS.Timeout>>(new Map())
 
   const applyCurrentLocation = (nextLocation: { lat: number; lng: number }) => {
     const previous = lastLocationRenderRef.current
@@ -111,6 +113,9 @@ export default function DeliveryActiveOrderPage() {
       return
     }
 
+    // [STATE_RECONCILIATION] Reconcile on mount
+    void reconcileRiderDeliveryState(token, 'page_mount')
+
     void loadActiveOrder()
     const fallbackInterval = window.setInterval(() => {
       void loadActiveOrder(true)
@@ -118,14 +123,24 @@ export default function DeliveryActiveOrderPage() {
 
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
+        void reconcileRiderDeliveryState(token, 'visibility_change')
         void loadActiveOrder(true)
       }
     }
     document.addEventListener('visibilitychange', handleVisibilityChange)
 
+    const handleFocus = () => {
+      void reconcileRiderDeliveryState(token, 'focus')
+    }
+    window.addEventListener('focus', handleFocus)
+
     return () => {
       window.clearInterval(fallbackInterval)
       document.removeEventListener('visibilitychange', handleVisibilityChange)
+      window.removeEventListener('focus', handleFocus)
+      // Clear any pending ACK timeouts
+      pendingSocketAcksRef.current.forEach((timeout) => clearTimeout(timeout))
+      pendingSocketAcksRef.current.clear()
     }
   }, [router, token])
 
@@ -165,15 +180,37 @@ export default function DeliveryActiveOrderPage() {
       }
     }
 
-    const handleDeliveryCompleted = (payload: any) => {
+    const handleDeliveryCompleted = (payload: any, ack?: () => void) => {
       if (payload?.order_id === activeOrderIdRef.current) {
+        // [SOCKET_ACK] Acknowledge receipt to backend
+        if (typeof ack === 'function') {
+          console.log('[SOCKET_ACK]', {
+            orderId: payload.order_id,
+            event: 'delivery_completed',
+            timestamp: new Date().toISOString(),
+          })
+          ack()
+          resetReconciliationTimer()
+        }
+
         toast.success(`Delivery completed! Rs. ${Number(payload.payout_amount || 0).toFixed(0)} added to wallet`)
         handleTerminalClose(payload)
       }
     }
 
-    const handleOrderCancelled = (payload: any) => {
+    const handleOrderCancelled = (payload: any, ack?: () => void) => {
       if (payload?.order_id === activeOrderIdRef.current) {
+        // [SOCKET_ACK] Acknowledge receipt to backend
+        if (typeof ack === 'function') {
+          console.log('[SOCKET_ACK]', {
+            orderId: payload.order_id,
+            event: 'order_cancelled',
+            timestamp: new Date().toISOString(),
+          })
+          ack()
+          resetReconciliationTimer()
+        }
+
         toast.info(payload.message || 'This delivery has been cancelled')
         handleTerminalClose(payload)
       }
@@ -189,12 +226,32 @@ export default function DeliveryActiveOrderPage() {
     socket.on('delivery:location_updated', handleLocationUpdate)
     socket.on('delivery_completed', handleDeliveryCompleted)
     socket.on('order_cancelled', handleOrderCancelled)
-    socket.on('ORDER_COMPLETED', handleDeliveryCompleted)
-    socket.on('ORDER_CANCELLED', handleOrderCancelled)
-    socket.on('ORDER_MOVED_TO_HISTORY', handleTerminalClose)
-    socket.on('RIDER_ORDER_CLOSED', handleTerminalClose)
-    socket.on('RIDER_AVAILABLE', handleTerminalClose)
-    socket.on('ACTIVE_DELIVERY_CLEARED', handleTerminalClose)
+    socket.on('ORDER_COMPLETED', (payload: any, ack?: () => void) => handleDeliveryCompleted(payload, ack))
+    socket.on('ORDER_CANCELLED', (payload: any, ack?: () => void) => handleOrderCancelled(payload, ack))
+    socket.on('ORDER_MOVED_TO_HISTORY', (payload: any, ack?: () => void) => {
+      if (typeof ack === 'function') ack()
+      handleTerminalClose(payload)
+    })
+    socket.on('RIDER_ORDER_CLOSED', (payload: any, ack?: () => void) => {
+      if (typeof ack === 'function') ack()
+      handleTerminalClose(payload)
+    })
+    socket.on('RIDER_AVAILABLE', (payload: any, ack?: () => void) => {
+      if (typeof ack === 'function') ack()
+      handleTerminalClose(payload)
+    })
+    socket.on('ACTIVE_DELIVERY_CLEARED', (payload: any, ack?: () => void) => {
+      if (typeof ack === 'function') ack()
+      handleTerminalClose(payload)
+    })
+
+    // [SOCKET_RECONNECT] Trigger reconciliation on socket reconnect
+    socket.on('connect', () => {
+      console.log('[SOCKET_RECONNECT]', {
+        timestamp: new Date().toISOString(),
+      })
+      void reconcileRiderDeliveryState(token, 'socket_reconnect')
+    })
 
     return () => {
       socket.off('delivery:active_order_updated', handleActiveOrderUpdate)
@@ -207,12 +264,13 @@ export default function DeliveryActiveOrderPage() {
       socket.off('delivery:location_updated', handleLocationUpdate)
       socket.off('delivery_completed', handleDeliveryCompleted)
       socket.off('order_cancelled', handleOrderCancelled)
-      socket.off('ORDER_COMPLETED', handleDeliveryCompleted)
-      socket.off('ORDER_CANCELLED', handleOrderCancelled)
-      socket.off('ORDER_MOVED_TO_HISTORY', handleTerminalClose)
-      socket.off('RIDER_ORDER_CLOSED', handleTerminalClose)
-      socket.off('RIDER_AVAILABLE', handleTerminalClose)
-      socket.off('ACTIVE_DELIVERY_CLEARED', handleTerminalClose)
+      socket.off('ORDER_COMPLETED')
+      socket.off('ORDER_CANCELLED')
+      socket.off('ORDER_MOVED_TO_HISTORY')
+      socket.off('RIDER_ORDER_CLOSED')
+      socket.off('RIDER_AVAILABLE')
+      socket.off('ACTIVE_DELIVERY_CLEARED')
+      socket.off('connect')
       releaseRealtimeSocket('delivery_partner', token)
     }
   }, [token])

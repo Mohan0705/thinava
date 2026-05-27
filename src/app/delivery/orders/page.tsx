@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { motion } from 'framer-motion'
 import { ArrowLeft, BellRing, Clock3, Loader, MapPinned, Navigation, RadioTower, RefreshCw } from 'lucide-react'
@@ -12,6 +12,7 @@ import { DeliveryLiveMap } from '@/components/delivery/DeliveryLiveMap'
 import { deliveryApi } from '@/lib/delivery-api'
 import { getRealtimeSocket, releaseRealtimeSocket } from '@/lib/realtime'
 import { resetRiderDeliveryState } from '@/lib/realtimeManager'
+import { reconcileRiderDeliveryState, resetReconciliationTimer } from '@/lib/deliveryStateReconciliation'
 import { useDeliveryAuthStore } from '@/store/deliveryAuthStore'
 import { useDeliveryOrderStore } from '@/store/deliveryOrderStore'
 
@@ -26,22 +27,33 @@ export default function DeliveryOrdersPage() {
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [currentLocation, setCurrentLocation] = useState<{ latitude: number; longitude: number } | null>(null)
+  const [abortController, setAbortController] = useState<AbortController | null>(null)
 
   const loadAssignedOrder = async (background = false) => {
     if (!token) {
       return
     }
 
+    const controller = new AbortController()
+    setAbortController(controller)
+
     try {
       const result = await deliveryApi.getActiveOrder(token)
-      setActiveOrder(result.order)
+      
+      // Only update state if this request hasn't been aborted
+      if (!controller.signal.aborted) {
+        setActiveOrder(result.order)
+      }
     } catch (error) {
-      if (!background) {
+      // Only show error if request wasn't aborted
+      if (!controller.signal.aborted && !background) {
         toast.error(error instanceof Error ? error.message : 'Failed to load assigned order')
       }
     } finally {
-      setLoading(false)
-      setRefreshing(false)
+      if (!controller.signal.aborted) {
+        setLoading(false)
+        setRefreshing(false)
+      }
     }
   }
 
@@ -51,7 +63,14 @@ export default function DeliveryOrdersPage() {
       return
     }
 
+    // [STATE_RECONCILIATION] Reconcile on mount
+    void reconcileRiderDeliveryState(token, 'delivery_orders_mount')
     void loadAssignedOrder()
+
+    return () => {
+      // Cleanup: abort any pending requests
+      abortController?.abort()
+    }
   }, [router, token])
 
   useEffect(() => {
@@ -81,34 +100,53 @@ export default function DeliveryOrdersPage() {
       void loadAssignedOrder(true)
     }
 
-    const handleTerminalEvent = (payload: any) => {
+    const handleTerminalEvent = (payload: any, ack?: () => void) => {
+      // [SOCKET_ACK] Acknowledge receipt if provided
+      if (typeof ack === 'function') {
+        console.log('[SOCKET_ACK_DELIVERY_ORDERS]', {
+          orderId: payload?.order_id,
+          event: 'terminal',
+          timestamp: new Date().toISOString(),
+        })
+        ack()
+        resetReconciliationTimer() // Clear 3-sec timeout
+      }
       resetRiderDeliveryState(payload)
     }
 
     socket.on('delivery:active_order_updated', handleAssignedOrder)
     socket.on('ORDER_ASSIGNED', handleAssignedOrder)
     socket.on('delivery:offer_removed', handleAssignedOrder)
-    socket.on('ORDER_COMPLETED', handleTerminalEvent)
-    socket.on('ORDER_CANCELLED', handleTerminalEvent)
-    socket.on('ORDER_MOVED_TO_HISTORY', handleTerminalEvent)
-    socket.on('RIDER_ORDER_CLOSED', handleTerminalEvent)
-    socket.on('RIDER_AVAILABLE', handleTerminalEvent)
-    socket.on('ACTIVE_DELIVERY_CLEARED', handleTerminalEvent)
-    socket.on('delivery_completed', handleTerminalEvent)
-    socket.on('order_cancelled', handleTerminalEvent)
+    socket.on('ORDER_COMPLETED', (payload: any, ack?: () => void) => handleTerminalEvent(payload, ack))
+    socket.on('ORDER_CANCELLED', (payload: any, ack?: () => void) => handleTerminalEvent(payload, ack))
+    socket.on('ORDER_MOVED_TO_HISTORY', (payload: any, ack?: () => void) => handleTerminalEvent(payload, ack))
+    socket.on('RIDER_ORDER_CLOSED', (payload: any, ack?: () => void) => handleTerminalEvent(payload, ack))
+    socket.on('RIDER_AVAILABLE', (payload: any, ack?: () => void) => handleTerminalEvent(payload, ack))
+    socket.on('ACTIVE_DELIVERY_CLEARED', (payload: any, ack?: () => void) => handleTerminalEvent(payload, ack))
+    socket.on('delivery_completed', (payload: any, ack?: () => void) => handleTerminalEvent(payload, ack))
+    socket.on('order_cancelled', (payload: any, ack?: () => void) => handleTerminalEvent(payload, ack))
+
+    // [SOCKET_RECONNECT] Trigger reconciliation on socket reconnect
+    socket.on('connect', () => {
+      console.log('[SOCKET_RECONNECT_DELIVERY_ORDERS]', {
+        timestamp: new Date().toISOString(),
+      })
+      void reconcileRiderDeliveryState(token, 'socket_reconnect_delivery_orders')
+    })
 
     return () => {
       socket.off('delivery:active_order_updated', handleAssignedOrder)
       socket.off('ORDER_ASSIGNED', handleAssignedOrder)
       socket.off('delivery:offer_removed', handleAssignedOrder)
-      socket.off('ORDER_COMPLETED', handleTerminalEvent)
-      socket.off('ORDER_CANCELLED', handleTerminalEvent)
-      socket.off('ORDER_MOVED_TO_HISTORY', handleTerminalEvent)
-      socket.off('RIDER_ORDER_CLOSED', handleTerminalEvent)
-      socket.off('RIDER_AVAILABLE', handleTerminalEvent)
-      socket.off('ACTIVE_DELIVERY_CLEARED', handleTerminalEvent)
-      socket.off('delivery_completed', handleTerminalEvent)
-      socket.off('order_cancelled', handleTerminalEvent)
+      socket.off('ORDER_COMPLETED')
+      socket.off('ORDER_CANCELLED')
+      socket.off('ORDER_MOVED_TO_HISTORY')
+      socket.off('RIDER_ORDER_CLOSED')
+      socket.off('RIDER_AVAILABLE')
+      socket.off('ACTIVE_DELIVERY_CLEARED')
+      socket.off('delivery_completed')
+      socket.off('order_cancelled')
+      socket.off('connect')
       releaseRealtimeSocket('delivery_partner', token)
     }
   }, [token])
