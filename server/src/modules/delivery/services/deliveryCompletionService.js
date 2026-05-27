@@ -112,7 +112,7 @@ const completeDelivery = async (orderId, partnerId, options = {}) => {
     await client.query(
       `UPDATE orders
        SET status = 'delivered',
-           delivery_status = $1,
+           delivery_status = $1::text,
            base_delivery_pay = $2::numeric,
            distance_delivery_pay = $3::numeric,
            surge_bonus = $4::numeric,
@@ -139,7 +139,7 @@ const completeDelivery = async (orderId, partnerId, options = {}) => {
     // 5. Update delivery assignment
     await client.query(
       `UPDATE delivery_assignments
-       SET assignment_status = $1,
+       SET assignment_status = $1::text,
            delivered_at = CURRENT_TIMESTAMP,
            updated_at = CURRENT_TIMESTAMP
        WHERE order_id = $2::uuid AND delivery_partner_id = $3::uuid`,
@@ -149,7 +149,7 @@ const completeDelivery = async (orderId, partnerId, options = {}) => {
     // 6. Update active deliveries
     await client.query(
       `UPDATE active_deliveries
-       SET status = $1,
+       SET status = $1::text,
            delivered_at = CURRENT_TIMESTAMP,
            updated_at = CURRENT_TIMESTAMP
        WHERE order_id = $2::uuid AND delivery_partner_id = $3::uuid`,
@@ -159,7 +159,7 @@ const completeDelivery = async (orderId, partnerId, options = {}) => {
     // 7. Update delivery tracking
     await client.query(
       `UPDATE delivery_tracking
-       SET last_status = $1,
+       SET last_status = $1::text,
            updated_at = CURRENT_TIMESTAMP
        WHERE order_id = $2::uuid AND delivery_partner_id = $3::uuid`,
       [ORDER_DELIVERY_STATUSES.DELIVERED, orderId, resolvedPartnerId]
@@ -447,9 +447,9 @@ const cancelDelivery = async (orderId, reason, cancelledBy, options = {}) => {
     await client.query(
       `UPDATE orders
        SET status = 'cancelled',
-           delivery_status = $1,
-           payment_status = $2,
-           cancellation_reason = $3,
+           delivery_status = $1::text,
+           payment_status = $2::text,
+           cancellation_reason = $3::text,
            cancelled_at = CURRENT_TIMESTAMP,
            updated_at = CURRENT_TIMESTAMP
        WHERE id = $4::uuid`,
@@ -460,7 +460,7 @@ const cancelDelivery = async (orderId, reason, cancelledBy, options = {}) => {
     if (riderId) {
       await client.query(
         `UPDATE delivery_assignments
-         SET assignment_status = $1,
+         SET assignment_status = $1::text,
              cancelled_at = CURRENT_TIMESTAMP,
              updated_at = CURRENT_TIMESTAMP
          WHERE order_id = $2::uuid AND delivery_partner_id = $3::uuid`,
@@ -470,7 +470,7 @@ const cancelDelivery = async (orderId, reason, cancelledBy, options = {}) => {
       // 4. Update active deliveries
       await client.query(
         `UPDATE active_deliveries
-         SET status = $1,
+         SET status = $1::text,
              cancelled_at = CURRENT_TIMESTAMP,
              updated_at = CURRENT_TIMESTAMP
          WHERE order_id = $2::uuid AND delivery_partner_id = $3::uuid`,
@@ -480,7 +480,7 @@ const cancelDelivery = async (orderId, reason, cancelledBy, options = {}) => {
       // 5. Update delivery tracking
       await client.query(
         `UPDATE delivery_tracking
-         SET last_status = $1,
+         SET last_status = $1::text,
              updated_at = CURRENT_TIMESTAMP
          WHERE order_id = $2::uuid AND delivery_partner_id = $3::uuid`,
         [ORDER_DELIVERY_STATUSES.CANCELLED, orderId, riderId]

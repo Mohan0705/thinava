@@ -64,8 +64,9 @@ export function DeliveryMap({
           {
             id: 'delivery-route',
             points: routePoints,
-            color: '#ff6b35',
-            weight: 5,
+            color: '#34d399',
+            weight: 7,
+            dashed: true,
           },
         ]
       : []

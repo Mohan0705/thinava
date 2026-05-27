@@ -58,7 +58,7 @@ router.post('/create', authenticateCustomer, asyncHandler(async (req, res) => {
     const orderResult = await client.query(
       `INSERT INTO orders 
        (user_id, restaurant_id, address_id, subtotal, delivery_fee, tax, total, status, payment_method, estimated_delivery)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+       VALUES ($1::uuid, $2::uuid, $3::uuid, $4::numeric, $5::numeric, $6::numeric, $7::numeric, $8::text, $9::text, $10::text)
        RETURNING id`,
       [userId, restaurantId, addressId, subtotal, deliveryFee, tax, total, 'PLACED', paymentMethod, '45 mins']
     )
@@ -69,7 +69,7 @@ router.post('/create', authenticateCustomer, asyncHandler(async (req, res) => {
     for (const item of items) {
       await client.query(
         `INSERT INTO order_items (order_id, menu_item_id, quantity, price)
-         VALUES ($1, $2, $3, $4)`,
+         VALUES ($1::uuid, $2::uuid, $3::int, $4::numeric)`,
         [orderId, item.menuItemId, item.quantity, item.price]
       )
     }
@@ -77,7 +77,7 @@ router.post('/create', authenticateCustomer, asyncHandler(async (req, res) => {
     // Log status
     await client.query(
       `INSERT INTO order_status_history (order_id, new_status, updated_by)
-       VALUES ($1, $2, $3)`,
+       VALUES ($1::uuid, $2::text, $3::text)`,
       [orderId, 'PLACED', 'customer']
     )
 
@@ -139,7 +139,7 @@ router.post('/:id/assign-rider', authenticateAdmin, asyncHandler(async (req, res
        FROM orders o
        JOIN users u ON u.id = o.user_id
        JOIN restaurants r ON r.id = o.restaurant_id
-       WHERE o.id = $1`,
+       WHERE o.id = $1::uuid`,
       [orderId]
     )
 
@@ -154,7 +154,7 @@ router.post('/:id/assign-rider', authenticateAdmin, asyncHandler(async (req, res
       `SELECT dp.*, rd.vehicle_type, rd.vehicle_number
        FROM delivery_partners dp
        LEFT JOIN rider_details rd ON rd.delivery_partner_id = dp.id
-       WHERE dp.id = $1`,
+       WHERE dp.id = $1::uuid`,
       [riderId]
     )
 
@@ -167,7 +167,7 @@ router.post('/:id/assign-rider', authenticateAdmin, asyncHandler(async (req, res
 
     // Check if rider has active order
     const activeOrder = await client.query(
-      'SELECT id FROM active_delivery_sessions WHERE delivery_partner_id = $1 AND is_active = TRUE',
+      'SELECT id FROM active_delivery_sessions WHERE delivery_partner_id = $1::uuid AND is_active = TRUE',
       [riderId]
     )
 
@@ -182,8 +182,8 @@ router.post('/:id/assign-rider', authenticateAdmin, asyncHandler(async (req, res
     // Update order with rider
     await client.query(
       `UPDATE orders 
-       SET delivery_partner_id = $1, rider_name = $2, rider_phone = $3, status = 'ASSIGNED'
-       WHERE id = $4`,
+       SET delivery_partner_id = $1::uuid, rider_name = $2::text, rider_phone = $3::text, status = 'ASSIGNED'
+       WHERE id = $4::uuid`,
       [riderId, rider.full_name, rider.phone, orderId]
     )
 
@@ -191,19 +191,19 @@ router.post('/:id/assign-rider', authenticateAdmin, asyncHandler(async (req, res
     await client.query(
       `INSERT INTO active_delivery_sessions 
        (delivery_partner_id, order_id, pickup_lat, pickup_lon, delivery_lat, delivery_lon, is_active)
-       VALUES ($1, $2, 0, 0, 0, 0, TRUE)`,[riderId, orderId]
+       VALUES ($1::uuid, $2::uuid, 0, 0, 0, 0, TRUE)`,[riderId, orderId]
     )
 
     // Update rider has_active_order flag
     await client.query(
-      'UPDATE delivery_partners SET has_active_order = TRUE WHERE id = $1',
+      'UPDATE delivery_partners SET has_active_order = TRUE WHERE id = $1::uuid',
       [riderId]
     )
 
     // Log status
     await client.query(
       `INSERT INTO order_status_history (order_id, previous_status, new_status, updated_by, notes)
-       VALUES ($1, $2, $3, $4, $5)`,
+       VALUES ($1::uuid, $2::text, $3::text, $4::text, $5::text)`,
       [orderId, 'PLACED', 'ASSIGNED', 'admin', `Assigned via ${assignmentMethod || 'manual'} dispatch`]
     )
 
@@ -265,7 +265,7 @@ router.post('/:id/reject', authenticateRestaurantOwner, asyncHandler(async (req,
 
     // Get order and customer
     const orderResult = await client.query(
-      'SELECT user_id, status FROM orders WHERE id = $1',
+      'SELECT user_id, status FROM orders WHERE id = $1::uuid',
       [orderId]
     )
 
@@ -291,21 +291,21 @@ router.post('/:id/reject', authenticateRestaurantOwner, asyncHandler(async (req,
     // Update order
     await client.query(
       `UPDATE orders 
-       SET status = 'REJECTED', rejection_reason = $1, rejected_at = NOW()
-       WHERE id = $2`,
+       SET status = 'REJECTED', rejection_reason = $1::text, rejected_at = NOW()
+       WHERE id = $2::uuid`,
       [reason || 'Order rejected by restaurant', orderId]
     )
 
     // Log status
     await client.query(
       `INSERT INTO order_status_history (order_id, new_status, updated_by, notes)
-       VALUES ($1, $2, $3, $4)`,
-      [orderId, 'REJECTED', 'restaurant', reason || null]
+       VALUES ($1::uuid, $2::text, $3::text, $4::text)`,
+      [orderId, 'REJECTED', 'restaurant', reason ?? null]
     )
 
     // If rider was assigned, release them
     const riderResult = await client.query(
-      'SELECT delivery_partner_id FROM orders WHERE id = $1',
+      'SELECT delivery_partner_id FROM orders WHERE id = $1::uuid',
       [orderId]
     )
 
@@ -313,12 +313,12 @@ router.post('/:id/reject', authenticateRestaurantOwner, asyncHandler(async (req,
       const riderId = riderResult.rows[0].delivery_partner_id
 
       await client.query(
-        'DELETE FROM active_delivery_sessions WHERE order_id = $1',
+        'DELETE FROM active_delivery_sessions WHERE order_id = $1::uuid',
         [orderId]
       )
 
       await client.query(
-        'UPDATE delivery_partners SET has_active_order = FALSE WHERE id = $1',
+        'UPDATE delivery_partners SET has_active_order = FALSE WHERE id = $1::uuid',
         [riderId]
       )
     }
@@ -364,7 +364,7 @@ router.post('/:id/accept', authenticateRestaurantOwner, asyncHandler(async (req,
 
     // Get current order status for validation
     const preAcceptOrder = await client.query(
-      'SELECT status FROM orders WHERE id = $1 FOR UPDATE',
+      'SELECT status FROM orders WHERE id = $1::uuid FOR UPDATE',
       [orderId]
     )
 
@@ -386,19 +386,19 @@ router.post('/:id/accept', authenticateRestaurantOwner, asyncHandler(async (req,
 
     // Update order
     await client.query(
-      `UPDATE orders SET status = 'CONFIRMED' WHERE id = $1`,
+      `UPDATE orders SET status = 'CONFIRMED' WHERE id = $1::uuid`,
       [orderId]
     )
 
     // Log status
     await client.query(
       `INSERT INTO order_status_history (order_id, previous_status, new_status, updated_by)
-       VALUES ($1, $2, $3, $4)`,
+       VALUES ($1::uuid, $2::text, $3::text, $4::text)`,
       [orderId, 'PLACED', 'CONFIRMED', 'restaurant']
     )
 
     const orderResult = await client.query(
-      'SELECT user_id, delivery_partner_id FROM orders WHERE id = $1',
+      'SELECT user_id, delivery_partner_id FROM orders WHERE id = $1::uuid',
       [orderId]
     )
 
@@ -451,7 +451,7 @@ router.post('/:id/ready-for-pickup', authenticateRestaurantOwner, asyncHandler(a
 
     // Get order details
     const orderResult = await client.query(
-      'SELECT user_id, delivery_partner_id, status FROM orders WHERE id = $1',
+      'SELECT user_id, delivery_partner_id, status FROM orders WHERE id = $1::uuid',
       [orderId]
     )
 
@@ -475,14 +475,14 @@ router.post('/:id/ready-for-pickup', authenticateRestaurantOwner, asyncHandler(a
 
     // Update order
     await client.query(
-      `UPDATE orders SET status = 'READY_FOR_PICKUP' WHERE id = $1`,
+      `UPDATE orders SET status = 'READY_FOR_PICKUP' WHERE id = $1::uuid`,
       [orderId]
     )
 
     // Log status
     await client.query(
       `INSERT INTO order_status_history (order_id, previous_status, new_status, updated_by)
-       VALUES ($1, $2, $3, $4)`,
+       VALUES ($1::uuid, $2::text, $3::text, $4::text)`,
       [orderId, order.status, 'READY_FOR_PICKUP', 'restaurant']
     )
 
@@ -572,7 +572,7 @@ router.post('/:id/delivered-legacy-disabled', authenticateDeliveryPartner, async
 
     // Get order details
     const orderResult = await client.query(
-      'SELECT user_id, delivery_partner_id, status FROM orders WHERE id = $1',
+      'SELECT user_id, delivery_partner_id, status FROM orders WHERE id = $1::uuid',
       [orderId]
     )
 
@@ -597,27 +597,27 @@ router.post('/:id/delivered-legacy-disabled', authenticateDeliveryPartner, async
 
     // Update order
     await client.query(
-      `UPDATE orders SET status = 'DELIVERED', delivered_at = NOW() WHERE id = $1`,
+      `UPDATE orders SET status = 'DELIVERED', delivered_at = NOW() WHERE id = $1::uuid`,
       [orderId]
     )
 
     // Log status
     await client.query(
       `INSERT INTO order_status_history (order_id, previous_status, new_status, updated_by)
-       VALUES ($1, $2, $3, $4)`,
+       VALUES ($1::uuid, $2::text, $3::text, $4::text)`,
       [orderId, order.status, 'DELIVERED', 'delivery_partner']
     )
 
     // Close active delivery session
     await client.query(
-      `UPDATE active_delivery_sessions SET is_active = FALSE, session_ended_at = NOW() WHERE order_id = $1`,
+      `UPDATE active_delivery_sessions SET is_active = FALSE, session_ended_at = NOW() WHERE order_id = $1::uuid`,
       [orderId]
     )
 
     // Release rider from active order
     if (order.delivery_partner_id) {
       await client.query(
-        'UPDATE delivery_partners SET has_active_order = FALSE WHERE id = $1',
+        'UPDATE delivery_partners SET has_active_order = FALSE WHERE id = $1::uuid',
         [order.delivery_partner_id]
       )
     }
@@ -668,7 +668,7 @@ router.get('/rider/:riderId/active', authenticateDeliveryPartner, asyncHandler(a
      FROM orders o
      JOIN restaurants r ON r.id = o.restaurant_id
      JOIN addresses a ON a.id = o.address_id
-     WHERE o.delivery_partner_id = $1
+     WHERE o.delivery_partner_id = $1::uuid
        AND UPPER(COALESCE(o.status, 'PLACED')) NOT IN ('DELIVERED', 'REJECTED', 'CANCELLED')
      ORDER BY o.created_at DESC
      LIMIT 1`,
@@ -677,7 +677,7 @@ router.get('/rider/:riderId/active', authenticateDeliveryPartner, asyncHandler(a
 
   return res.json({
     success: true,
-    activeOrder: result.rows[0] || null
+    activeOrder: result.rows[0] ?? null
   })
 }))
 

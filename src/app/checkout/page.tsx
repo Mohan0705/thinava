@@ -3,7 +3,7 @@
 import { motion } from 'framer-motion'
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { MapPin, Phone, CreditCard, Clock, Sparkles, TicketPercent, ImageIcon } from 'lucide-react'
+import { MapPin, Phone, CreditCard, Clock, Sparkles, TicketPercent, ImageIcon, Heart } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Input } from '@/components/ui/Input'
@@ -23,6 +23,7 @@ import { toast } from 'sonner'
 import { getRestaurantReopenText, isRestaurantAcceptingOrders } from '@/lib/restaurant-availability'
 
 // Dynamic database coupons will be loaded from the backend API
+const TIP_OPTIONS = [10, 20, 30, 50]
 
 export default function CheckoutPage() {
   const { items, getSubtotal, clearCart } = useCartStore()
@@ -40,11 +41,15 @@ export default function CheckoutPage() {
   const [activeCoupons, setActiveCoupons] = useState<any[]>([])
   const [appliedCoupon, setAppliedCoupon] = useState<any | null>(null)
   const [discountAmount, setDiscountAmount] = useState(0)
+  const [selectedTip, setSelectedTip] = useState<number | 'custom' | null>(null)
+  const [customTip, setCustomTip] = useState('')
 
   const subtotal = getSubtotal()
   const deliveryFee = calculateDeliveryFee(subtotal)
   const tax = calculateTax(subtotal)
-  const baseTotal = subtotal + deliveryFee + tax
+  const customTipAmount = Math.max(0, Number(customTip || 0))
+  const tipAmount = selectedTip === 'custom' ? customTipAmount : Number(selectedTip || 0)
+  const baseTotal = subtotal + deliveryFee + tax + tipAmount
   const total = Math.max(baseTotal - discountAmount, 0)
 
   const addresses = user?.addresses || []
@@ -214,6 +219,13 @@ export default function CheckoutPage() {
     toast.success('Coupon removed')
   }
 
+  const handleTipSelect = (tip: number | 'custom' | null) => {
+    setSelectedTip(tip)
+    if (tip !== 'custom') {
+      setCustomTip('')
+    }
+  }
+
   const handlePlaceOrder = async () => {
     if (!selectedAddress) {
       toast.error('Please select a delivery address')
@@ -266,6 +278,7 @@ export default function CheckoutPage() {
         total,
         total_amount: total,
         discount: discountAmount,
+        tip_amount: tipAmount,
         coupon_code: appliedCoupon?.code,
         status: 'PLACED',
         delivery_address: {
@@ -630,9 +643,79 @@ export default function CheckoutPage() {
                     ) : null}
                   </div>
 
+                  <div className="rounded-[24px] border border-emerald-100 bg-gradient-to-br from-emerald-50 via-white to-white p-4 shadow-sm">
+                    <div className="flex items-start gap-3">
+                      <div className="rounded-full bg-emerald-100 p-2 text-emerald-700">
+                        <Heart className="h-4 w-4" />
+                      </div>
+                      <div>
+                        <h3 className="font-bold text-slate-950">Tip your delivery partner ❤️</h3>
+                        <p className="mt-1 text-sm text-slate-600">
+                          100% of your tip goes directly to the delivery partner.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      {TIP_OPTIONS.map((tip) => (
+                        <button
+                          key={tip}
+                          type="button"
+                          onClick={() => handleTipSelect(tip)}
+                          className={`min-h-[44px] rounded-full border px-4 text-sm font-bold transition active:scale-95 ${
+                            selectedTip === tip
+                              ? 'border-emerald-500 bg-emerald-100 text-emerald-800 shadow-sm'
+                              : 'border-slate-200 bg-white text-slate-700 hover:border-emerald-300'
+                          }`}
+                        >
+                          ₹{tip}
+                        </button>
+                      ))}
+                      <button
+                        type="button"
+                        onClick={() => handleTipSelect('custom')}
+                        className={`min-h-[44px] rounded-full border px-4 text-sm font-bold transition active:scale-95 ${
+                          selectedTip === 'custom'
+                            ? 'border-emerald-500 bg-emerald-100 text-emerald-800 shadow-sm'
+                            : 'border-slate-200 bg-white text-slate-700 hover:border-emerald-300'
+                        }`}
+                      >
+                        Custom
+                      </button>
+                      {tipAmount > 0 ? (
+                        <button
+                          type="button"
+                          onClick={() => handleTipSelect(null)}
+                          className="min-h-[44px] rounded-full border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-500 transition hover:bg-slate-50 active:scale-95"
+                        >
+                          Clear
+                        </button>
+                      ) : null}
+                    </div>
+
+                    {selectedTip === 'custom' ? (
+                      <motion.div
+                        initial={{ opacity: 0, y: 8 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="mt-3"
+                      >
+                        <Input
+                          inputMode="numeric"
+                          value={customTip}
+                          onChange={(event) => {
+                            const value = event.target.value.replace(/[^\d]/g, '').slice(0, 4)
+                            setCustomTip(value)
+                          }}
+                          placeholder="Enter tip amount"
+                          className="border-emerald-200 bg-white font-semibold text-slate-900 focus:border-emerald-500"
+                        />
+                      </motion.div>
+                    ) : null}
+                  </div>
+
                   <div className="border-t pt-4 space-y-2">
                     <div className="flex justify-between text-gray-600">
-                      <span>Subtotal</span>
+                      <span>Item Total</span>
                       <span>{formatPrice(subtotal)}</span>
                     </div>
                     <div className="flex justify-between text-gray-600">
@@ -640,8 +723,12 @@ export default function CheckoutPage() {
                       <span>{deliveryFee === 0 ? 'FREE' : formatPrice(deliveryFee)}</span>
                     </div>
                     <div className="flex justify-between text-gray-600">
-                      <span>Tax (5%)</span>
+                      <span>Taxes</span>
                       <span>{formatPrice(tax)}</span>
+                    </div>
+                    <div className="flex justify-between text-gray-600">
+                      <span>Tip</span>
+                      <span>{tipAmount > 0 ? formatPrice(tipAmount) : 'Not added'}</span>
                     </div>
                     {discountAmount > 0 ? (
                       <motion.div
@@ -655,7 +742,7 @@ export default function CheckoutPage() {
                       </motion.div>
                     ) : null}
                     <div className="border-t pt-2 flex justify-between font-bold text-lg text-gray-900">
-                      <span>Total</span>
+                      <span>Grand Total</span>
                       <span>{formatPrice(total)}</span>
                     </div>
                   </div>

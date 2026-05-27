@@ -21,6 +21,10 @@ const createHttpError = (message, status = 400, code = 'ORDER_VALIDATION_FAILED'
 }
 
 const roundCurrency = (value) => Math.round(Number(value || 0) * 100) / 100
+const normalizeTipAmount = (value) => {
+  const tip = roundCurrency(value ?? 0)
+  return Number.isFinite(tip) && tip > 0 ? Math.min(tip, 500) : 0
+}
 
 const assertUuid = (value, fieldName) => {
   if (!value || !UUID_PATTERN.test(String(value))) {
@@ -48,7 +52,7 @@ const getCouponDiscount = async (client, code, subtotal, deliveryFee) => {
   let result = await client.query(
     `SELECT code, description, discount_type, discount_value, min_order, max_discount
      FROM coupons
-     WHERE code = $1
+     WHERE code = $1::text
        AND active = TRUE
        AND (expires_at IS NULL OR expires_at > NOW())`,
     [normalizedCode]
@@ -63,7 +67,7 @@ const getCouponDiscount = async (client, code, subtotal, deliveryFee) => {
               minimum_order_amount AS min_order, max_discount_amount AS max_discount,
               usage_limit, used_count
        FROM coupon_codes
-       WHERE code = $1
+        WHERE code = $1::text
          AND is_active = TRUE
          AND (ends_at IS NULL OR ends_at > NOW())
          AND (usage_limit = 0 OR used_count < usage_limit)`,
@@ -177,7 +181,7 @@ router.get('/user/:userId', authenticateCustomer, asyncHandler(async (req, res) 
        ORDER BY timestamp DESC
        LIMIT 1
      ) loc ON TRUE
-     WHERE o.user_id = $1 
+     WHERE o.user_id = $1::uuid 
      ORDER BY o.created_at DESC`,
     [req.params.userId]
   )
@@ -240,7 +244,7 @@ router.get('/:id', asyncHandler(async (req, res) => {
        ORDER BY timestamp DESC
        LIMIT 1
      ) loc ON TRUE
-     WHERE o.id = $1`,
+      WHERE o.id = $1::uuid`,
     [req.params.id]
   )
   
@@ -256,7 +260,7 @@ router.get('/:id', asyncHandler(async (req, res) => {
     `SELECT oi.*, mi.name, mi.image 
      FROM order_items oi 
      JOIN menu_items mi ON oi.menu_item_id = mi.id 
-     WHERE oi.order_id = $1`,
+     WHERE oi.order_id = $1::uuid`,
     [req.params.id]
   )
   
@@ -333,7 +337,7 @@ router.post('/', authenticateCustomer, asyncHandler(async (req, res) => {
     const restaurantResult = await client.query(
       `SELECT id, name, opening_time, closing_time, timezone, is_manually_closed
        FROM restaurants
-       WHERE id = $1`,
+       WHERE id = $1::uuid`,
       [restaurant_id]
     )
 
@@ -379,11 +383,11 @@ router.post('/', authenticateCustomer, asyncHandler(async (req, res) => {
 
       if (contactName || contactPhone || contactEmail) {
         await client.query(
-          'UPDATE users SET name = COALESCE($1, name), phone = COALESCE($2, phone), email = COALESCE($3, email), updated_at = CURRENT_TIMESTAMP WHERE id = $4',
+          'UPDATE users SET name = COALESCE($1::text, name), phone = COALESCE($2::text, phone), email = COALESCE($3::text, email), updated_at = CURRENT_TIMESTAMP WHERE id = $4::uuid',
           [
-            contactName || null,
-            contactPhone || null,
-            contactEmail || null,
+            contactName ? contactName : null,
+            contactPhone ? contactPhone : null,
+            contactEmail ? contactEmail : null,
             authenticatedUserId,
           ]
         )
@@ -394,7 +398,7 @@ router.post('/', authenticateCustomer, asyncHandler(async (req, res) => {
 
     if (resolvedAddressId) {
       const addressResult = await client.query(
-        'SELECT id FROM addresses WHERE id = $1 AND user_id = $2',
+        'SELECT id FROM addresses WHERE id = $1::uuid AND user_id = $2::uuid',
         [resolvedAddressId, authenticatedUserId]
       )
       if (addressResult.rows.length === 0) {
@@ -403,14 +407,14 @@ router.post('/', authenticateCustomer, asyncHandler(async (req, res) => {
     } else {
       const createdAddress = await client.query(
         `INSERT INTO addresses (user_id, label, full_address, landmark, notes, latitude, longitude, is_default)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+         VALUES ($1::uuid, $2::text, $3::text, $4::text, $5::text, $6::numeric, $7::numeric, $8::boolean)
          RETURNING id`,
         [
           authenticatedUserId,
-          delivery_address?.label || 'Delivery Address',
+          delivery_address?.label ?? 'Delivery Address',
           delivery_address?.full_address,
-          delivery_address?.landmark || null,
-          delivery_address?.notes || null,
+          delivery_address?.landmark ?? null,
+          delivery_address?.notes ?? null,
           delivery_address?.latitude ?? null,
           delivery_address?.longitude ?? null,
           false,
@@ -429,8 +433,9 @@ router.post('/', authenticateCustomer, asyncHandler(async (req, res) => {
     )
     const deliveryFee = roundCurrency(calculateDeliveryFee(subtotal))
     const tax = roundCurrency(calculateTax(subtotal))
+    const tipAmount = normalizeTipAmount(req.body?.tip ?? req.body?.tip_amount)
     const coupon = await getCouponDiscount(client, coupon_code, subtotal, deliveryFee)
-    const resolvedTotal = roundCurrency(Math.max(subtotal + deliveryFee + tax - coupon.discountAmount, 0))
+    const resolvedTotal = roundCurrency(Math.max(subtotal + deliveryFee + tax + tipAmount - coupon.discountAmount, 0))
     const submittedTotal = roundCurrency(total ?? total_amount ?? resolvedTotal)
 
     if (Math.abs(submittedTotal - resolvedTotal) > 1) {
@@ -443,13 +448,25 @@ router.post('/', authenticateCustomer, asyncHandler(async (req, res) => {
     }
 
     const paymentStatus = paymentMethod === 'cod' ? 'cod_pending' : 'pending'
+    console.log('ORDER PARAM TYPES', {
+      paymentMethod: typeof paymentMethod,
+      subtotal: typeof subtotal,
+      totalAmount: typeof resolvedTotal,
+      couponDiscount: typeof coupon.discountAmount,
+      addressId: typeof resolvedAddressId,
+      tipAmount: typeof tipAmount,
+    })
     const orderResult = await client.query(
       `INSERT INTO orders (
          user_id, restaurant_id, address_id, subtotal, delivery_fee, tax, total,
          payment_method, payment_type, payment_status, status, estimated_delivery,
-         coupon_code, discount_amount
+         coupon_code, discount_amount, tip_amount
        )
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8, $9, $10, '25-35 mins', $11, $12)
+       VALUES (
+         $1::uuid, $2::uuid, $3::uuid, $4::numeric, $5::numeric, $6::numeric, $7::numeric,
+         $8::text, $9::text, $10::text, $11::text, '25-35 mins',
+         $12::text, $13::numeric, $14::numeric
+       )
        RETURNING *`,
       [
         authenticatedUserId,
@@ -459,11 +476,13 @@ router.post('/', authenticateCustomer, asyncHandler(async (req, res) => {
         deliveryFee,
         tax,
         resolvedTotal,
-        paymentMethod,
-        paymentStatus,
-        normalizedStatus,
-        coupon.code,
-        coupon.discountAmount,
+        paymentMethod,        // $8 - payment_method
+        paymentMethod,        // $9 - payment_type (same as method)
+        paymentStatus,        // $10 - payment_status
+        normalizedStatus,     // $11 - status
+        coupon.code,          // $12 - coupon_code
+        coupon.discountAmount, // $13 - discount_amount
+        tipAmount,            // $14 - tip_amount
       ]
     )
 
@@ -473,14 +492,14 @@ router.post('/', authenticateCustomer, asyncHandler(async (req, res) => {
       const menuItem = menuById.get(item.menu_item_id)
       await client.query(
         `INSERT INTO order_items (order_id, menu_item_id, quantity, price, notes)
-         VALUES ($1, $2, $3, $4, $5)`,
+         VALUES ($1::uuid, $2::uuid, $3::int, $4::numeric, $5::text)`,
         [order.id, item.menu_item_id, item.quantity, menuItem.price, item.notes]
       )
     }
 
     if (coupon.code && coupon.source === 'admin') {
       await client.query(
-        'UPDATE coupon_codes SET used_count = used_count + 1, updated_at = CURRENT_TIMESTAMP WHERE code = $1',
+        'UPDATE coupon_codes SET used_count = used_count + 1, updated_at = CURRENT_TIMESTAMP WHERE code = $1::text',
         [coupon.code]
       )
     }
@@ -581,7 +600,7 @@ router.post('/legacy-create-disabled', authenticateCustomer, asyncHandler(async 
     const restaurantResult = await client.query(
       `SELECT id, name, opening_time, closing_time, timezone, is_manually_closed
        FROM restaurants
-       WHERE id = $1`,
+       WHERE id = $1::uuid`,
       [restaurant_id]
     )
 
@@ -612,11 +631,11 @@ router.post('/legacy-create-disabled', authenticateCustomer, asyncHandler(async 
       if (contactName || contactPhone || contactEmail) {
         console.log('📝 Updating user profile from delivery address')
         await client.query(
-          'UPDATE users SET name = COALESCE($1, name), phone = COALESCE($2, phone), email = COALESCE($3, email), updated_at = CURRENT_TIMESTAMP WHERE id = $4',
+          'UPDATE users SET name = COALESCE($1::text, name), phone = COALESCE($2::text, phone), email = COALESCE($3::text, email), updated_at = CURRENT_TIMESTAMP WHERE id = $4::uuid',
           [
-            contactName || null,
-            contactPhone || null,
-            contactEmail || null,
+            contactName ? contactName : null,
+            contactPhone ? contactPhone : null,
+            contactEmail ? contactEmail : null,
             authenticatedUserId
           ]
         )
@@ -628,14 +647,14 @@ router.post('/legacy-create-disabled', authenticateCustomer, asyncHandler(async 
     if (!resolvedAddressId) {
       const createdAddress = await client.query(
         `INSERT INTO addresses (user_id, label, full_address, landmark, notes, latitude, longitude, is_default)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+         VALUES ($1::uuid, $2::text, $3::text, $4::text, $5::text, $6::numeric, $7::numeric, $8::boolean)
          RETURNING id`,
         [
           resolvedUserId,
-          delivery_address?.label || 'Delivery Address',
+          delivery_address?.label ?? 'Delivery Address',
           delivery_address?.full_address,
-          delivery_address?.landmark || null,
-          delivery_address?.notes || null,
+          delivery_address?.landmark ?? null,
+          delivery_address?.notes ?? null,
           delivery_address?.latitude ?? null,
           delivery_address?.longitude ?? null,
           false,
@@ -646,7 +665,8 @@ router.post('/legacy-create-disabled', authenticateCustomer, asyncHandler(async 
     }
 
     const normalizedStatus = normalizeOrderStatus(status)
-    const resolvedTotal = total ?? total_amount
+    const tipAmount = normalizeTipAmount(req.body?.tip ?? req.body?.tip_amount)
+    const resolvedTotal = roundCurrency(Number(total ?? total_amount ?? 0) + tipAmount)
     
     console.log('💾 Creating order in database:', {
       userId: resolvedUserId,
@@ -658,12 +678,23 @@ router.post('/legacy-create-disabled', authenticateCustomer, asyncHandler(async 
     })
     
     const paymentStatus = String(payment_method || '').toLowerCase() === 'cod' ? 'cod_pending' : 'pending'
+    console.log('ORDER PARAM TYPES', {
+      paymentMethod: typeof payment_method,
+      subtotal: typeof subtotal,
+      totalAmount: typeof resolvedTotal,
+      couponDiscount: 'number',
+      addressId: typeof resolvedAddressId,
+      tipAmount: typeof tipAmount,
+    })
     const orderResult = await client.query(
       `INSERT INTO orders (
          user_id, restaurant_id, address_id, subtotal, delivery_fee, tax, total,
-         payment_method, payment_type, payment_status, status, estimated_delivery
+         payment_method, payment_type, payment_status, status, estimated_delivery, tip_amount
        )
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8, $9, $10, '25-35 mins')
+       VALUES (
+         $1::uuid, $2::uuid, $3::uuid, $4::numeric, $5::numeric, $6::numeric, $7::numeric,
+         $8::text, $9::text, $10::text, $11::text, '25-35 mins', $12::numeric
+       )
        RETURNING *`,
       [
         resolvedUserId,
@@ -673,9 +704,11 @@ router.post('/legacy-create-disabled', authenticateCustomer, asyncHandler(async 
         delivery_fee,
         tax,
         resolvedTotal,
-        payment_method,
-        paymentStatus,
-        normalizedStatus,
+        payment_method,       // $8 - payment_method
+        payment_method,       // $9 - payment_type (same as method)
+        paymentStatus,        // $10 - payment_status
+        normalizedStatus,     // $11 - status
+        tipAmount,            // $12 - tip_amount
       ]
     )
     
@@ -684,7 +717,7 @@ router.post('/legacy-create-disabled', authenticateCustomer, asyncHandler(async 
     for (const item of items) {
       await client.query(
         `INSERT INTO order_items (order_id, menu_item_id, quantity, price)
-         VALUES ($1, $2, $3, $4)`,
+         VALUES ($1::uuid, $2::uuid, $3::int, $4::numeric)`,
         [order.id, item.menu_item_id, item.quantity, item.price]
       )
     }
@@ -728,7 +761,7 @@ router.put('/:id/status', authenticateAdmin, asyncHandler(async (req, res) => {
   }
   
   const result = await pool.query(
-    'UPDATE orders SET status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING *',
+    'UPDATE orders SET status = $1::text, updated_at = CURRENT_TIMESTAMP WHERE id = $2::uuid RETURNING *',
     [normalizedStatus, req.params.id]
   )
   

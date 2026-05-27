@@ -101,7 +101,7 @@ const buildDeliveryActionState = ({
           target: 'customer',
           helper: 'Collect cash from the customer before delivery completion unlocks.',
         }
-      : DELIVERY_ACTIONS[deliveryStatus] || null
+      : DELIVERY_ACTIONS[deliveryStatus] ?? null
   const target = action?.target === 'customer' ? customer : restaurant
   const distanceMeters = action ? calculateDistanceMeters(riderLocation, target) : null
   const nextActionEnabled = action ? distanceMeters !== null && distanceMeters <= DEFAULT_GPS_RADIUS_METERS : false
@@ -137,17 +137,17 @@ const buildDeliveryActionState = ({
     },
     action_state: {
       current_status: deliveryStatus,
-      next_status: action?.next_status || null,
-      next_action_label: action?.label || null,
+      next_status: action?.next_status ?? null,
+      next_action_label: action?.label ?? null,
       next_action_enabled: action ? nextActionEnabled : false,
-      target_scope: action?.target || null,
+      target_scope: action?.target ?? null,
       disabled_reason:
         action && !nextActionEnabled
           ? action.target === 'customer'
             ? 'You are too far from the customer. Please reach the drop location first.'
             : 'You are too far from the restaurant. Please reach pickup location first.'
           : null,
-      helper_text: action?.helper || null,
+      helper_text: action?.helper ?? null,
     },
   }
 }
@@ -162,6 +162,7 @@ const mapAvailableOrder = async (row, riderLocation) => {
     customerLongitude: row.customer_longitude,
     riderLatitude: riderLocation?.latitude,
     riderLongitude: riderLocation?.longitude,
+    tipAmount: row.tip_amount,
   })
 
   return {
@@ -221,7 +222,7 @@ const getLatestPartnerLocation = async (partnerId) => {
     [normalizedPartnerId]
   )
 
-  return locationResult.rows[0] || null
+  return locationResult.rows[0] ?? null
 }
 
 const getAvailableOrders = async (partnerId) => {
@@ -256,9 +257,10 @@ const getAvailableOrders = async (partnerId) => {
        o.id,
        o.subtotal,
        o.delivery_fee,
-       o.tax,
-       o.total,
-       o.created_at,
+        o.tax,
+        o.total,
+        o.tip_amount,
+        o.created_at,
        o.payment_method,
        r.id AS restaurant_id,
        r.name AS restaurant_name,
@@ -279,7 +281,7 @@ const getAvailableOrders = async (partnerId) => {
      JOIN addresses a ON o.address_id = a.id
      JOIN users u ON o.user_id = u.id
      LEFT JOIN order_items oi ON oi.order_id = o.id
-     WHERE o.delivery_status = $1
+      WHERE o.delivery_status = $1::text
        AND o.delivery_partner_id IS NULL
        AND UPPER(o.status) IN ('PREPARING', 'READY_FOR_PICKUP')
      GROUP BY o.id, r.id, a.id, u.id
@@ -293,7 +295,7 @@ const getAvailableOrders = async (partnerId) => {
   // Check floating cash limit - filter out COD orders if over limit
   try {
     const walletRes = await pool.query(
-      `SELECT floating_cash, floating_cash_limit FROM rider_wallets WHERE delivery_partner_id = $1`,
+      `SELECT floating_cash, floating_cash_limit FROM rider_wallets WHERE delivery_partner_id = $1::uuid`,
       [normalizedPartnerId]
     )
     if (walletRes.rows.length > 0) {
@@ -320,6 +322,7 @@ const buildOrderPayload = async (row, riderLocation) => {
     customerLongitude: row.customer_longitude,
     riderLatitude: riderLocation?.latitude || row.current_latitude,
     riderLongitude: riderLocation?.longitude || row.current_longitude,
+    tipAmount: row.tip_amount,
   })
 
   const basePay =
@@ -330,13 +333,11 @@ const buildOrderPayload = async (row, riderLocation) => {
     coerceCoordinate(row.distance_delivery_pay) !== null && Number(row.base_delivery_pay) >= 25
       ? toCurrency(row.distance_delivery_pay)
       : offerMetrics.pay.distancePay
-  const surgeBonus = coerceCoordinate(row.surge_bonus) !== null ? toCurrency(row.surge_bonus) : offerMetrics.pay.surgeBonus
-  const rainBonus = coerceCoordinate(row.rain_bonus) !== null ? toCurrency(row.rain_bonus) : offerMetrics.pay.rainBonus
-  const nightBonus = coerceCoordinate(row.night_bonus) !== null ? toCurrency(row.night_bonus) : offerMetrics.pay.nightBonus
+  const surgeBonus = 0
+  const rainBonus = 0
+  const nightBonus = 0
   const tipAmount = toCurrency(row.tip_amount)
-  const estimatedEarnings = toCurrency(
-    basePay + distancePay + surgeBonus + rainBonus + tipAmount + offerMetrics.pay.codHandlingBonus
-  )
+  const estimatedEarnings = toCurrency(basePay + distancePay + tipAmount)
   const restaurantCoordinates = offerMetrics.coordinates.restaurant
   const customerCoordinates = offerMetrics.coordinates.customer
   const resolvedRiderLocation =
@@ -416,11 +417,11 @@ const buildOrderPayload = async (row, riderLocation) => {
       rain_bonus: rainBonus,
       night_bonus: nightBonus,
       tip_amount: tipAmount,
-      cod_handling_bonus: offerMetrics.pay.codHandlingBonus,
+      cod_handling_bonus: 0,
       total: estimatedEarnings,
     },
     per_km_rate: offerMetrics.pay.perKmRate,
-    night_badge: offerMetrics.pay.nightBonus > 0,
+    night_badge: false,
     map_provider: offerMetrics.route.provider,
     items: Array.isArray(row.items) ? row.items : [],
     ...deliveryState,
@@ -437,7 +438,7 @@ const getLatestPartnerLocationForClient = async (client, partnerId) => {
     [partnerId]
   )
 
-  return result.rows[0] || null
+  return result.rows[0] ?? null
 }
 
 const getOrderDispatchSnapshot = async (client, orderId) => {
@@ -464,7 +465,7 @@ const getOrderDispatchSnapshot = async (client, orderId) => {
     [orderId]
   )
 
-  return result.rows[0] || null
+  return result.rows[0] ?? null
 }
 
 const scheduleAssignmentExpiry = (orderId, partnerId, excludedPartnerIds = []) => {
@@ -563,6 +564,7 @@ const createAssignmentRequestForPartner = async ({
     customerLongitude: order.customer_longitude,
     riderLatitude: riderLocation?.latitude,
     riderLongitude: riderLocation?.longitude,
+    tipAmount: order.tip_amount,
   })
 
   const expiresAt = new Date(Date.now() + ASSIGNMENT_REQUEST_TIMEOUT_MS)
@@ -572,19 +574,19 @@ const createAssignmentRequestForPartner = async ({
      SET delivery_status = $1::text,
          rider_assignment_status = $2::text,
          assignment_expires_at = $3::timestamp,
-         route_distance_km = $4,
-         pickup_distance_km = $5,
-         dropoff_distance_km = $6,
-         estimated_pickup_eta_minutes = $7,
-         estimated_dropoff_eta_minutes = $8,
-         estimated_total_eta_minutes = $9,
-         base_delivery_pay = $10,
-         distance_delivery_pay = $11,
-         surge_bonus = $12,
-         rain_bonus = $13,
-         night_bonus = $14,
-         cod_handling_bonus = $15,
-         estimated_earning = $16,
+         route_distance_km = $4::numeric,
+         pickup_distance_km = $5::numeric,
+         dropoff_distance_km = $6::numeric,
+         estimated_pickup_eta_minutes = $7::int,
+         estimated_dropoff_eta_minutes = $8::int,
+         estimated_total_eta_minutes = $9::int,
+         base_delivery_pay = $10::numeric,
+         distance_delivery_pay = $11::numeric,
+         surge_bonus = $12::numeric,
+         rain_bonus = $13::numeric,
+         night_bonus = $14::numeric,
+         cod_handling_bonus = $15::numeric,
+         estimated_earning = $16::numeric,
          updated_at = CURRENT_TIMESTAMP
      WHERE id = $17::uuid`,
     [
@@ -619,7 +621,7 @@ const createAssignmentRequestForPartner = async ({
        distance_km,
        updated_at
      )
-     VALUES ($1::uuid, $2::uuid, $3::text, CURRENT_TIMESTAMP, $4::timestamp, $5, $6, CURRENT_TIMESTAMP)`,
+     VALUES ($1::uuid, $2::uuid, $3::text, CURRENT_TIMESTAMP, $4::timestamp, $5::numeric, $6::numeric, CURRENT_TIMESTAMP)`,
     [
       orderId,
       partnerId,
@@ -657,28 +659,29 @@ const assignLockedOrderToPartner = async ({
     customerLongitude: order.customer_longitude,
     riderLatitude: riderLocation?.latitude,
     riderLongitude: riderLocation?.longitude,
+    tipAmount: order.tip_amount,
   })
 
   await client.query(
     `UPDATE orders
      SET delivery_partner_id = $1::uuid,
-         delivery_status = $2,
+         delivery_status = $2::text,
          rider_assignment_status = $17::text,
          assignment_expires_at = NULL,
          delivery_assigned_at = CURRENT_TIMESTAMP,
-         route_distance_km = $3,
-         pickup_distance_km = $4,
-         dropoff_distance_km = $5,
-         estimated_pickup_eta_minutes = $6,
-         estimated_dropoff_eta_minutes = $7,
-         estimated_total_eta_minutes = $8,
-         base_delivery_pay = $9,
-         distance_delivery_pay = $10,
-         surge_bonus = $11,
-         rain_bonus = $12,
-         night_bonus = $13,
-         cod_handling_bonus = $14,
-         estimated_earning = $15,
+         route_distance_km = $3::numeric,
+         pickup_distance_km = $4::numeric,
+         dropoff_distance_km = $5::numeric,
+         estimated_pickup_eta_minutes = $6::int,
+         estimated_dropoff_eta_minutes = $7::int,
+         estimated_total_eta_minutes = $8::int,
+         base_delivery_pay = $9::numeric,
+         distance_delivery_pay = $10::numeric,
+         surge_bonus = $11::numeric,
+         rain_bonus = $12::numeric,
+         night_bonus = $13::numeric,
+         cod_handling_bonus = $14::numeric,
+         estimated_earning = $15::numeric,
          updated_at = CURRENT_TIMESTAMP
      WHERE id = $16::uuid`,
     [
@@ -713,7 +716,7 @@ const assignLockedOrderToPartner = async ({
        distance_km,
        updated_at
      )
-     VALUES ($1::uuid, $2::uuid, $3, CURRENT_TIMESTAMP, CASE WHEN $3::text = 'ACCEPTED' THEN CURRENT_TIMESTAMP ELSE NULL END, $4, $5, CURRENT_TIMESTAMP)`,
+      VALUES ($1::uuid, $2::uuid, $3::text, CURRENT_TIMESTAMP, CASE WHEN $3::text = 'ACCEPTED' THEN CURRENT_TIMESTAMP ELSE NULL END, $4::numeric, $5::numeric, CURRENT_TIMESTAMP)`,
     [
       orderId,
       partnerId,
@@ -725,7 +728,7 @@ const assignLockedOrderToPartner = async ({
 
   await client.query(
     `INSERT INTO delivery_status_logs (order_id, delivery_partner_id, status, notes)
-     VALUES ($1::uuid, $2::uuid, $3, $4)`,
+     VALUES ($1::uuid, $2::uuid, $3::text, $4::text)`,
     [orderId, partnerId, ORDER_DELIVERY_STATUSES.ASSIGNED, dispatchNote]
   )
 
@@ -753,7 +756,7 @@ const assignLockedOrderToPartner = async ({
        updated_at
      )
      VALUES (
-       $1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18::jsonb, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+        $1::uuid, $2::uuid, $3::text, $4::numeric, $5::numeric, $6::numeric, $7::numeric, $8::numeric, $9::numeric, $10::numeric, $11::int, $12::int, $13::int, $14::numeric, $15::numeric, $16::numeric, $17::numeric, $18::jsonb, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
      )
      ON CONFLICT (order_id)
      DO UPDATE SET
@@ -813,7 +816,7 @@ const assignLockedOrderToPartner = async ({
        last_location_at,
        updated_at
      )
-     VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+     VALUES ($1::uuid, $2::uuid, $3::numeric, $4::numeric, $5::int, $6::text, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
      ON CONFLICT (order_id)
      DO UPDATE SET
        delivery_partner_id = EXCLUDED.delivery_partner_id,
@@ -826,8 +829,8 @@ const assignLockedOrderToPartner = async ({
     [
       orderId,
       partnerId,
-      riderLocation?.latitude || null,
-      riderLocation?.longitude || null,
+      riderLocation?.latitude ?? null,
+      riderLocation?.longitude ?? null,
       offerMetrics.route.totalEtaMinutes,
       ORDER_DELIVERY_STATUSES.ASSIGNED,
     ]
@@ -935,7 +938,7 @@ const findBestPartnerForOrder = async (client, order, excludedPartnerIds = []) =
     })
     .sort((left, right) => left.score - right.score)
 
-  return ranked[0] || null
+  return ranked[0] ?? null
 }
 
 const autoAssignOrder = async (orderId, options = {}) => {
@@ -1021,7 +1024,7 @@ const autoAssignOrder = async (orderId, options = {}) => {
     if (!bestPartner) {
       await client.query(
         `UPDATE orders
-         SET delivery_status = $1,
+         SET delivery_status = $1::text,
              rider_assignment_status = 'QUEUED',
              assignment_expires_at = NULL,
              updated_at = CURRENT_TIMESTAMP
@@ -1276,7 +1279,7 @@ const confirmAssignedOrder = async (orderId, partnerId) => {
 
     await client.query(
       `UPDATE delivery_assignments
-       SET assignment_status = $1,
+       SET assignment_status = $1::text,
            responded_at = CURRENT_TIMESTAMP,
            updated_at = CURRENT_TIMESTAMP
        WHERE id = $2::uuid`,
@@ -1285,7 +1288,7 @@ const confirmAssignedOrder = async (orderId, partnerId) => {
 
     await client.query(
       `INSERT INTO delivery_status_logs (order_id, delivery_partner_id, status, notes)
-       VALUES ($1, $2, $3, $4)`,
+       VALUES ($1::uuid, $2::uuid, $3::text, $4::text)`,
       [
         normalizedOrderId,
         normalizedPartnerId,
@@ -1389,7 +1392,7 @@ const rejectAssignedOrder = async (orderId, partnerId) => {
 
     await client.query(
       `UPDATE delivery_assignments
-       SET assignment_status = $1,
+       SET assignment_status = $1::text,
            responded_at = CURRENT_TIMESTAMP,
            rejection_reason = 'Rejected by rider',
            updated_at = CURRENT_TIMESTAMP
@@ -1399,7 +1402,7 @@ const rejectAssignedOrder = async (orderId, partnerId) => {
 
     await client.query(
       `UPDATE orders
-       SET delivery_status = $1,
+       SET delivery_status = $1::text,
            rider_assignment_status = 'QUEUED',
            assignment_expires_at = NULL,
            updated_at = CURRENT_TIMESTAMP
@@ -1410,7 +1413,7 @@ const rejectAssignedOrder = async (orderId, partnerId) => {
 
     await client.query(
       `INSERT INTO delivery_status_logs (order_id, delivery_partner_id, status, notes)
-       VALUES ($1, $2, $3, $4)`,
+       VALUES ($1::uuid, $2::uuid, $3::text, $4::text)`,
       [
         normalizedOrderId,
         normalizedPartnerId,
@@ -1752,7 +1755,7 @@ const getActiveOrderForPartner = async (partnerId) => {
       [normalizedPartnerId, ORDER_DELIVERY_STATUSES.DELIVERED, ORDER_DELIVERY_STATUSES.CANCELLED]
     )
 
-    currentOrderId = orderResult.rows[0]?.id || null
+    currentOrderId = orderResult.rows[0]?.id ?? null
 
     if (currentOrderId) {
       await pool.query(
@@ -1787,7 +1790,7 @@ const dispatchPendingOrders = async (limit = 5) => {
     `SELECT id
      FROM orders
      WHERE delivery_partner_id IS NULL
-       AND delivery_status = $1
+       AND delivery_status = $1::text
        AND UPPER(status) IN ('PREPARING', 'READY_FOR_PICKUP')
      ORDER BY updated_at DESC, created_at ASC
      LIMIT $2::int`,

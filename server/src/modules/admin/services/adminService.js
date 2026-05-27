@@ -227,7 +227,7 @@ const fetchAdminById = async (adminUserId) => {
   const result = await pool.query(
     `SELECT id, email, full_name, role, permissions, is_active, last_login_at
      FROM admin_users
-     WHERE id = $1`,
+     WHERE id = $1::uuid`,
     [adminUserId]
   )
 
@@ -257,7 +257,7 @@ const loginAdmin = async (email, password) => {
     `SELECT id, email, password_hash, full_name, role, permissions, is_active, last_login_at,
             failed_login_attempts, lockout_until
      FROM admin_users
-     WHERE LOWER(email) = LOWER($1)`,
+     WHERE LOWER(email) = LOWER($1::text)`,
     [normalizedEmail]
   )
 
@@ -296,8 +296,8 @@ const loginAdmin = async (email, password) => {
 
     await pool.query(
       `UPDATE admin_users 
-       SET failed_login_attempts = $1, lockout_until = $2, updated_at = CURRENT_TIMESTAMP 
-       WHERE id = $3`,
+       SET failed_login_attempts = $1::int, lockout_until = $2::timestamp, updated_at = CURRENT_TIMESTAMP 
+       WHERE id = $3::uuid`,
       [failedAttempts, lockoutUntil, admin.id]
     )
 
@@ -314,7 +314,7 @@ const loginAdmin = async (email, password) => {
          failed_login_attempts = 0, 
          lockout_until = NULL,
          updated_at = CURRENT_TIMESTAMP 
-     WHERE id = $1`,
+     WHERE id = $1::uuid`,
     [admin.id]
   )
 
@@ -340,7 +340,7 @@ const recordActivity = async ({
     `INSERT INTO admin_activity_logs (
       admin_user_id, action, entity_type, entity_id, description, metadata, ip_address, user_agent
     )
-    VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8)`,
+    VALUES ($1::uuid, $2::text, $3::text, $4::uuid, $5::text, $6::jsonb, $7::text, $8::text)`,
     [
       adminUserId,
       action,
@@ -438,7 +438,7 @@ const getOrderRows = async (limit = 150) => {
      GROUP BY
        o.id, u.id, a.id, r.id, dp.id, loc.latitude, loc.longitude, loc.timestamp
      ORDER BY o.created_at DESC
-     LIMIT $1`,
+     LIMIT $1::int`,
     [limit]
   )
 
@@ -813,7 +813,7 @@ const reassignRider = async (orderId, riderId, adminUser) => {
     const riderResult = await client.query(
       `SELECT id, full_name, is_suspended, force_offline
        FROM delivery_partners
-       WHERE id = $1`,
+       WHERE id = $1::uuid`,
       [riderId]
     )
 
@@ -835,6 +835,7 @@ const reassignRider = async (orderId, riderId, adminUser) => {
          o.id,
          o.delivery_partner_id AS previous_delivery_partner_id,
          o.payment_method,
+          o.tip_amount,
          r.latitude AS restaurant_latitude,
          r.longitude AS restaurant_longitude,
          a.latitude AS customer_latitude,
@@ -847,11 +848,11 @@ const reassignRider = async (orderId, riderId, adminUser) => {
        LEFT JOIN LATERAL (
          SELECT latitude, longitude
          FROM delivery_locations dl
-         WHERE dl.delivery_partner_id = $1
+          WHERE dl.delivery_partner_id = $1::uuid
          ORDER BY timestamp DESC
          LIMIT 1
        ) loc ON TRUE
-       WHERE o.id = $2
+       WHERE o.id = $2::uuid
        FOR UPDATE OF o`,
       [riderId, orderId]
     )
@@ -872,28 +873,29 @@ const reassignRider = async (orderId, riderId, adminUser) => {
       customerLongitude: order.customer_longitude,
       riderLatitude: order.rider_latitude,
       riderLongitude: order.rider_longitude,
+      tipAmount: order.tip_amount,
     })
 
     const orderUpdate = await client.query(
       `UPDATE orders
-       SET delivery_partner_id = $1,
+       SET delivery_partner_id = $1::uuid,
            delivery_status = 'ASSIGNED',
            delivery_assigned_at = CURRENT_TIMESTAMP,
-           route_distance_km = $2,
-           pickup_distance_km = $3,
-           dropoff_distance_km = $4,
-           estimated_pickup_eta_minutes = $5,
-           estimated_dropoff_eta_minutes = $6,
-           estimated_total_eta_minutes = $7,
-           base_delivery_pay = $8,
-           distance_delivery_pay = $9,
-           surge_bonus = $10,
-           rain_bonus = $11,
-           night_bonus = $12,
-           cod_handling_bonus = $13,
-           estimated_earning = $14,
+           route_distance_km = $2::numeric,
+           pickup_distance_km = $3::numeric,
+           dropoff_distance_km = $4::numeric,
+           estimated_pickup_eta_minutes = $5::int,
+           estimated_dropoff_eta_minutes = $6::int,
+           estimated_total_eta_minutes = $7::int,
+           base_delivery_pay = $8::numeric,
+           distance_delivery_pay = $9::numeric,
+           surge_bonus = $10::numeric,
+           rain_bonus = $11::numeric,
+           night_bonus = $12::numeric,
+           cod_handling_bonus = $13::numeric,
+           estimated_earning = $14::numeric,
            updated_at = CURRENT_TIMESTAMP
-       WHERE id = $15
+       WHERE id = $15::uuid
        RETURNING id`,
       [
         riderId,
@@ -926,31 +928,31 @@ const reassignRider = async (orderId, riderId, adminUser) => {
          SET current_order_id = NULL,
              current_status = 'AVAILABLE',
              updated_at = CURRENT_TIMESTAMP
-         WHERE id = $1 AND current_order_id = $2`,
+          WHERE id = $1::uuid AND current_order_id = $2::uuid`,
         [order.previous_delivery_partner_id, orderId]
       )
     }
 
     await client.query(
       `UPDATE delivery_partners
-       SET current_order_id = $1, current_status = 'ASSIGNED', updated_at = CURRENT_TIMESTAMP
-       WHERE id = $2`,
+       SET current_order_id = $1::uuid, current_status = 'ASSIGNED', updated_at = CURRENT_TIMESTAMP
+       WHERE id = $2::uuid`,
       [orderId, riderId]
     )
 
     await client.query(
       `INSERT INTO delivery_assignments (order_id, delivery_partner_id, assignment_status, assigned_at, updated_at)
-       VALUES ($1, $2, 'ASSIGNED', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+       VALUES ($1::uuid, $2::uuid, 'ASSIGNED', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
        RETURNING id`,
       [orderId, riderId]
     )
 
     await client.query(
       `UPDATE delivery_assignments
-       SET earnings = $1,
-           distance_km = $2,
+       SET earnings = $1::numeric,
+           distance_km = $2::numeric,
            updated_at = CURRENT_TIMESTAMP
-       WHERE order_id = $3 AND delivery_partner_id = $4`,
+       WHERE order_id = $3::uuid AND delivery_partner_id = $4::uuid`,
       [offerMetrics.pay.total, offerMetrics.route.dropoffDistanceKm, orderId, riderId]
     )
 
@@ -976,7 +978,7 @@ const reassignRider = async (orderId, riderId, adminUser) => {
          accepted_at,
          updated_at
        )
-       VALUES ($1, $2, 'ASSIGNED', $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+       VALUES ($1::uuid, $2::uuid, 'ASSIGNED', $3::numeric, $4::numeric, $5::numeric, $6::numeric, $7::numeric, $8::numeric, $9::numeric, $10::int, $11::int, $12::int, $13::numeric, $14::numeric, $15::numeric, $16::numeric, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
        ON CONFLICT (order_id)
        DO UPDATE SET
          delivery_partner_id = EXCLUDED.delivery_partner_id,
@@ -1028,7 +1030,7 @@ const reassignRider = async (orderId, riderId, adminUser) => {
          last_location_at,
          updated_at
        )
-       VALUES ($1, $2, $3, $4, $5, 'ASSIGNED', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+       VALUES ($1::uuid, $2::uuid, $3::numeric, $4::numeric, $5::int, 'ASSIGNED', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
        ON CONFLICT (order_id)
        DO UPDATE SET
          delivery_partner_id = EXCLUDED.delivery_partner_id,
@@ -1041,15 +1043,15 @@ const reassignRider = async (orderId, riderId, adminUser) => {
       [
         orderId,
         riderId,
-        order.rider_latitude || null,
-        order.rider_longitude || null,
+        order.rider_latitude ?? null,
+        order.rider_longitude ?? null,
         offerMetrics.route.totalEtaMinutes,
       ]
     )
 
     await client.query(
       `INSERT INTO delivery_status_logs (order_id, delivery_partner_id, status, notes)
-       VALUES ($1, $2, 'ASSIGNED', 'Reassigned by admin control center')`,
+       VALUES ($1::uuid, $2::uuid, 'ASSIGNED', 'Reassigned by admin control center')`,
       [orderId, riderId]
     )
 
@@ -1716,22 +1718,22 @@ const createCoupon = async (payload, adminUser) => {
        code, title, description, discount_type, discount_value, minimum_order_amount, max_discount_amount,
        usage_limit, starts_at, ends_at, is_active, target_audience, featured_restaurant_id
      )
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, COALESCE($9, CURRENT_TIMESTAMP), $10, COALESCE($11, TRUE), COALESCE($12, 'all'), $13)
+     VALUES ($1::text, $2::text, $3::text, $4::text, $5::numeric, $6::numeric, $7::numeric, $8::int, COALESCE($9::timestamp, CURRENT_TIMESTAMP), $10::timestamp, COALESCE($11::boolean, TRUE), COALESCE($12::text, 'all'), $13::uuid)
      RETURNING id, code, title`,
     [
       String(payload.code || '').toUpperCase(),
       payload.title,
-      payload.description || null,
-      payload.discount_type || 'flat',
+      payload.description ?? null,
+      payload.discount_type ?? 'flat',
       payload.discount_value,
-      payload.minimum_order_amount || 0,
-      payload.max_discount_amount || 0,
-      payload.usage_limit || 0,
-      payload.starts_at || null,
-      payload.ends_at || null,
+      payload.minimum_order_amount ?? 0,
+      payload.max_discount_amount ?? 0,
+      payload.usage_limit ?? 0,
+      payload.starts_at ?? null,
+      payload.ends_at ?? null,
       payload.is_active,
       payload.target_audience,
-      payload.featured_restaurant_id || null,
+      payload.featured_restaurant_id ?? null,
     ]
   )
 
@@ -1778,7 +1780,7 @@ const updateSettings = async (settings, adminUser) => {
   for (const setting of settings) {
     await pool.query(
       `INSERT INTO platform_settings (setting_key, setting_value, description, category, updated_by)
-       VALUES ($1, $2::jsonb, $3, $4, $5)
+       VALUES ($1::text, $2::jsonb, $3::text, $4::text, $5::uuid)
        ON CONFLICT (setting_key)
        DO UPDATE SET
          setting_value = EXCLUDED.setting_value,
@@ -1789,8 +1791,8 @@ const updateSettings = async (settings, adminUser) => {
       [
         setting.setting_key,
         JSON.stringify(setting.setting_value),
-        setting.description || null,
-        setting.category || 'general',
+        setting.description ?? null,
+        setting.category ?? 'general',
         adminUser.id,
       ]
     )

@@ -90,7 +90,7 @@ const normalizeStatus = (value) => {
     return upper
   }
   // Check aliases
-  return STATUS_ALIASES[String(value).toLowerCase().trim()] || null
+  return STATUS_ALIASES[String(value).toLowerCase().trim()] ?? null
 }
 
 // ============================================================
@@ -422,8 +422,8 @@ const updateOrderLifecycleState = async (orderId, newStatus, options = {}) => {
 
       await client.query(
         `UPDATE orders
-         SET payment_status = $1,
-             cancellation_reason = $2
+         SET payment_status = $1::text,
+             cancellation_reason = $2::text
          WHERE id = $3::uuid`,
         [paymentStatus, options.reason || 'Cancelled', orderId]
       )

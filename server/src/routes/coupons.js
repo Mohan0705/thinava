@@ -61,7 +61,7 @@ router.post('/validate', asyncHandler(async (req, res) => {
 
   let result = await pool.query(
       `SELECT * FROM coupons
-       WHERE code = $1 AND active = TRUE
+       WHERE code = $1::text AND active = TRUE
          AND (expires_at IS NULL OR expires_at > NOW())`,
       [normalizedCode]
     )
@@ -78,7 +78,7 @@ router.post('/validate', asyncHandler(async (req, res) => {
                 'FLAT' AS discount_type_fixed,
                 'PERCENTAGE' AS discount_type_pct
          FROM coupon_codes
-         WHERE code = $1 AND is_active = TRUE
+          WHERE code = $1::text AND is_active = TRUE
            AND (ends_at IS NULL OR ends_at > NOW())
            AND (usage_limit = 0 OR used_count < usage_limit)`,
         [normalizedCode]

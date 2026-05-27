@@ -106,8 +106,7 @@ const calculateDistanceMeters = (from, to) => {
   return metersFromKm(haversineDistanceKm(from, to))
 }
 
-const getEffectivePerKmRate = (now = new Date()) =>
-  isNightWindow(now) ? DELIVERY_PAY_DEFAULTS.nightPerKmRate : DELIVERY_PAY_DEFAULTS.perKmRate
+const getEffectivePerKmRate = () => DELIVERY_PAY_DEFAULTS.perKmRate
 
 const buildFallbackRouteMetrics = ({ origin, restaurant, customer }) => {
   const pickupDistanceKm = roundMetric(haversineDistanceKm(origin, restaurant) * 1.22)
@@ -132,45 +131,27 @@ const computeRiderPayout = (deliveryDistanceKm, options = {}) => {
   const {
     paymentMethod = 'cod',
     now = new Date(),
-    surgeBonus,
-    rainBonus,
-    codHandlingBonus,
     tipAmount = 0,
   } = options
   const distanceKm = roundMetric(deliveryDistanceKm)
   const billableDistanceKm = Math.max(0, Math.ceil(distanceKm) - DELIVERY_PAY_DEFAULTS.baseDistanceKm)
   const basePay = DELIVERY_PAY_DEFAULTS.basePay > 0 ? DELIVERY_PAY_DEFAULTS.basePay : 25
-  const nightRateActive = isNightWindow(now)
   const regularPerKmRate = DELIVERY_PAY_DEFAULTS.perKmRate > 0 ? DELIVERY_PAY_DEFAULTS.perKmRate : 10
-  const effectivePerKmRate = nightRateActive
-    ? Math.max(DELIVERY_PAY_DEFAULTS.nightPerKmRate, regularPerKmRate)
-    : regularPerKmRate
-  const distancePay = roundMetric(billableDistanceKm * effectivePerKmRate)
-  const regularDistancePay = roundMetric(billableDistanceKm * regularPerKmRate)
-  const resolvedSurgeBonus =
-    surgeBonus !== undefined ? Number(surgeBonus || 0) : isPeakWindow(now) ? DELIVERY_PAY_DEFAULTS.surgeBonus : 0
-  const resolvedRainBonus =
-    rainBonus !== undefined ? Number(rainBonus || 0) : shouldApplyRainBonus() ? DELIVERY_PAY_DEFAULTS.rainBonus : 0
-  const nightBonus = nightRateActive ? roundMetric(distancePay - regularDistancePay) : 0
-  const resolvedCodHandlingBonus =
-    codHandlingBonus !== undefined
-      ? Number(codHandlingBonus || 0)
-      : String(paymentMethod || '').toLowerCase() === 'cod'
-        ? DELIVERY_PAY_DEFAULTS.codHandlingBonus
-        : 0
-  const total = roundMetric(basePay + distancePay + resolvedSurgeBonus + resolvedRainBonus + resolvedCodHandlingBonus + Number(tipAmount || 0))
+  const distancePay = roundMetric(billableDistanceKm * regularPerKmRate)
+  const resolvedTipAmount = roundMetric(tipAmount)
+  const total = roundMetric(basePay + distancePay + resolvedTipAmount)
 
   return {
     basePay: roundMetric(basePay),
-    perKmRate: effectivePerKmRate,
+    perKmRate: regularPerKmRate,
     baseDistanceKm: DELIVERY_PAY_DEFAULTS.baseDistanceKm,
     billableDistanceKm,
     distancePay,
-    surgeBonus: roundMetric(resolvedSurgeBonus),
-    rainBonus: roundMetric(resolvedRainBonus),
-    nightBonus,
-    codHandlingBonus: roundMetric(resolvedCodHandlingBonus),
-    tipAmount: roundMetric(tipAmount),
+    surgeBonus: 0,
+    rainBonus: 0,
+    nightBonus: 0,
+    codHandlingBonus: 0,
+    tipAmount: resolvedTipAmount,
     total,
   }
 }
@@ -187,6 +168,7 @@ const buildDeliveryOfferMetrics = async ({
   customerLongitude,
   riderLatitude,
   riderLongitude,
+  tipAmount = 0,
 }) => {
   const restaurant = resolveCoordinatePair({
     seed: `${orderId}-restaurant`,
@@ -208,7 +190,7 @@ const buildDeliveryOfferMetrics = async ({
 
   const routeMetrics = buildFallbackRouteMetrics({ origin, restaurant, customer })
 
-  const pay = computeRiderPayout(routeMetrics.dropoffDistanceKm, { paymentMethod })
+  const pay = computeRiderPayout(routeMetrics.dropoffDistanceKm, { paymentMethod, tipAmount })
 
   return {
     coordinates: {
